@@ -1,0 +1,145 @@
+# Maintainer and Update Story
+
+This file documents the intended maintenance model for a native GNU Guix System
+Qubes TemplateVM.  It is part of the review surface for Qubes maintainers; it
+does not replace the need for a named human maintainer, a public repository, and
+signed releases.
+
+## Maintainer Ownership
+
+The template should be submitted as a community-maintained template first, not
+as an official Qubes template.  A submission needs:
+
+- a public repository URL;
+- a named human maintainer;
+- the maintainer OpenPGP fingerprint used for signed commits or signed release
+  tags;
+- fresh build and runtime evidence for both `guix` and `guix-minimal`;
+- a clear handoff plan if the maintainer stops publishing updates.
+
+The placeholder `<MAINTAINER_GPG_FINGERPRINT>` in `config/` must not be
+submitted unchanged.
+
+## Maintainer Handoff
+
+If the maintainer can no longer publish timely updates, the expected handoff is:
+
+1. announce the maintenance gap on the original `qubes-devel` or contribution
+   issue thread;
+2. stop requesting promotion or stable publication until a replacement
+   maintainer is identified;
+3. transfer the public repository or publish a final signed tag that documents
+   the last known-good release evidence;
+4. submit a release-config update with the replacement maintainer fingerprint,
+   or ask Qubes maintainers to remove or hide the template if no replacement is
+   available;
+5. keep the previous signing key documented so users can distinguish an
+   intentional maintainer change from an unexpected release source change.
+
+The release-config maintainer fingerprint is part of the trust path.  It should
+not be changed silently.
+
+## Release Inputs
+
+Template releases are built from pinned inputs:
+
+- Qubes VM components are pinned in
+  `native/modules/qubes/packages/qubes-vm.scm` by upstream tag, commit, and
+  recursive Guix hash.
+- The Guix channel used by release builds is pinned in `config/channels.scm`.
+- The release-config and Builder v2 integration sketches are in `config/`.
+
+Release builds must not default to an unpinned Guix branch.  Builders may
+override channels deliberately, but the published template release should record
+the channel commit used to build it.
+
+## Updating Qubes Components
+
+For each Qubes R4.3 component bump:
+
+1. Run `./scripts/check-qubes-pins.sh` to compare the pinned commit against
+   the currently tagged upstream release.
+2. Update the component tag and commit in `%qubes-source-components`.
+3. Recompute the Guix recursive hash for that source.
+4. Load the Guix modules, or run `scripts/maintainer-preflight.sh` on a system
+   with Guix installed, so package versions are checked against the pinned
+   table rather than duplicated manually.
+5. Run `make check`, then rebuild and test both variants before publishing.
+
+Version strings passed to Qubes component builds are derived from the pinned
+source table.  Maintainers should not hand-edit duplicate package versions.
+
+## Updating Guix
+
+The template installs `config/channels.scm` into `/etc/guix/channels.scm` so
+the release channel is visible inside the TemplateVM.  The release process for a
+new Guix base should be:
+
+1. update `config/channels.scm` to the desired Guix commit;
+2. run `guix time-machine -C config/channels.scm -- describe`;
+3. rebuild `guix` and `guix-minimal` root images;
+4. inspect and activate both images;
+5. package both RPMs;
+6. run RPM-mode openQA and `qvm-template` lifecycle tests.
+
+The template should not run `guix pull` automatically during boot or image
+activation.  Users may run Guix commands inside a TemplateVM deliberately, but
+published template updates should remain reproducible from the pinned channel
+file and source table.
+
+## Qubes Updates Proxy
+
+Guix network traffic should use the Qubes updates proxy path, not a separate
+network policy.  The implementation provides a Guix-facing forwarder to
+`qubes.UpdatesProxy`, configures `guix-daemon` through Guix's Shepherd
+`set-http-proxy` action, and generates a `/run/qubes/bin/guix` wrapper for
+client-side Guix commands when `updates-proxy-setup` is enabled.  Live
+TemplateVM/AppVM validation of the generated Guix proxy configuration and a real
+Guix update/download command through the proxy are release gates before
+submission.
+
+## Rollback
+
+Rollback has two layers:
+
+- Qubes template package rollback: reinstall or downgrade the
+  `qubes-template-guix*` RPM through `qvm-template` once published through Qubes
+  repositories.
+- Guix system rollback inside a TemplateVM: Guix system generations can be
+  rolled back from the TemplateVM when the user deliberately reconfigures the
+  system.
+
+Both layers need runtime tests before publication.  The current local checks do
+not prove rollback behavior in dom0.
+
+## Security Cadence
+
+The maintainer should publish a rebuilt template when either of these changes:
+
+- a pinned Qubes VM component receives a relevant R4.3 update;
+- the pinned Guix channel needs security or compatibility updates.
+
+Each security rebuild should record:
+
+- source commit and signed tag;
+- Guix channel commit;
+- Qubes component pins and hashes;
+- normal and minimal RPM hashes;
+- openQA and `qvm-template` lifecycle results.
+
+## Release Evidence Required
+
+Before asking Qubes to merge release-config entries, collect fresh evidence from
+a clean tree:
+
+- `make check`;
+- Guix module load or `scripts/maintainer-preflight.sh` with Guix available;
+- `./scripts/check-qubes-pins.sh`;
+- normal and minimal rootfs builds;
+- image inspection and activation tests for both variants;
+- normal and minimal template RPM builds;
+- `qvm-template` install, reinstall, remove, upgrade, and downgrade with
+  `scripts/test-template-rpm-lifecycle-dom0.sh`;
+- TemplateVM and AppVM qrexec, QubesDB, GUI, appmenu, shutdown, and private
+  volume persistence smoke tests;
+- RPM-mode openQA for both variants.

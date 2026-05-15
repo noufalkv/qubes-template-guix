@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Example release-config fragment for an R4.3 community Guix template.
+#
+# This is intentionally not directly submit-ready. Replace the URL and
+# maintainer fingerprint with the actual public repository and signing key, then
+# fold the component/template entries into qubes-os-r4.3-templates-community.yml.
+
+components:
+  - builder-guix:
+      packages: False
+      fetch-versions-only: false
+      branch: main
+      url: https://github.com/<OWNER>/qubes-builder-guix
+      maintainers:
+        - '<MAINTAINER_GPG_FINGERPRINT>'
+
+templates:
+  - guix:
+      dist: guix
+      timeout: 21600
+  - guix-minimal:
+      dist: guix
+      flavor: minimal
+      timeout: 21600

@@ -1,0 +1,32 @@
+diff --git a/R4.3/qubes-os-r4.3-templates-community.yml b/R4.3/qubes-os-r4.3-templates-community.yml
+index 30c8d8c..e0d5886 100644
+--- a/R4.3/qubes-os-r4.3-templates-community.yml
++++ b/R4.3/qubes-os-r4.3-templates-community.yml
+@@ -56,6 +56,13 @@ components:
+         - 9FA64B92F95E706BF28E2CA6484010B5CDC576E2
+         # fepitre's @invisiblethingslab.com
+         - 77EEEF6D0386962AEA8CF84A9B8273F80AC219E6
++  - builder-guix:
++      packages: False
++      fetch-versions-only: false
++      branch: main
++      url: https://github.com/<OWNER>/qubes-builder-guix
++      maintainers:
++        - '<MAINTAINER_GPG_FINGERPRINT>'
+   - template-kali:
+       packages: False
+       fetch-versions-only: false
+@@ -114,6 +121,13 @@ templates:
+       dist: gentoo
+       flavor: xfce
+       timeout: 86400
++  - guix:
++      dist: guix
++      timeout: 21600
++  - guix-minimal:
++      dist: guix
++      flavor: minimal
++      timeout: 21600
+   - kali:
+       dist: trixie
+       flavor: kali

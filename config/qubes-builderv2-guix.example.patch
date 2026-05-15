@@ -1,0 +1,129 @@
+diff --git a/qubesbuilder/distribution.py b/qubesbuilder/distribution.py
+index 571bc62..2574975 100644
+--- a/qubesbuilder/distribution.py
++++ b/qubesbuilder/distribution.py
+@@ -71,6 +71,7 @@ class QubesDistribution:
+         is_ubuntu = UBUNTU.get(self.name, None)
+         is_archlinux = self.name == "archlinux"
+         is_gentoo = self.name == "gentoo"
++        is_guix = self.name == "guix"
+         is_windows = WINDOWS.get(self.name, None)
+         if is_fedora:
+             self.fullname = "fedora"
+@@ -108,6 +109,11 @@ class QubesDistribution:
+             self.version = "rolling"
+             self.tag = "gentoo"
+             self.type = "gentoo"
++        elif is_guix:
++            self.fullname = "guix"
++            self.version = "rolling"
++            self.tag = "guix"
++            self.type = "guix"
+         elif is_windows:
+             self.fullname, self.version = WINDOWS[self.name]
+             self.tag = "windows"
+@@ -155,6 +161,9 @@ class QubesDistribution:
+     def is_gentoo(self) -> bool:
+         return self.name == "gentoo"
+-
++
++    def is_guix(self) -> bool:
++        return self.name == "guix"
++
+     def is_windows(self) -> bool:
+         if WINDOWS.get(self.name, None):
+             return True
+diff --git a/qubesbuilder/plugins/template/__init__.py b/qubesbuilder/plugins/template/__init__.py
+index e2d97ba..7c16659 100644
+--- a/qubesbuilder/plugins/template/__init__.py
++++ b/qubesbuilder/plugins/template/__init__.py
+@@ -79,6 +79,7 @@ class TemplateBuilderPlugin(TemplatePlugin):
+                 template.distribution.is_archlinux(),
+                 template.distribution.is_ubuntu(),
+                 template.distribution.is_gentoo(),
++                template.distribution.is_guix(),
+             ]
+         )
+
+@@ -456,6 +457,32 @@ class TemplateBuilderPlugin(TemplatePlugin):
+                     ),
+                 }
+             )
++        elif self.template.distribution.is_guix():
++            component = self.config.get_component("builder-guix")
++            self.dependencies += [
++                JobDependency(
++                    JobReference(
++                        component=component,
++                        stage="fetch",
++                        build="source",
++                        dist=None,
++                        template=None,
++                    )
++                ),
++            ]
++            template_content_dir = str(
++                self.executor.get_sources_dir()
++                / "builder-guix/builder-v2-template"
++            )
++            self.environment.update(
++                {
++                    "TEMPLATE_CONTENT_DIR": template_content_dir,
++                    "CACHE_DIR": str(self.executor.get_cache_dir()),
++                    "KEYS_DIR": str(
++                        self.executor.get_sources_dir() / "builder-guix/keys"
++                    ),
++                }
++            )
+         else:
+             raise TemplateError("Unsupported template.")
+         template_flavor_dir += [
+diff --git a/tests/test_objects.py b/tests/test_objects.py
+index 688d39a..69b9b5a 100644
+--- a/tests/test_objects.py
++++ b/tests/test_objects.py
+@@ -13,4 +13,5 @@ from qubesbuilder.exc import ComponentError, DistributionError, ConfigError
+ from qubesbuilder.executors.container import ContainerExecutor
+ from qubesbuilder.pluginmanager import PluginManager
+ from qubesbuilder.plugins import DistributionComponentPlugin
++from qubesbuilder.plugins.template import TemplateBuilderPlugin
+ from qubesbuilder.template import QubesTemplate, TemplateError
+@@ -289,7 +290,18 @@ def test_dist_non_default_arch():
+     assert str(dist) == "vm-debian-13.ppc64el"
+     assert repr(dist) == repr_str
+-
+-
++
++    dist = QubesDistribution("vm-guix")
++    assert dist.version == "rolling"
++    assert dist.fullname == "guix"
++    assert dist.architecture == "x86_64"
++    assert dist.tag == "guix"
++    assert dist.type == "guix"
++
++    repr_str = "<QubesDistribution vm-guix-rolling.x86_64>"
++    assert dist.to_str() == "vm-guix-rolling.x86_64"
++    assert str(dist) == "vm-guix-rolling.x86_64"
++    assert repr(dist) == repr_str
++
+ def test_dist_unknown_package_set():
+     with pytest.raises(DistributionError) as e:
+         QubesDistribution("notset-fc42")
+@@ -308,9 +321,15 @@ def test_dist_unknown():
+ def test_dist_family():
+     assert QubesDistribution("vm-fc42").is_rpm()
+     assert QubesDistribution("host-bookworm").is_deb()
++    assert QubesDistribution("vm-guix").is_guix()
+     assert not QubesDistribution("host-centos-stream9").is_deb()
+-
+-
++
++
++def test_template_plugin_supports_guix():
++    template = QubesTemplate({"guix": {"dist": "guix"}})
++    assert TemplateBuilderPlugin.supported_template(template)
++
++
+ #
+ # QubesTemplate
+ #

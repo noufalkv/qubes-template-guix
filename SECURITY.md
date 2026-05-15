@@ -1,0 +1,91 @@
+# Security Review Notes
+
+This repository is a TemplateVM build prototype.  It does not ask Qubes to trust
+a new dom0 service or a privileged host-side daemon.  The security-sensitive
+question is whether the Guix guest image preserves the expected Qubes VM-agent
+contracts while translating the Linux distribution integration from systemd/FHS
+assumptions to Guix System and Shepherd.
+
+## Trust Boundaries
+
+- dom0 still owns VM creation, qrexec policy, GUI policy, kernel supply, device
+  assignment, and template package installation.
+- The template root image contains Qubes VM-side agents, Guix packages, and
+  compatibility services only.
+- The template RPM installs under `/var/lib/qubes/vm-templates/<name>` using
+  the same split `root.img.part.NN` payload shape expected by `qvm-template`.
+- Guix store paths are immutable, but Qubes VM agents still require stable FHS
+  paths such as `/usr/lib/qubes`, `/etc/qubes-rpc`, `/run/qubes`, `/rw`,
+  `/home`, and `/usr/local`.  The compatibility services in
+  `native/modules/qubes/services/qubes-vm.scm` create those paths inside the VM
+  only.
+
+## Validation Infrastructure Scope
+
+Scripts for GCP builders, nested dom0, and openQA are development and release
+validation infrastructure.  They are not installed into the TemplateVM image,
+do not add a new dom0 service, and should not be treated as part of the runtime
+trusted computing base of a published Guix template.  They still need ordinary
+review before use on a build host because they create VMs, copy artifacts, and
+run dom0-side test commands.
+
+## Source Integrity
+
+- Qubes VM agent sources are fetched from QubesOS Git repositories by exact
+  commit and Guix recursive content hash in
+  `native/modules/qubes/packages/qubes-vm.scm`.
+- `scripts/check-qubes-pins.sh` compares the pinned commits with live upstream
+  release tags for the intended Qubes release series.
+- `config/channels.scm` pins the Guix channel used for release-quality builds
+  and is installed as `/etc/guix/channels.scm` in the template.
+
+## Privileged Guest Behavior
+
+- qrexec and QubesDB run as guest-side services under Shepherd.
+- `qubes.PostInstall` is forced to run as root because Qubes post-install hooks
+  update root-owned template state and Qubes integration tests expect that
+  behavior.
+- Qubes-style passwordless sudo and default privileged helper behavior are
+  treated as compatibility requirements, not new policy invented by this
+  template.
+- The updates proxy implementation forwards to Qubes `qubes.UpdatesProxy`
+  instead of creating an independent network updater.  Guix-specific setup uses
+  the standard Guix daemon `set-http-proxy` Shepherd action and a generated
+  client wrapper, so the template does not carry a separate updater policy.
+- Swap uses `/dev/xvdc1`, and private volume persistence uses the standard
+  Qubes `/dev/xvdb -> /rw`, `/rw/home -> /home`, and
+  `/rw/usrlocal -> /usr/local` model.
+
+## Review-Sensitive Adaptations
+
+`ADAPTATION_INVENTORY.md` is the detailed map of Guix-specific adaptations.
+The highest-risk rows for security review are:
+
+- qrexec PAM selection and qrexec Python path adjustments.
+- qrexec `qubes.WaitForSession` replacement for Shepherd.
+- QubesDB foreground supervision.
+- core-agent post-install and feature reporting changes without systemd.
+- updates proxy forwarding.
+- GUI startup and Xorg wrapper changes.
+- FHS compatibility links under `/usr`, `/etc/qubes-rpc`, `/run`, and
+  `/var/run`.
+
+Those changes should be kept small and dropped whenever upstream Qubes gains a
+native mechanism that removes the Guix-specific need.
+
+## What Is Not Yet Proven
+
+The following must not be presented as final release proof until a current
+signed public branch has fresh evidence:
+
+- RPM-mode openQA reruns for both `guix` and `guix-minimal`.
+- default update-target proxy forwarding rerun from the signed branch.
+- runtime proof that the generated Guix daemon/client proxy configuration is
+  active, plus real Guix update tooling consuming the Qubes update proxy.
+- Broader usability checks such as audio, time sync, keymap sync, DispVM, NetVM,
+  and ProxyVM behavior.
+
+Until those are complete, the correct status is a reviewable prototype with
+build, packaging, nested-dom0 lifecycle, nested-dom0 smoke, current RPM-mode
+openQA, and current default update-target proxy evidence, not a published or
+security-reviewed Qubes community template.
