@@ -63,7 +63,7 @@ Inspected evidence in the current tree:
 
 | Check | Evidence |
 | --- | --- |
-| Clean public branch history | `git log --oneline --decorate --max-count=5` shows a single public review commit on `master`. |
+| Clean public branch history | `git log --oneline --decorate --max-count=5` shows only scoped review commits on `master`. |
 | Tracked tests exercise build contracts | `make check` runs `tests/builder-content-check.sh`, `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`. |
 | Working tree clean | `git status --short` has no output. |
 | Qubes source pins are fresh | Current local `./scripts/check-qubes-pins.sh` passed for all pinned Qubes VM components. |
@@ -107,9 +107,11 @@ the live Qubes GitHub tags, and the pinned Guix channel resolved with
 
 After adding the Guix-specific updates-proxy configuration service, the synced
 current tree also loaded both `normal` and `minimal` operating-system variants
-with real Guix on the GCP builder.  This checks the Scheme service graph, but it
-does not replace a rebuilt-image boot test of the generated proxy wrapper and
-daemon environment.
+with real Guix on the GCP builder.  This checks the Scheme service graph.  A
+later rebuilt-image boot test in RPM-mode openQA job 27 also verified the
+generated Guix client wrapper, updates-proxy forwarder, and `guix-daemon`
+service state for `guix-minimal`.  That still does not prove real `guix pull`
+or substitute downloads using the Qubes proxy.
 
 The same GCP source tree also produced a fresh `guix-minimal` 20G root image,
 passed image inspection and activation, and built:
@@ -196,6 +198,20 @@ Those jobs exercised the RPM asset path, `qvm-template --yes install
 --nogpgcheck`, postinstall failure checks, and the dom0 TemplateVM/AppVM smoke
 harness.  They are current review evidence, not a replacement for final reruns
 from the signed public branch.
+
+After the Guix update-proxy service change, RPM-mode openQA job 27 passed for a
+rebuilt `guix-minimal` RPM:
+
+```text
+job 27: BUILD=guix-minimal-rpm-r202605162304-proxyfix-202605162312 TEST=guix_template result=passed
+```
+
+That job covered `qvm-template` install, postinstall diagnostics, log scanning,
+TemplateVM/AppVM smoke, standard `/dev/xvdc1` swap, guest-side
+`meminfo-writer`, qrexec, `qubes.WaitForSession`, the generated Guix
+updates-proxy forwarder, and `guix-daemon` service-state checks.  It is still
+review evidence from the current GCP/openQA tree, not final signed-branch
+release evidence.
 
 ## Do Not Claim Yet
 

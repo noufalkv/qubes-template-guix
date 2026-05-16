@@ -14,7 +14,7 @@ not yet a publishable Qubes community template.
    Shepherd services.  It lists each non-obvious Guix/Qubes adaptation, why it
    exists, and what currently validates it.
 4. Read `VALIDATION.md` before relying on any test result.  It separates local
-   contract checks, maintainer hygiene, nested-dom0 evidence, and unpassed
+   contract checks, pin/provenance notes, nested-dom0 evidence, and unpassed
    release gates.
 5. Read `UPSTREAMING.md` and `config/README.md` for the multi-repo Builder v2
    and release-config path.
@@ -69,6 +69,7 @@ release evidence:
 - Maintainer identity, GPG fingerprint, signed commits, and signed release tags
   are not present.
 - Final signed-branch RPM-mode openQA has not been rerun.
-- Runtime proof of the generated Guix daemon/client proxy configuration and a
-  real Guix update/download through the proxy are not present.
+- Real `guix pull` or substitute downloads through the Qubes update proxy are
+  not proven.  RPM-mode openQA job 27 proves the generated Guix client/daemon
+  proxy configuration and service state for the rebuilt minimal RPM only.
 - Qubes maintainers have not reviewed or accepted the template.

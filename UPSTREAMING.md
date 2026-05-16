@@ -347,7 +347,10 @@ issue.  The current partial evidence snapshot is in `VALIDATION.md`.
   nested-dom0 evidence shows a Guix AppVM growing from 400 MiB to 698 MiB
   under guest allocation pressure; final release evidence must rerun it from
   the signed public branch.
-- Update-proxy forwarding in a real Qubes VM.
+- Real Guix update/download behavior through the Qubes update proxy.  Current
+  evidence verifies Qubes forwarding, generated Guix proxy configuration, and
+  service state; final evidence still needs actual `guix pull` or substitute
+  downloads through the proxy from the signed public branch.
 - Optional Qubes dom0 integration results for `qubes.tests.integ.qrexec` and
   `qubes.tests.integ.vm_qrexec_gui`, with any nested-virtualization host limits
   called out separately.

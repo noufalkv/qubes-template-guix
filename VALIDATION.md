@@ -10,9 +10,9 @@ The normal/minimal rootfs and RPM evidence below is a release-build snapshot
 from May 15, 2026.  It proves the build path has worked for this review effort,
 but it is not a substitute for fresh release evidence from the final signed
 public branch.  Later commits may update review documentation,
-Builder/release-config sketches, local maintainer hygiene scripts, or package
-metadata, so the final submission must rerun the release gates from the exact
-branch or tag that Qubes reviewers are asked to evaluate.
+Builder/release-config sketches, or package metadata, so the final submission
+must rerun the release gates from the exact branch or tag that Qubes reviewers
+are asked to evaluate.
 
 The `qvm-template` install/reinstall/remove/upgrade/downgrade gate,
 nested-dom0 TemplateVM/AppVM smoke gate, and RPM-mode openQA gate have passing
