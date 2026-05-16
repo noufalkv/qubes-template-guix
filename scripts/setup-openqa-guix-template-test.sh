@@ -259,6 +259,7 @@ if [ "$install_mode" = "rpm" ]; then
     cp "$guix_template_rpm" "$rpm_staging/$(basename "$guix_template_rpm")"
     cp "$repo_root/scripts/import-native-rootfs-dom0.sh" "$rpm_staging/"
     cp "$repo_root/scripts/test-native-guix-template-dom0.sh" "$rpm_staging/"
+    cp "$repo_root/scripts/test-guix-update-proxy-config-dom0.sh" "$rpm_staging/"
     cp "$repo_root/scripts/diagnose-guix-postinstall-dom0.sh" "$rpm_staging/"
     if [ "$run_qubes_system_tests" = "1" ]; then
         cp "$nose2_rpm" "$rpm_staging/python3-nose2.rpm"

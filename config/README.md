@@ -20,10 +20,16 @@ Qubes infrastructure.
 
 ## Sanity Checks
 
-When local upstream checkouts exist at `/tmp/qubes-builderv2` and
-`/tmp/qubes-release-configs`, `scripts/maintainer-preflight.sh` verifies that
-the two patch sketches apply cleanly to clean clones of those checkouts.  This
-is review hygiene for the sketch patches, not a test gate and not
+When local upstream checkouts exist, check the sketch patches directly:
+
+```sh
+git -C /tmp/qubes-builderv2 apply --check \
+  /home/user/guix/config/qubes-builderv2-guix.example.patch
+git -C /tmp/qubes-release-configs apply --check \
+  /home/user/guix/config/qubes-release-configs-guix.example.patch
+```
+
+This is review hygiene for the sketch patches, not a test gate and not
 template-runtime evidence.
 
 Focused checks used for the Builder v2 sketch, refreshed against current

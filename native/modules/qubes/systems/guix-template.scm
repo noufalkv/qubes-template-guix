@@ -46,6 +46,14 @@
 
 (define %qubes-base-services-with-lean-udev
   (modify-services %base-services
+    ;; Configure the daemon proxy declaratively. Calling Shepherd's
+    ;; set-http-proxy action from another boot-time service restarts
+    ;; guix-daemon while Shepherd is still starting services, which can leave
+    ;; shutdown waiting on an unfinished service.
+    (guix-service-type config =>
+      (guix-configuration
+       (inherit config)
+       (http-proxy "http://127.0.0.1:8082/")))
     (udev-service-type config =>
       (udev-configuration
        (inherit config)

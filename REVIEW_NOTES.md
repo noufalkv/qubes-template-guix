@@ -73,9 +73,9 @@ Explicit non-goals for the first review:
 | Template builder precedent | `TEMPLATE_PRECEDENTS.md`, `builder-v2-template/` | Hook mapping documented against Qubes template-builder model |
 | Qubes release-config wiring | `config/qubes-os-r4.3-templates-community-guix.example.yml`, `config/qubes-release-configs-guix.example.patch` | Reviewable sketch with placeholder maintainer identity |
 | Template Manager RPM format | `scripts/package-native-template-rpm.sh`, `tests/rpm-layout-check.sh` | Locally tested |
-| Runtime Qubes integration | `native/modules/qubes/services/qubes-vm.scm`, `native/modules/qubes/systems/guix-template.scm`, `scripts/test-native-rootfs-activation.sh`, `scripts/test-template-rpm-lifecycle-dom0.sh`, `scripts/test-update-proxy-default-target-dom0.sh`, `scripts/test-guix-update-proxy-config-dom0.sh`, `scripts/test-memory-balloon-dom0.sh`, `VALIDATION.md` | Partially tested; nested-dom0 `qvm-template` install/reinstall/remove/upgrade/downgrade plus TemplateVM/AppVM smoke passed, including `/dev/xvdc1` swap, `meminfo-writer` startup, dynamic memory growth under pressure, controlled update-proxy qrexec forwarding, default update-target HTTP forwarding through stock Qubes policy, and RPM-mode openQA jobs 8/9.  Runtime verification of Guix daemon/client proxy configuration, real Guix update-tooling proxy use, and final signed-branch reruns remain unpassed gates. |
+| Runtime Qubes integration | `native/modules/qubes/services/qubes-vm.scm`, `native/modules/qubes/systems/guix-template.scm`, `scripts/test-native-rootfs-activation.sh`, `scripts/test-template-rpm-lifecycle-dom0.sh`, `scripts/test-update-proxy-default-target-dom0.sh`, `scripts/test-guix-update-proxy-config-dom0.sh`, `scripts/test-memory-balloon-dom0.sh`, `VALIDATION.md` | Partially tested; nested-dom0 `qvm-template` install/reinstall/remove/upgrade/downgrade plus TemplateVM/AppVM smoke passed, including `/dev/xvdc1` swap, `meminfo-writer` startup, dynamic memory growth under pressure, controlled update-proxy qrexec forwarding, default update-target HTTP forwarding through stock Qubes policy, RPM-mode openQA jobs 8/9, and rebuilt minimal openQA job 27 with generated Guix daemon/client proxy verification.  Real Guix update-tooling proxy use and final signed-branch reruns remain unpassed gates. |
 | Maintainer/update story | `MAINTENANCE.md` | Policy documented; actual maintainer identity and signed release process still missing |
-| Security-review framing | `SECURITY.md`, `ADAPTATION_INVENTORY.md` | Trust boundaries and sensitive adaptations documented; nested-dom0 smoke, dynamic memory pressure, default update-target HTTP forwarding, and RPM-mode openQA are green; runtime proof of generated Guix proxy configuration, real Guix update-tooling proxy use, and final signed-branch reruns remain |
+| Security-review framing | `SECURITY.md`, `ADAPTATION_INVENTORY.md` | Trust boundaries and sensitive adaptations documented; nested-dom0 smoke, dynamic memory pressure, default update-target HTTP forwarding, RPM-mode openQA jobs 8/9, and rebuilt minimal openQA job 27 with generated Guix proxy configuration verification are green; real Guix update-tooling proxy use and final signed-branch reruns remain |
 | Human review burden | `REVIEW_NOTES.md`, `UPSTREAMING.md`, `VALIDATION.md` | Explained, but maintainer identity/signatures are still missing |
 
 ## Comparable Upstream Discussions
@@ -141,10 +141,10 @@ The changes should be reviewed in this order:
    `scripts/test-update-proxy-default-target-dom0.sh`,
    `scripts/test-guix-update-proxy-config-dom0.sh`, and
    `scripts/test-memory-balloon-dom0.sh`.
-5. Local maintainer hygiene:
-   `scripts/maintainer-preflight.sh` and `scripts/check-qubes-pins.sh` are
-   useful before submission, but they are not test evidence for template
-   behavior.
+5. Pin freshness check:
+   `scripts/check-qubes-pins.sh` compares pinned Qubes component versions
+   against upstream tags before submission.  It is provenance hygiene, not test
+   evidence for template behavior.
 6. Upstream process documents:
    `UPSTREAMING.md`, `Makefile.builder`,
    `config/qubes-os-r4.3-templates-community-guix.example.yml`, and `COPYING`.
@@ -200,10 +200,9 @@ The changes should be reviewed in this order:
   Shepherd service starts after `qubes-sysinit`, not after qrexec/network
   services, because Qubes enables the equivalent forwarder from service flags
   and a local socket even in interface-less TemplateVMs.  Guix-specific proxy
-  setup is deliberately separate: it uses Guix's
-  `herd set-http-proxy guix-daemon` action and a generated
-  `/run/qubes/bin/guix` wrapper so both daemon-side downloads and client-side
-  Guix commands have a Qubes proxy path.
+  setup is deliberately separate: it uses `guix-configuration` for daemon-side
+  downloads and a generated `/run/qubes/bin/guix` wrapper for client-side Guix
+  commands.
 - The Builder-v2 adapter exposes `make prepare build-rootimg` and
   `make prepare build-rpm`, but it does not claim Builder v2 already supports
   `dist: guix` or automatically discovers the adapter.

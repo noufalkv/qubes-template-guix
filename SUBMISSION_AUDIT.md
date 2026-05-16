@@ -15,7 +15,7 @@ complete.
 | Clear use case | `README.md`, `UPSTREAMING.md` | Present: native Guix System TemplateVM for Qubes R4.3 |
 | Open-source license | `COPYING`, SPDX markers in code files, `scripts/package-native-template-rpm.sh` | Present: GPLv3-or-later repository metadata |
 | Low review burden | `REVIEWER_GUIDE.md`, `REVIEW_NOTES.md` review order, review matrix, non-goals | Present, with remaining gates called out |
-| Security-review framing | `SECURITY.md`, `ADAPTATION_INVENTORY.md`, `REVIEW_NOTES.md` | Guest trust boundaries and review-sensitive adaptations are documented; nested-dom0 smoke, dynamic memory-pressure evidence, default update-target proxy evidence, and RPM-mode openQA evidence exist; runtime proof of generated Guix proxy configuration, real Guix update-tooling proxy use, and final signed-branch reruns remain |
+| Security-review framing | `SECURITY.md`, `ADAPTATION_INVENTORY.md`, `REVIEW_NOTES.md` | Guest trust boundaries and review-sensitive adaptations are documented; nested-dom0 smoke, dynamic memory-pressure evidence, default update-target proxy evidence, RPM-mode openQA evidence, and runtime proof of generated Guix proxy configuration exist; real Guix update-tooling proxy use and final signed-branch reruns remain |
 | GenAI-assisted contribution handling | `UPSTREAMING.md`, `REVIEW_NOTES.md` | Present as a disclosure requirement; human maintainer must own submission |
 | Non-obvious compatibility changes explained | `REVIEW_NOTES.md`, `ADAPTATION_INVENTORY.md` | Present |
 | Maintainer/update story | `MAINTENANCE.md`, `UPSTREAMING.md` | Present as a policy artifact; actual maintainer identity still missing |
@@ -30,7 +30,7 @@ complete.
 | Existing template precedent mapping | `TEMPLATE_PRECEDENTS.md`, `builder-v2-template/` | Guix hook mapping is documented against the Qubes template-builder model |
 | Builder v2 multi-repo change | `config/README.md`, `config/qubes-builderv2-guix.example.patch` | Patch sketch only; not accepted upstream |
 | Release-config multi-repo change | `config/README.md`, `config/qubes-release-configs-guix.example.patch` | Patch sketch only; maintainer identity placeholders remain |
-| Runtime validation snapshot | `VALIDATION.md` | Partial; current normal/minimal rootfs/RPM plus nested-dom0 qvm-template lifecycle, upgrade/downgrade, TemplateVM/AppVM smoke, dynamic memory-pressure, default update-target proxy, and RPM-mode openQA evidence present, including swap activation, `meminfo-writer` startup, memory growth under pressure, `127.0.0.1:8082` forwarding through stock Qubes policy, and openQA jobs 8/9; runtime proof of the new Guix daemon/client proxy configuration, real Guix update-tooling proxy use, and final signed-branch reruns remain open |
+| Runtime validation snapshot | `VALIDATION.md` | Partial; current normal/minimal rootfs/RPM plus nested-dom0 qvm-template lifecycle, upgrade/downgrade, TemplateVM/AppVM smoke, dynamic memory-pressure, default update-target proxy, and RPM-mode openQA evidence present, including swap activation, `meminfo-writer` startup, memory growth under pressure, `127.0.0.1:8082` forwarding through stock Qubes policy, openQA jobs 8/9, and rebuilt minimal openQA job 27 with generated Guix daemon/client proxy verification; real Guix update-tooling proxy use and final signed-branch reruns remain open |
 | openQA and qvm-template lifecycle evidence | `openqa/`, `scripts/run-openqa-template-rpm.sh`, `scripts/test-template-rpm-lifecycle-dom0.sh`, `VALIDATION.md` | qvm-template install/reinstall/remove/upgrade/downgrade and smoke passed for both variants in nested dom0; RPM-mode openQA jobs 8 and 9 passed for normal and minimal 2026051602 RPMs |
 
 ## Prompt-To-Artifact Checklist
@@ -43,7 +43,7 @@ complete.
 | Upstream process may span multiple repos | `config/qubes-builderv2-guix.example.patch`, `config/qubes-release-configs-guix.example.patch`, `config/README.md` | Builder v2 and release-config targets are separated and named |
 | Clear commit history | `git log --oneline`, `PATCH_SERIES.md` | Clean review branch present; final public branch still needs maintainer signing |
 | Every non-obvious change explained | `REVIEW_NOTES.md`, `ADAPTATION_INVENTORY.md`, `MAINTENANCE.md` | Package phases, services, update model, and review-sensitive choices are documented |
-| Tests should exercise real contracts | `tests/builder-content-check.sh`, `tests/builder-rpm-contract-check.sh`, `tests/rpm-layout-check.sh`, `VALIDATION.md` | Default local checks execute Builder content hooks, feed generated images through the Builder RPM adapter, build/extract/reassemble RPM layouts, and validate RPM lifecycle metadata; maintainer hygiene is kept in `scripts/maintainer-preflight.sh`, outside the test suite |
+| Tests should exercise real contracts | `tests/builder-content-check.sh`, `tests/builder-rpm-contract-check.sh`, `tests/rpm-layout-check.sh`, `VALIDATION.md` | Default local checks execute Builder content hooks, feed generated images through the Builder RPM adapter, build/extract/reassemble RPM layouts, and validate RPM lifecycle metadata; missing RPM/image tooling is a hard failure, not a false pass |
 
 ## Current Completion Audit
 
@@ -64,7 +64,7 @@ Inspected evidence in the current tree:
 | Check | Evidence |
 | --- | --- |
 | Clean public branch history | `git log --oneline --decorate --max-count=5` shows a single public review commit on `master`. |
-| Tracked tests exercise build contracts | `make check` runs `tests/builder-content-check.sh`, `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`; optional `scripts/maintainer-preflight.sh` is maintainer hygiene only. |
+| Tracked tests exercise build contracts | `make check` runs `tests/builder-content-check.sh`, `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`. |
 | Working tree clean | `git status --short` has no output. |
 | Qubes source pins are fresh | Current local `./scripts/check-qubes-pins.sh` passed for all pinned Qubes VM components. |
 | Prompt-to-artifact checklist exists | This file maps objective phrases to artifacts and marks incomplete external gates. |
@@ -74,7 +74,6 @@ Inspected evidence in the current tree:
 | Template-builder precedent is explicit | `TEMPLATE_PRECEDENTS.md` maps Guix hooks to the standard Qubes template hook responsibilities and release-config model. |
 | Contributor workflow is explicit | `CONTRIBUTING.md` lists required checks, release evidence, review rules, and multi-repo ordering. |
 | Local tests cover real contracts | `make check` runs `tests/builder-content-check.sh`, `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`; these execute Builder content hooks, package generated normal and minimal root images through the Builder adapter, build/extract/reassemble normal and minimal template RPM layouts, and validate the RPM metadata path through the dom0 lifecycle harness in metadata-only mode. |
-| Maintainer hygiene remains separate | Fresh shallow checkouts in `/tmp/qubes-builderv2` and `/tmp/qubes-release-configs` let `scripts/maintainer-preflight.sh` run `git apply --check` for both example patches, but that is not counted as template behavior evidence. |
 | Builder v2 sketch has focused tests | Fresh patched checkout `/tmp/qubes-builderv2-test` passed distribution and template-plugin support tests for `vm-guix`. |
 | Release-config sketch parses after apply | Fresh patched checkout `/tmp/qubes-release-configs-test` parsed the resulting R4.3 community template YAML and confirmed `builder-guix`, `guix`, and `guix-minimal`. |
 | Submission drafts exist | `SUBMISSION_DRAFTS.md` provides editable `qubes-devel`, `[Contribution]`, Builder v2 PR, and release-config PR drafts with placeholder and validation warnings. |
@@ -97,18 +96,14 @@ make check
 git diff --check
 git status --short
 ./scripts/check-qubes-pins.sh
-./scripts/maintainer-preflight.sh  # optional hygiene with fresh /tmp/qubes-builderv2 and /tmp/qubes-release-configs checkouts
 PYTHONPATH=/tmp/qubes-builderv2-current python -m pytest /tmp/qubes-builderv2-current/tests/test_objects.py::test_dist /tmp/qubes-builderv2-current/tests/test_objects.py::test_dist_family /tmp/qubes-builderv2-current/tests/test_objects.py::test_template_plugin_supports_guix
 # release-config YAML validation in /tmp/qubes-release-configs-current; see VALIDATION.md
 ```
 
 The review source tree was also copied to the GCP builder as
-`~/guix-review-current`.  There, `scripts/maintainer-preflight.sh` passed with
-a real Guix installation, `./scripts/check-qubes-pins.sh` passed against the
-live Qubes GitHub tags, and the pinned Guix channel resolved with
-`guix time-machine -C config/channels.scm -- describe`.  That remote preflight
-did not check patch application because the GCP builder does not have
-`/tmp/qubes-builderv2` or `/tmp/qubes-release-configs` checkouts.
+`~/guix-review-current`.  There, `./scripts/check-qubes-pins.sh` passed against
+the live Qubes GitHub tags, and the pinned Guix channel resolved with
+`guix time-machine -C config/channels.scm -- describe`.
 
 After adding the Guix-specific updates-proxy configuration service, the synced
 current tree also loaded both `normal` and `minimal` operating-system variants
@@ -219,9 +214,9 @@ Do not claim that:
 - End-to-end Guix update tooling is freshly green through the Qubes update
   proxy.  The current evidence proves the default `qubes.UpdatesProxy` HTTP
   forwarding path through stock Qubes policy, and the source now configures
-  Guix daemon/client proxy use, but this still needs runtime proof from a
-  rebuilt image and does not yet prove `guix pull` or substitute downloads using
-  that proxy.
+  Guix daemon/client proxy use.  RPM-mode openQA job 27 passed the generated
+  daemon/client proxy verifier, but it does not yet prove `guix pull` or
+  substitute downloads using that proxy.
 - Qubes maintainers have reviewed or accepted the template.
 
 Until those items are complete, the correct upstream status is: reviewable

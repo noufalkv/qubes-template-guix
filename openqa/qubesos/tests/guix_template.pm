@@ -26,12 +26,18 @@ sub dom0_script_run {
     my $timeout = exists $args{timeout} ? $args{timeout} : 90;
     my $quiet = $args{quiet};
     my $command_interval = get_var('QUBES_DOM0_TYPE_MAX_INTERVAL', 50);
+    my $script_path;
     my $marker;
     my $res;
     my $wrapped_cmd;
 
     $dom0_command_counter++;
     $marker = sprintf('OPENQA_RC_%06d_', $dom0_command_counter);
+
+    if ($cmd =~ /\n/) {
+        $script_path = stage_dom0_command_script($cmd);
+        $cmd = shell_quote($script_path);
+    }
 
     $wrapped_cmd = $cmd;
     if ($timeout > 0) {
@@ -72,11 +78,34 @@ sub append_serial_heredoc {
 
     my $done = "OPENQA_${label}_${serial_copy_counter}_DONE";
     my $quoted_dest = shell_quote($dest);
+    my $copy_interval = get_var('QUBES_DOM0_TYPE_MAX_INTERVAL', 50);
 
-    type_string("cat >> $quoted_dest <<'OPENQA_EOF'\n", max_interval => 5);
-    type_string($content, max_interval => 5);
-    type_string("OPENQA_EOF\necho $done\n", max_interval => 5);
+    type_string("cat >> $quoted_dest <<'OPENQA_EOF'\n", max_interval => $copy_interval);
+    type_string($content, max_interval => $copy_interval);
+    type_string("OPENQA_EOF\nprintf '%s\\n' $done > /dev/$testapi::serialdev\n", max_interval => $copy_interval);
     wait_serial(qr/\Q$done\E/, timeout => 180) or die "serial copy chunk did not finish: $dest";
+}
+
+sub stage_dom0_command_script {
+    my ($cmd) = @_;
+    my $script_path = sprintf('/tmp/openqa-dom0-cmd-%06d.sh', $dom0_command_counter);
+    my $quoted_script_path = shell_quote($script_path);
+    my $ready = sprintf('OPENQA_CMD_%06d_READY', $dom0_command_counter);
+    my $mode = sprintf('OPENQA_CMD_%06d_MODE', $dom0_command_counter);
+
+    type_string(": > $quoted_script_path && chmod 0600 $quoted_script_path && printf '%s\\n' $ready > /dev/$testapi::serialdev\n",
+        max_interval => get_var('QUBES_DOM0_TYPE_MAX_INTERVAL', 50));
+    wait_serial(qr/\Q$ready\E/, timeout => 60)
+        or die "dom0 command script could not be initialized: $script_path";
+
+    append_serial_heredoc($script_path, "#!/usr/bin/env bash\n$cmd\n", 'CMD');
+
+    type_string("chmod 0700 $quoted_script_path && printf '%s\\n' $mode > /dev/$testapi::serialdev\n",
+        max_interval => get_var('QUBES_DOM0_TYPE_MAX_INTERVAL', 50));
+    wait_serial(qr/\Q$mode\E/, timeout => 60)
+        or die "dom0 command script mode could not be set: $script_path";
+
+    return $script_path;
 }
 
 sub stage_data_file {
@@ -109,15 +138,14 @@ sub stage_data_file {
 sub rpm_asset_mount_command {
     my ($rpm_device) = @_;
 
-    return join(' ',
+    return join("\n",
         'mkdir -p /mnt/guix-template-rpm;',
         'rpm_dev=;',
-        'for cand in',
-        shell_quote($rpm_device),
-        '/dev/disk/by-id/*guixrpm*',
-        '/dev/disk/by-id/*QEMU*guixrpm*',
-        '/dev/sdc /dev/vdc /dev/xvdc;',
-        'do',
+        'for cand in ' . join(' ',
+            shell_quote($rpm_device),
+            '/dev/disk/by-id/*guixrpm*',
+            '/dev/disk/by-id/*QEMU*guixrpm*',
+            '/dev/sdc /dev/vdc /dev/xvdc') . '; do',
         '[ -e "$cand" ] || continue;',
         'real="$(readlink -f "$cand")";',
         '[ -b "$real" ] || continue;',
@@ -134,19 +162,22 @@ sub stage_rpm_asset_files {
     my @files = (
         'diagnose-guix-postinstall-dom0.sh',
         'import-native-rootfs-dom0.sh',
+        'test-guix-update-proxy-config-dom0.sh',
         'test-native-guix-template-dom0.sh',
     );
 
     push @files, 'python3-nose2.rpm'
         if get_var('GUIX_RUN_QUBES_SYSTEM_TESTS', '0') eq '1';
 
-    my $copy_files = join(' ', map {
-        my $file = shell_quote($_);
-        "cp /mnt/guix-template-rpm/$file /root/$file; chmod 0700 /root/$file;"
-    } @files);
+    my $file_words = join(' ', map { shell_quote($_) } @files);
+    my $copy_files = join("\n",
+        'for f in ' . $file_words . '; do',
+        'cp "/mnt/guix-template-rpm/$f" "/root/$f";',
+        'chmod 0700 "/root/$f";',
+        'done;');
 
     record_info('stage', 'Copying helper files from attached RPM asset disk');
-    dom0_assert_script_run(checked_shell_command(join(' ',
+    dom0_assert_script_run(checked_shell_command(join("\n",
         rpm_asset_mount_command($rpm_device),
         $copy_files)),
         timeout => 300);
@@ -158,6 +189,26 @@ sub wait_for_dom0_serial_login {
     record_info('boot', "Waiting up to $timeout seconds for dom0 serial login");
     wait_serial(qr/(?:dom0|localhost) login:/i, timeout => $timeout)
         or die "dom0 serial login prompt did not appear within $timeout seconds";
+}
+
+sub dom0_wait_for_qubes_cli {
+    my $cmd = checked_shell_command(join("\n",
+        'for attempt in $(seq 1 12); do',
+        '    if timeout 20 qvm-ls --raw-list > /tmp/openqa-qvm-ls.out 2> /tmp/openqa-qvm-ls.err; then',
+        '        cat /tmp/openqa-qvm-ls.out',
+        '        exit 0',
+        '    fi',
+        '    rc=$?',
+        '    printf "qvm-ls readiness attempt %s failed with status %s\n" "$attempt" "$rc" >&2',
+        '    systemctl --no-pager --plain is-active qubesd qubes-db-dom0 qubes-qrexec-policy-daemon 2>&1 || true',
+        '    systemctl --no-pager --plain --failed 2>&1 || true',
+        '    sleep 10',
+        'done',
+        'cat /tmp/openqa-qvm-ls.err >&2 || true',
+        'exit 1'));
+
+    record_info('dom0', 'Waiting for qvm-ls to return before staging template assets');
+    dom0_assert_script_run($cmd, timeout => 420);
 }
 
 sub run {
@@ -183,7 +234,7 @@ sub run {
     record_info('dom0', "Nested Qubes dom0 console is ready: $dom0_console");
 
     dom0_assert_script_run('whoami | grep -x root', timeout => 60);
-    dom0_assert_script_run('qvm-ls --raw-list || true', timeout => 120);
+    dom0_wait_for_qubes_cli();
     dom0_assert_script_run('lsblk -o NAME,TYPE,SIZE,MODEL,SERIAL', timeout => 60);
 
     if ($install_mode eq 'rpm') {
@@ -191,6 +242,7 @@ sub run {
     } else {
         stage_data_file('import-native-rootfs-dom0.sh', '/root/import-native-rootfs-dom0.sh');
         stage_data_file('test-native-guix-template-dom0.sh', '/root/test-native-guix-template-dom0.sh');
+        stage_data_file('test-guix-update-proxy-config-dom0.sh', '/root/test-guix-update-proxy-config-dom0.sh');
         stage_data_file('diagnose-guix-postinstall-dom0.sh', '/root/diagnose-guix-postinstall-dom0.sh');
         if (get_var('GUIX_RUN_QUBES_SYSTEM_TESTS', '0') eq '1') {
             stage_data_file('python3-nose2.rpm', '/root/python3-nose2.rpm');
@@ -211,24 +263,23 @@ sub run {
     @cleanup_vms = grep { !$seen_cleanup_vm{$_}++ } grep { length } @cleanup_vms;
     my $cleanup_vm_words = join(' ', map { shell_quote($_) } @cleanup_vms);
 
-    my $cleanup = join(' ',
-        'for vm in', $cleanup_vm_words, '; do',
-        'if qvm-ls --raw-list | grep -Fxq "$vm"; then',
+    my $cleanup = join("\n",
+        'for vm in ' . $cleanup_vm_words . '; do',
+        'if timeout 60 qvm-ls --raw-list | grep -Fxq "$vm"; then',
         'qvm-shutdown --wait "$vm" >/dev/null 2>&1 || qvm-kill "$vm" >/dev/null 2>&1 || true;',
         'qvm-remove --force "$vm" || true;',
         'fi;',
         'done');
     dom0_assert_script_run(checked_shell_command($cleanup), timeout => 600);
 
-    my $resolve_device = join(' ',
+    my $resolve_device = join("\n",
         'root_dev=;',
         'expected_bytes=' . shell_quote($root_bytes) . ';',
-        'for cand in',
-        shell_quote($root_device),
-        '/dev/disk/by-id/*guixroot*',
-        '/dev/disk/by-id/*QEMU*guixroot*',
-        '/dev/sdb /dev/vdb /dev/xvdb;',
-        'do',
+        'for cand in ' . join(' ',
+            shell_quote($root_device),
+            '/dev/disk/by-id/*guixroot*',
+            '/dev/disk/by-id/*QEMU*guixroot*',
+            '/dev/sdb /dev/vdb /dev/xvdb') . '; do',
         '[ -e "$cand" ] || continue;',
         'real="$(readlink -f "$cand")";',
         '[ -b "$real" ] || continue;',
@@ -240,19 +291,17 @@ sub run {
     dom0_assert_script_run(checked_shell_command($resolve_device), timeout => 120);
 
     if ($install_mode eq 'rpm') {
-        my $rpm_install_cmd = join(' ',
+        my $rpm_install_cmd = join("\n",
             rpm_asset_mount_command($rpm_device),
             'rpm_path="$(find /mnt/guix-template-rpm -maxdepth 1 -type f -name ' . shell_quote('qubes-template-*.rpm') . ' -print -quit)";',
             '[ -n "$rpm_path" ];',
             'cp "$rpm_path" /root/;',
             'rpm_copy="/root/$(basename "$rpm_path")";',
-            'qvm-template --yes install --nogpgcheck "$rpm_copy"',
-            '2>&1 | tee /root/openqa-guix-import.log');
+            'qvm-template --yes install --nogpgcheck "$rpm_copy" 2>&1 | tee /root/openqa-guix-import.log');
         dom0_assert_script_run(checked_shell_command($rpm_install_cmd), timeout => 1800);
-        my $postinstall_diag_cmd = join(' ',
+        my $postinstall_diag_cmd = join("\n",
             'if grep -q "qubes[.]PostInstall service failed" /root/openqa-guix-import.log; then',
-            '/root/diagnose-guix-postinstall-dom0.sh', shell_quote($template),
-            '2>&1 | tee /root/openqa-guix-postinstall-diagnostics.log;',
+            '/root/diagnose-guix-postinstall-dom0.sh ' . shell_quote($template) . ' 2>&1 | tee /root/openqa-guix-postinstall-diagnostics.log;',
             'fi');
         dom0_assert_script_run(checked_shell_command($postinstall_diag_cmd), timeout => 900);
         my $postinstall_status = dom0_script_run(checked_shell_command(
@@ -263,6 +312,7 @@ sub run {
             upload_logs('/root/openqa-guix-logs.tgz', failok => 1);
             die "qvm-template post-install failed";
         }
+
     } else {
         my $import_cmd = join(' ',
             'root_dev="$(cat /root/openqa-guix-root-device)";',
@@ -303,9 +353,25 @@ sub run {
         $desktop_checks,
         $system_tests,
         '2>&1 | tee /root/openqa-guix-smoke.log /dev/' . $testapi::serialdev);
-    dom0_assert_script_run(checked_shell_command($test_cmd), timeout => $test_timeout);
+    my $smoke_status = dom0_script_run(checked_shell_command($test_cmd), timeout => $test_timeout);
+    if (!defined $smoke_status || $smoke_status != 0) {
+        dom0_assert_script_run('tar czf /root/openqa-guix-logs.tgz /root/openqa-guix-*.log /root/openqa-guix-root-device 2>/dev/null || true', timeout => 120);
+        upload_logs('/root/openqa-guix-logs.tgz', failok => 1);
+        die "native Guix TemplateVM smoke test failed";
+    }
 
-    dom0_assert_script_run('qvm-ls --raw-list | grep -Fx ' . shell_quote($template), timeout => 60);
+    my $proxy_config_cmd = join(' ',
+        '/root/test-guix-update-proxy-config-dom0.sh',
+        '--template', shell_quote($template),
+        '2>&1 | tee /root/openqa-guix-update-proxy-config.log /dev/' . $testapi::serialdev);
+    my $proxy_config_status = dom0_script_run(checked_shell_command($proxy_config_cmd), timeout => 900);
+    if (!defined $proxy_config_status || $proxy_config_status != 0) {
+        dom0_assert_script_run('tar czf /root/openqa-guix-logs.tgz /root/openqa-guix-*.log /root/openqa-guix-root-device 2>/dev/null || true', timeout => 120);
+        upload_logs('/root/openqa-guix-logs.tgz', failok => 1);
+        die "Guix update proxy config check failed";
+    }
+
+    dom0_assert_script_run('timeout 60 qvm-ls --raw-list | grep -Fx ' . shell_quote($template), timeout => 90);
     dom0_assert_script_run('tar czf /root/openqa-guix-logs.tgz /root/openqa-guix-*.log /root/openqa-guix-root-device 2>/dev/null || true', timeout => 120);
     upload_logs('/root/openqa-guix-logs.tgz', failok => 1);
 }

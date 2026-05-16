@@ -61,9 +61,8 @@ For each Qubes R4.3 component bump:
    the currently tagged upstream release.
 2. Update the component tag and commit in `%qubes-source-components`.
 3. Recompute the Guix recursive hash for that source.
-4. Load the Guix modules, or run `scripts/maintainer-preflight.sh` on a system
-   with Guix installed, so package versions are checked against the pinned
-   table rather than duplicated manually.
+4. Load the Guix modules on a system with Guix installed so package versions
+   are checked against the pinned table rather than duplicated manually.
 5. Run `make check`, then rebuild and test both variants before publishing.
 
 Version strings passed to Qubes component builds are derived from the pinned
@@ -91,12 +90,13 @@ file and source table.
 
 Guix network traffic should use the Qubes updates proxy path, not a separate
 network policy.  The implementation provides a Guix-facing forwarder to
-`qubes.UpdatesProxy`, configures `guix-daemon` through Guix's Shepherd
-`set-http-proxy` action, and generates a `/run/qubes/bin/guix` wrapper for
-client-side Guix commands when `updates-proxy-setup` is enabled.  Live
-TemplateVM/AppVM validation of the generated Guix proxy configuration and a real
-Guix update/download command through the proxy are release gates before
-submission.
+`qubes.UpdatesProxy`, configures `guix-daemon` declaratively through
+`guix-configuration`, and generates a `/run/qubes/bin/guix` wrapper for
+client-side Guix commands when `updates-proxy-setup` is enabled.  RPM-mode
+openQA job 27 validated the generated Guix proxy wrapper, updates-proxy
+forwarder, and `guix-daemon` service state in a rebuilt `guix-minimal`
+TemplateVM.  A real Guix update/download command through the proxy remains a
+release gate before submission.
 
 ## Rollback
 
@@ -133,7 +133,7 @@ Before asking Qubes to merge release-config entries, collect fresh evidence from
 a clean tree:
 
 - `make check`;
-- Guix module load or `scripts/maintainer-preflight.sh` with Guix available;
+- Guix module load with Guix available;
 - `./scripts/check-qubes-pins.sh`;
 - normal and minimal rootfs builds;
 - image inspection and activation tests for both variants;

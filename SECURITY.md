@@ -50,8 +50,8 @@ run dom0-side test commands.
   template.
 - The updates proxy implementation forwards to Qubes `qubes.UpdatesProxy`
   instead of creating an independent network updater.  Guix-specific setup uses
-  the standard Guix daemon `set-http-proxy` Shepherd action and a generated
-  client wrapper, so the template does not carry a separate updater policy.
+  `guix-configuration` for the daemon proxy and a generated client wrapper, so
+  the template does not carry a separate updater policy.
 - Swap uses `/dev/xvdc1`, and private volume persistence uses the standard
   Qubes `/dev/xvdb -> /rw`, `/rw/home -> /home`, and
   `/rw/usrlocal -> /usr/local` model.

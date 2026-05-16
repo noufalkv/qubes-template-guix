@@ -55,6 +55,13 @@
         (let ((existing (false-if-exception (lstat path))))
           (and existing (eq? (stat:type existing) 'symlink))))
 
+      (define (same-directory-entry? left right)
+        (let ((left-stat (false-if-exception (stat left)))
+              (right-stat (false-if-exception (stat right))))
+          (and left-stat right-stat
+               (= (stat:dev left-stat) (stat:dev right-stat))
+               (= (stat:ino left-stat) (stat:ino right-stat)))))
+
       (define (link-directory-contents source directory)
         (materialize-symlinked-directory directory)
         (mkdir-p directory)
@@ -142,13 +149,14 @@
                                "/etc/qubes")
       (replace-symlink "/run/current-system/profile/etc/qubes-rpc"
                        "/etc/qubes-rpc")
-      (replace-symlink "/run/qubes" "/var/run/qubes")
       ;; Qubes' init/functions still use /var/run/qubes-service* while
-      ;; qubes-sysinit.sh populates /run/qubes-service*.  Guix does not make
-      ;; /var/run a symlink to /run, so bridge only these Qubes runtime paths.
-      (replace-symlink "/run/qubes-service" "/var/run/qubes-service")
-      (replace-symlink "/run/qubes-service-environment"
-                       "/var/run/qubes-service-environment")
+      ;; qubes-sysinit.sh populates /run/qubes-service*.  Bridge those paths
+      ;; only on systems where /var/run is not already /run.
+      (unless (same-directory-entry? "/var/run" "/run")
+        (replace-symlink "/run/qubes" "/var/run/qubes")
+        (replace-symlink "/run/qubes-service" "/var/run/qubes-service")
+        (replace-symlink "/run/qubes-service-environment"
+                         "/var/run/qubes-service-environment"))
       (link-directory-contents "/run/current-system/profile/etc/X11" "/etc/X11")
       (link-directory-contents "/run/current-system/profile/etc/sysconfig"
                                "/etc/sysconfig")
@@ -312,11 +320,15 @@
    "chgrp qubes /run/qubes 2>/dev/null || true; "
    "chmod 0775 /run/qubes 2>/dev/null || true; "
    "mkdir -p /run/qubes-service; "
+   "if [ /var/run -ef /run ] 2>/dev/null; then "
+   ":; "
+   "else "
    "rm -rf /var/run/qubes /var/run/qubes-service; "
    "rm -f /var/run/qubes-service-environment; "
    "ln -s /run/qubes /var/run/qubes; "
    "ln -s /run/qubes-service /var/run/qubes-service; "
-   "ln -sfn /run/qubes-service-environment /var/run/qubes-service-environment"))
+   "ln -sfn /run/qubes-service-environment /var/run/qubes-service-environment; "
+   "fi"))
 
 (define %qubes-rw-device-wait-command
   "persistence=$(qubesdb-read /qubes-vm-persistence 2>/dev/null || true); if [ \"$persistence\" = rw-only ]; then i=0; while [ $i -lt 300 ] && [ ! -e /dev/xvdb ]; do i=$((i + 1)); sleep 0.1; done; if [ ! -e /dev/xvdb ]; then echo 'Qubes private-volume device /dev/xvdb did not appear' >&2; exit 1; fi; fi")
@@ -414,6 +426,13 @@
              (let ((st (false-if-exception (lstat path))))
                (and st (memq (stat:type st) '(regular symlink)))))
 
+           (define (same-directory-entry? left right)
+             (let ((left-stat (false-if-exception (stat left)))
+                   (right-stat (false-if-exception (stat right))))
+               (and left-stat right-stat
+                    (= (stat:dev left-stat) (stat:dev right-stat))
+                    (= (stat:ino left-stat) (stat:ino right-stat)))))
+
            (define (same-link? target link)
              (let ((st (false-if-exception (lstat link))))
                (and st
@@ -470,14 +489,15 @@
              (when gid
                (false-if-exception (chown "/run/qubes" -1 gid))))
            (chmod "/run/qubes" #o775)
-           (when (file-exists? "/var/run/qubes")
-             (delete-file-recursively "/var/run/qubes"))
-           (when (file-exists? "/var/run/qubes-service")
-             (delete-file-recursively "/var/run/qubes-service"))
-           (replace-symlink "/run/qubes" "/var/run/qubes")
-           (replace-symlink "/run/qubes-service" "/var/run/qubes-service")
-           (replace-symlink "/run/qubes-service-environment"
-                            "/var/run/qubes-service-environment")
+           (unless (same-directory-entry? "/var/run" "/run")
+             (when (file-exists? "/var/run/qubes")
+               (delete-file-recursively "/var/run/qubes"))
+             (when (file-exists? "/var/run/qubes-service")
+               (delete-file-recursively "/var/run/qubes-service"))
+             (replace-symlink "/run/qubes" "/var/run/qubes")
+             (replace-symlink "/run/qubes-service" "/var/run/qubes-service")
+             (replace-symlink "/run/qubes-service-environment"
+                              "/var/run/qubes-service-environment"))
 
            (run #$%xen-device-setup-command)
 
@@ -577,6 +597,10 @@
 (define %qubes-updates-proxy-forwarder-command
   (string-append
    ". /usr/lib/qubes/init/functions; "
+   "i=0; "
+   "while [ $i -lt 600 ] && [ ! -e /var/run/qubes-service-environment ]; do "
+   "i=$((i + 1)); sleep 0.1; "
+   "done; "
    "if ! qsvc updates-proxy-setup; then "
    "echo 'updates-proxy-setup disabled'; exit 0; "
    "fi; "
@@ -641,18 +665,15 @@
    "export PATH=/run/qubes/bin:$PATH\n"
    "EOF\n"
    "chmod 0644 \"$profile\"; "
-   "/run/current-system/profile/bin/herd set-http-proxy "
-   "guix-daemon \"$proxy\"; "
    "else "
    "rm -f \"$wrapper\" \"$profile\"; "
-   "/run/current-system/profile/bin/herd set-http-proxy guix-daemon; "
    "fi"))
 
 (define (qubes-guix-update-proxy-shepherd-service _)
   (list
    (best-effort-one-shot-service
     'qubes-guix-update-proxy
-    '(qubes-sysinit guix-daemon)
+    '(qubes-sysinit)
     %qubes-guix-update-proxy-command
     "/var/log/qubes-guix-update-proxy.log")))
 
@@ -663,7 +684,7 @@
     (list (service-extension shepherd-root-service-type
                              qubes-guix-update-proxy-shepherd-service)))
    (default-value #f)
-   (description "Configure Guix tooling to use the Qubes updates proxy.")))
+   (description "Configure Guix client tooling to use the Qubes updates proxy.")))
 
 (define (qubes-mount-dirs-shepherd-service _)
   (list

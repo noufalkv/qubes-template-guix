@@ -37,13 +37,10 @@ make check
 ```
 
 The default check suite executes the Builder content hooks against a temporary
-install tree and builds/extracts a real template RPM layout test for both
-`guix` and `guix-minimal`.
-
-`scripts/maintainer-preflight.sh` is local maintainer hygiene, not
-upstream-facing test evidence.  It covers shell syntax, release-config sketch
-parsing, example patch checks against upstream checkouts when present, and Guix
-Scheme module loading on systems with Guix installed.
+install tree and builds/extracts real template RPM layout tests for both `guix`
+and `guix-minimal`.  It fails when required RPM/image tooling is missing; the
+upstream-facing test story is based on generated artifacts and Qubes-visible
+contracts, not static source checks.
 
 Qubes VM component sources are pinned to immutable upstream commits and Guix
 recursive content hashes.  The pinned R4.3 components are:
@@ -191,9 +188,9 @@ request or issue has been exhaustively reviewed.
   `native/modules/qubes/packages/qubes-vm.scm` packages the VM agents; and
   `VALIDATION.md` separates current build, `qvm-template` lifecycle,
   RPM-mode openQA, update-proxy, and dynamic memory-pressure evidence from
-  final signed-branch reruns and the still-open runtime proof for the
-  Guix-specific daemon/client proxy setup plus real Guix update-tooling proxy
-  gate.
+  final signed-branch reruns.  The RPM-mode openQA path now has a passing
+  rebuilt minimal job for the Guix-specific daemon/client proxy verifier, but
+  real Guix update-tooling proxy use is still an open gate.
 - Qubes Forum, Gentoo template maintenance infrastructure:
   `https://forum.qubes-os.org/t/new-gentoo-templates-and-maintenance-infrastructure/961`
   Expectation: source-style community templates need maintainer-owned build

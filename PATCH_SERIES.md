@@ -41,8 +41,7 @@ changes.
    - `scripts/test-memory-balloon-dom0.sh`
    - `openqa/qubesos/`
 
-6. Local maintainer hygiene, not upstream-facing test evidence:
-   - `scripts/maintainer-preflight.sh`
+6. Pin freshness hygiene, not upstream-facing test evidence:
    - `scripts/check-qubes-pins.sh`
 
 7. Human-review documentation:

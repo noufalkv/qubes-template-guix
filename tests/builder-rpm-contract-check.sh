@@ -31,9 +31,9 @@ for command_name in "${required_commands[@]}"; do
 done
 
 if [ "${#missing[@]}" -gt 0 ]; then
-    printf 'warning: skipping Builder RPM contract check; missing commands: %s\n' \
+    printf 'Builder RPM contract check missing required commands: %s\n' \
         "${missing[*]}" >&2
-    exit 0
+    exit 1
 fi
 
 work_dir="$(mktemp -d "$repo_root/work.builder-rpm.XXXXXX")"

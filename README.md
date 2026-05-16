@@ -287,7 +287,10 @@ infrastructure: they build the real rootfs, exercise the activation script and
 PAM stacks on a writable root image, install the RPM through Qubes Template
 Manager in nested dom0, create a TemplateVM and AppVM, and verify QubesDB,
 qrexec, private-volume persistence, `/home`, `/usr/local`, shutdown, and the
-variant-specific GUI/appmenu surface.
+variant-specific GUI/appmenu surface.  The RPM-mode job also runs
+`scripts/test-guix-update-proxy-config-dom0.sh` against the installed TemplateVM
+so generated Guix daemon/client proxy configuration is covered by the same
+runtime smoke path.
 
 The optional Qubes system-test modules can be run with `--run-system-tests` or
 `make openqa-template-rpm-system-tests VARIANT=normal`.  They use the same
@@ -336,11 +339,9 @@ packager, verifies the Qubes Template Manager payload layout, and reassembles
 the split root image.  These checks exercise generated artifacts and externally
 visible package contracts, not source-code pattern matching.
 
-`scripts/maintainer-preflight.sh` is optional maintainer hygiene.  It covers
-shell syntax, release-config sketch parsing, and patch-application checks when
-upstream checkouts are available; it is not part of `make check`, is not a test
-suite, and is not evidence that the template boots or that the RPM works in
-Qubes.
+`make check` fails if the tools required for those package-contract checks are
+missing.  It intentionally does not include source-pattern or patch-sketch
+checks as substitute evidence for a working template.
 
 The runtime-focused root image check is
 `scripts/test-native-rootfs-activation.sh`.  It mounts a writable copy of the

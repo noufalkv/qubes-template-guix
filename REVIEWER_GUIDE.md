@@ -55,12 +55,11 @@ make check
 against a temporary install tree, and normal/minimal template RPMs are built,
 extracted, checked for Qubes Template Manager layout, and reassembled.
 
-The following commands are useful maintainer hygiene, but they are not runtime
-or release evidence:
+The pin freshness check is useful provenance hygiene, but it is not runtime or
+release evidence:
 
 ```sh
 ./scripts/check-qubes-pins.sh
-./scripts/maintainer-preflight.sh
 ```
 
 ## Do Not Claim Yet

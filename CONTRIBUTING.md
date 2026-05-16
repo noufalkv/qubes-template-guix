@@ -26,17 +26,8 @@ make check
 
 When fresh upstream checkouts are available, also run:
 
-```sh
-rm -rf /tmp/qubes-builderv2 /tmp/qubes-release-configs
-git clone --depth 1 https://github.com/QubesOS/qubes-builderv2.git \
-  /tmp/qubes-builderv2
-git clone --depth 1 https://github.com/QubesOS/qubes-release-configs.git \
-  /tmp/qubes-release-configs
-./scripts/maintainer-preflight.sh
-```
-
-That command is maintainer hygiene for syntax, patch application, and
-configuration sketches.  It is not a test gate.  Treat `make check`, rootfs
+Run the Builder v2 and release-config sketch checks directly in fresh upstream
+checkouts when changing files under `config/`.  Treat `make check`, rootfs
 activation, RPM lifecycle, and dom0/openQA runs as the evidence that the
 template behavior works.
 

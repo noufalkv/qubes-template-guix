@@ -243,6 +243,47 @@ wait_for_qrexec() {
     return 1
 }
 
+shutdown_vm_or_die() {
+    local vm="$1"
+    local attempt
+
+    for attempt in $(seq 1 3); do
+        if ! qvm-check --running "$vm" >/dev/null 2>&1; then
+            return 0
+        fi
+        if qvm-shutdown --wait "$vm"; then
+            return 0
+        fi
+        if ! qvm-check --running "$vm" >/dev/null 2>&1; then
+            return 0
+        fi
+        printf 'qvm-shutdown failed for %s; retrying (%s/3)\n' \
+            "$vm" "$attempt" >&2
+        sleep 5
+    done
+
+    collect_vm_diagnostics "$vm"
+    die "failed to shut down $vm"
+}
+
+stop_stale_vm_or_die() {
+    local vm="$1"
+
+    if ! qvm-check --running "$vm" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    printf 'Stopping stale running VM before smoke test: %s\n' "$vm"
+    qvm-shutdown --wait "$vm" >/dev/null 2>&1 ||
+        qvm-kill "$vm" >/dev/null 2>&1 ||
+        true
+
+    if qvm-check --running "$vm" >/dev/null 2>&1; then
+        collect_vm_diagnostics "$vm"
+        die "failed to stop stale running VM: $vm"
+    fi
+}
+
 read_root_file() {
     local path="$1"
 
@@ -406,7 +447,7 @@ collect_vm_diagnostics() {
     local vm="$1"
     local log
 
-    printf 'Collecting dom0 diagnostics after qrexec wait failure: %s\n' "$vm" >&2
+    printf 'Collecting dom0 diagnostics for VM: %s\n' "$vm" >&2
     qvm-ls --fields NAME,STATE,CLASS,TEMPLATE,KERNEL,VIRT_MODE "$vm" >&2 || true
     qvm-prefs "$vm" >&2 || true
     if command -v xl >/dev/null 2>&1; then
@@ -798,8 +839,10 @@ need qvm-create
 need qvm-run
 need qvm-start
 need qvm-shutdown
+need qvm-kill
 need qvm-remove
 need qvm-prefs
+need qvm-check
 
 ensure_qubesd_available
 ensure_qvm_start_daemon
@@ -809,6 +852,8 @@ if vm_exists "$appvm_name"; then
     die "temporary AppVM already exists: $appvm_name"
 fi
 
+stop_stale_vm_or_die "$template_name"
+
 printf 'Testing TemplateVM boot and qrexec: %s\n' "$template_name"
 qvm-start "$template_name" >/dev/null 2>&1 || true
 wait_for_qrexec "$template_name"
@@ -817,7 +862,7 @@ run_qubes_cmd qvm-run --no-gui --pass-io "$template_name" \
 run_qubes_cmd qvm-run --no-gui --pass-io "$template_name" 'id && uname -a'
 run_qubes_cmd qvm-run --no-gui --pass-io "$template_name" \
     'test -e /usr/lib/qubes/qrexec-agent || test -e /run/current-system/profile/lib/qubes/qrexec-agent'
-qvm-shutdown --wait "$template_name"
+shutdown_vm_or_die "$template_name"
 
 printf 'Creating temporary AppVM: %s\n' "$appvm_name"
 qvm-create --class AppVM --template "$template_name" --label gray "$appvm_name"
@@ -836,7 +881,7 @@ run_qubes_cmd qvm-run --no-gui --pass-io "$appvm_name" \
     'set -eu; expected_user="$(qubesdb-read /default-user 2>/dev/null || echo user)"; test "$(id -un)" = "$expected_user"; test "${HOME:-}" = "/home/$expected_user"; test "${USER:-}" = "$expected_user"; test "${LOGNAME:-}" = "$expected_user"'
 run_qubes_cmd qvm-run --no-gui --pass-io "$appvm_name" \
     'set -eu; test_path="$HOME/.guix-native-template-test"; case "$test_path" in /home/*/.guix-native-template-test) ;; *) echo "unexpected HOME for persistent AppVM test: $HOME" >&2; exit 1;; esac; printf "%s\n" guix-native-template > "$test_path"'
-qvm-shutdown --wait "$appvm_name"
+shutdown_vm_or_die "$appvm_name"
 qvm-start "$appvm_name" >/dev/null
 wait_for_qrexec "$appvm_name"
 run_qubes_cmd qvm-run --no-gui --pass-io "$appvm_name" \

@@ -216,11 +216,13 @@ write_installed_config
 write_installed_channels
 
 sudo mkdir -p "$mount_dir/sbin" "$mount_dir/bin" "$mount_dir/lib/modules" "$mount_dir/var/run" "$mount_dir/run/qubes" "$mount_dir/run/qubes-service"
-sudo rm -rf "$mount_dir/var/run/qubes" "$mount_dir/var/run/qubes-service"
-sudo rm -f "$mount_dir/var/run/qubes-service-environment"
-sudo ln -sfn /run/qubes "$mount_dir/var/run/qubes"
-sudo ln -sfn /run/qubes-service "$mount_dir/var/run/qubes-service"
-sudo ln -sfn /run/qubes-service-environment "$mount_dir/var/run/qubes-service-environment"
+if ! sudo test "$mount_dir/var/run" -ef "$mount_dir/run" 2>/dev/null; then
+    sudo rm -rf "$mount_dir/var/run/qubes" "$mount_dir/var/run/qubes-service"
+    sudo rm -f "$mount_dir/var/run/qubes-service-environment"
+    sudo ln -sfn /run/qubes "$mount_dir/var/run/qubes"
+    sudo ln -sfn /run/qubes-service "$mount_dir/var/run/qubes-service"
+    sudo ln -sfn /run/qubes-service-environment "$mount_dir/var/run/qubes-service-environment"
+fi
 sudo ln -sfn /var/guix/profiles/system/profile/bin/sh "$mount_dir/bin/sh"
 sudo ln -sfn /var/guix/profiles/system/profile/bin/bash "$mount_dir/bin/bash"
 sudo ln -sfn /var/guix/profiles/system/profile/sbin/halt "$mount_dir/sbin/poweroff"
@@ -236,11 +238,13 @@ export GUIX_NEW_SYSTEM
 [ -e /proc/cmdline ] || "$profile/bin/mount" -n -t proc proc /proc || true
 [ -e /sys/kernel ] || "$profile/bin/mount" -n -t sysfs sysfs /sys || true
 [ -e /dev/null ] || "$profile/bin/mount" -n -t devtmpfs devtmpfs /dev || true
-"$profile/bin/rm" -rf /var/run/qubes /var/run/qubes-service
-"$profile/bin/rm" -f /var/run/qubes-service-environment
-"$profile/bin/ln" -s /run/qubes /var/run/qubes
-"$profile/bin/ln" -s /run/qubes-service /var/run/qubes-service
-"$profile/bin/ln" -s /run/qubes-service-environment /var/run/qubes-service-environment
+if ! "$profile/bin/test" /var/run -ef /run 2>/dev/null; then
+    "$profile/bin/rm" -rf /var/run/qubes /var/run/qubes-service
+    "$profile/bin/rm" -f /var/run/qubes-service-environment
+    "$profile/bin/ln" -s /run/qubes /var/run/qubes
+    "$profile/bin/ln" -s /run/qubes-service /var/run/qubes-service
+    "$profile/bin/ln" -s /run/qubes-service-environment /var/run/qubes-service-environment
+fi
 
 exec "$profile/bin/guile" --no-auto-compile /var/guix/profiles/system/boot "$@"
 EOF

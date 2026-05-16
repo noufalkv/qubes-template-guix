@@ -16,15 +16,16 @@ branch or tag that Qubes reviewers are asked to evaluate.
 
 The `qvm-template` install/reinstall/remove/upgrade/downgrade gate,
 nested-dom0 TemplateVM/AppVM smoke gate, and RPM-mode openQA gate have passing
-evidence for both variants.  The nested-dom0 evidence includes standard Qubes
-swap activation and guest-side `meminfo-writer` startup.  A controlled
-update-proxy qrexec forwarding smoke also passed in nested dom0, and the
-default update-target path later passed through the stock Qubes
+evidence for both variants.  The nested-dom0 and openQA evidence includes
+standard Qubes swap activation and guest-side `meminfo-writer` startup.  A
+controlled update-proxy qrexec forwarding smoke also passed in nested dom0, and
+the default update-target path later passed through the stock Qubes
 `@type:TemplateVM -> @default target=sys-net` policy using a temporary
-`sys-net` stub.  The current source now contains a Guix-specific proxy
-configuration service and dom0 verifier, but that verifier has not yet passed
-against a rebuilt image.  Final signed-branch reruns and real Guix
-update-tooling through the Qubes proxy still remain open.
+`sys-net` stub.  The current source contains a Guix-specific proxy
+configuration service, and a rebuilt `guix-minimal` RPM-mode openQA job passed
+the generated Guix client wrapper, updates-proxy forwarder, and `guix-daemon`
+service-state verifier.  Final signed-branch reruns and real Guix update
+tooling through the Qubes proxy still remain open.
 
 ## Current HEAD Contract Checks
 
@@ -89,26 +90,7 @@ Observed result:
 loaded normal and minimal systems
 ```
 
-## Maintainer Hygiene, Not Test Evidence
-
-The repository also has an optional maintainer preflight helper.  It is not an
-upstream-facing test suite and should not be presented as proof that the
-template works.  Its job is limited to local hygiene such as syntax checks,
-example config parsing, and checking that patch sketches still apply to fresh
-upstream checkouts:
-
-```sh
-rm -rf /tmp/qubes-builderv2 /tmp/qubes-release-configs
-git clone --depth 1 https://github.com/QubesOS/qubes-builderv2.git \
-  /tmp/qubes-builderv2
-git clone --depth 1 https://github.com/QubesOS/qubes-release-configs.git \
-  /tmp/qubes-release-configs
-./scripts/maintainer-preflight.sh
-```
-
-That run passed and exercised only the patch-sketch hygiene path for
-`config/qubes-builderv2-guix.example.patch` and
-`config/qubes-release-configs-guix.example.patch` with `git apply --check`.
+## Builder And Release Sketch Checks
 
 The focused Builder v2 distribution tests also passed after applying the
 Builder patch in a fresh shallow checkout.  The latest refresh used current
@@ -167,14 +149,8 @@ release-config guix entries validated
 ```
 
 The review source tree was also copied to the GCP builder as
-`~/guix-review-current`.  `scripts/maintainer-preflight.sh` passed there with
-real Guix installed.  That remote preflight is maintainer hygiene, not runtime
-evidence, and it did not check example patch application because the GCP
-builder does not have `/tmp/qubes-builderv2` or `/tmp/qubes-release-configs`
-checkouts.
-
-That exported tree also passed the network-dependent Qubes pin freshness check
-on the GCP builder:
+`~/guix-review-current`.  That exported tree passed the network-dependent Qubes
+pin freshness check on the GCP builder:
 
 ```sh
 ./scripts/check-qubes-pins.sh
@@ -815,6 +791,11 @@ helper scripts from the attached RPM asset disk, installed the template with
 `qvm-template --yes install --nogpgcheck`, checked for postinstall failures,
 and ran the dom0 TemplateVM/AppVM smoke script.
 
+Later source also stages and runs
+`scripts/test-guix-update-proxy-config-dom0.sh` from the same RPM asset disk.
+Jobs 8 and 9 predate that verifier being wired into openQA, so they do not
+prove the generated Guix daemon/client proxy configuration.
+
 Normal template job:
 
 ```text
@@ -839,6 +820,38 @@ This is current release-review evidence for the RPM install path.  It is still
 not a substitute for rerunning openQA from the final signed public branch or
 tag that Qubes reviewers are asked to evaluate.
 
+On May 16, 2026, job 27 reran the minimal RPM-mode path from a rebuilt image
+that includes the current updates-proxy forwarder and verifier changes:
+
+```text
+id: 27
+BUILD: guix-minimal-rpm-r202605162304-proxyfix-202605162312
+TEST: guix_template
+state: done
+result: passed
+root image: /home/sandbox/guix-review-current/root-minimal-r202605162304.img
+root image size: 20G
+RPM: /home/sandbox/guix-review-current/dist/qubes-template-guix-minimal-4.3.0-202605162304.noarch.rpm
+RPM size: 662M
+RPM SHA256: 236641ab50919305d8e78bd9c9ef200582b3457cdd11973daea0d37f45b93904
+result dir: /var/lib/openqa/testresults/00000/00000027-qubesos-4.3-guix-template-x86_64-Buildguix-minimal-rpm-r202605162304-proxyfix-202605162312-guix_template@qemu_x86_64
+```
+
+The archived serial log showed `qvm-template` install success
+`OPENQA_RC_000007_0`, postinstall diagnostics success `OPENQA_RC_000008_0`,
+postinstall log scan success `OPENQA_RC_000009_0`, TemplateVM/AppVM smoke
+success `OPENQA_RC_000010_0`, Guix updates-proxy config success
+`OPENQA_RC_000011_0`, log archival success `OPENQA_RC_000012_0`, and final
+cleanup success `OPENQA_RC_000013_0`.  The smoke output included AppVM
+`persistence=rw-only`, `xterm`, `Xorg`, `xterm.desktop`, `/dev/xvdc1` in
+`/proc/swaps`, `/run/qubes-service/meminfo-writer`, a live
+`meminfo-writer` process, `qrexec-ok`, `qubes.WaitForSession`, and
+`native Guix TemplateVM smoke tests passed for guix-minimal`.  The proxy
+verifier output included `checking Qubes updates-proxy forwarder`,
+`Status of qubes-updates-proxy-forwarder: It is running`,
+`checking guix-daemon service state`, `It is running`, and
+`guix update proxy config check passed`.
+
 ## Not Yet Passed
 
 The following gates remain open and must not be claimed as passing from this
@@ -846,9 +859,9 @@ snapshot:
 
 - End-to-end Guix update tooling through the Qubes update proxy remains
   untested.  The default-target HTTP forwarding gate is now covered by the
-  2026051602 nested-dom0 run above, and the source now includes
+  2026051602 nested-dom0 run above, and RPM-mode openQA job 27 passed
   `scripts/test-guix-update-proxy-config-dom0.sh` for the generated
-  daemon/client proxy configuration, but this snapshot does not yet prove that
+  daemon/client proxy configuration.  This snapshot does not yet prove that
   `guix pull`, substitute downloads, or channel updates consume the proxy as
   intended.
 - Final signed-branch or signed-tag reruns of the rootfs build, image
