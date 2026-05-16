@@ -110,7 +110,7 @@ repository and current sanity checks.
 
 This is a targeted review of Qubes' authoritative docs, current Builder and
 release-config code, forum precedent, and the closest comparable issue/PRs.
-It was last spot-refreshed on 2026-05-16.  It is not a claim that every Qubes pull
+It was last spot-refreshed on 2026-05-17.  It is not a claim that every Qubes pull
 request or issue has been exhaustively reviewed.
 
 - Qubes package contribution docs:

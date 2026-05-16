@@ -31,6 +31,10 @@ Explicit non-goals for the first review:
 
 ## External Review Expectations Checked
 
+This is a targeted review of the Qubes sources most relevant to a new
+community template.  It is not an exhaustive review of every Qubes pull request
+or issue.
+
 - Qubes package contribution rules: open-source license, clear Qubes use case,
   signed code, tests, low review burden, static hashes for downloads, and
   careful review of build scripts, Makefiles, RPM scripts, and dependencies.
