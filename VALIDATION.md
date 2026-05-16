@@ -704,7 +704,7 @@ The matching Builder v2 patch sketch in
 refreshed `qubes-builderv2` checkout.  The focused distribution tests passed:
 
 ```sh
-cd /tmp/qubes-builderv2-test
+cd /tmp/qubes-builderv2-current
 python -m pytest \
   tests/test_objects.py::test_dist \
   tests/test_objects.py::test_dist_family \
