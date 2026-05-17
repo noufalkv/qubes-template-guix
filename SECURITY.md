@@ -36,6 +36,12 @@ just created and refuses to run if the target VM already exists.  It is only a
 root-image smoke-test helper; the release path is the Template Manager RPM
 installed through `qvm-template`.
 
+`scripts/setup-openqa-guix-template-test.sh` is intended for a dedicated
+openQA review host.  It overlays the local test module into the Qubes openQA
+test tree, refreshes mutable HDD assets, writes local openQA API credentials,
+updates `workers.ini`, and restarts openQA services.  Do not run it on a shared
+or production openQA deployment without reviewing those host-local changes.
+
 ## Source Integrity
 
 - Qubes VM agent sources are fetched from QubesOS Git repositories by exact

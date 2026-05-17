@@ -204,6 +204,9 @@ The changes should be reviewed in this order:
   nested dom0/root-image smoke runs.  Its direct file-pool `truncate` fallback
   is limited to a freshly created TemplateVM that the script has not started or
   imported into yet; the release path remains the `qvm-template` RPM package.
+- `scripts/setup-openqa-guix-template-test.sh` is written for a dedicated
+  review host.  It updates the local openQA test tree, worker configuration,
+  API credentials, and HDD assets before scheduling the Guix job.
 - Compatibility links under `/usr`, `/etc/qubes-rpc`, `/usr/lib/qubes`,
   `/run/qubes-service`, and `/var/run/qubes-service-environment` are deliberate.
   Upstream Qubes VM tools use fixed FHS-style paths, while Guix installs into
