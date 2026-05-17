@@ -44,11 +44,10 @@ make check
 
 `make check` currently runs `tests/builder-hook-contract-check.sh`,
 `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`.  The
-Builder hook contract check executes the Builder v2 content hooks against a
+Builder hook contract check executes the Builder v2 hooks against a
 temporary install tree.  The Builder RPM contract check feeds generated ext4
 root images through `scripts/builder-v2-template-adapter.sh build-rpm`,
-validates the
-resulting `qubes-template-*` metadata with
+validates the resulting `qubes-template-*` metadata with
 `scripts/test-template-rpm-lifecycle-dom0.sh --metadata-only`, extracts the
 payload, and reads marker files back from the reassembled root images.  The RPM
 layout test builds real normal and minimal `qubes-template-*` RPMs from a

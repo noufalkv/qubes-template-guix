@@ -36,7 +36,7 @@ The local contract checks are green:
 make check
 ```
 
-The default check suite executes the Builder content hooks against a temporary
+The default check suite executes the Builder hooks against a temporary
 install tree and builds/extracts real template RPM layout tests for both `guix`
 and `guix-minimal`.  It fails when required RPM/image tooling is missing; the
 upstream-facing test story is based on generated artifacts and Qubes-visible

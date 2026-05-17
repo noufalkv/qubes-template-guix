@@ -65,7 +65,7 @@ Inspected evidence in the current tree:
 | --- | --- |
 | Clean public branch history | `git log --oneline --decorate --max-count=5` shows only scoped review commits on `master`; `PATCH_SERIES.md` maps the implementation and evidence commits to review purpose. |
 | Tracked tests exercise build contracts | `make check` runs `tests/builder-hook-contract-check.sh`, `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`. |
-| Default test inventory is artifact-backed | `git ls-files tests` lists only the Builder content, Builder RPM contract, and RPM layout checks; these tests execute code, build package artifacts, extract payloads, and validate external template contracts. |
+| Default test inventory is artifact-backed | `git ls-files tests` lists only the Builder hook, Builder RPM contract, and RPM layout checks; these tests execute code, build package artifacts, extract payloads, and validate external template contracts. |
 | Working tree clean | `git status --short` has no output. |
 | Qubes source pins are fresh | Current local and synced GCP `./scripts/check-qubes-pins.sh` runs passed for all pinned Qubes VM components on May 17, 2026. |
 | Prompt-to-artifact checklist exists | This file maps objective phrases to artifacts and marks incomplete external gates. |

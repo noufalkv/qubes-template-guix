@@ -53,7 +53,7 @@ git diff --check
 make check
 ```
 
-`make check` runs contract checks only: Builder content hooks are executed
+`make check` runs contract checks only: Builder hooks are executed
 against a temporary install tree, and normal/minimal template RPMs are built,
 extracted, checked for Qubes Template Manager layout, and reassembled.
 

@@ -33,9 +33,14 @@ This is review hygiene for the sketch patches, not a test gate and not
 template-runtime evidence.
 
 Focused checks used for the Builder v2 sketch, refreshed against current
-upstream sources on May 16, 2026:
+upstream sources on May 17, 2026, at upstream commit `ff36320`:
 
 ```sh
+rm -rf /tmp/qubes-builderv2-current
+git clone --depth 1 https://github.com/QubesOS/qubes-builderv2.git \
+  /tmp/qubes-builderv2-current
+git -C /tmp/qubes-builderv2-current apply \
+  /home/user/guix/config/qubes-builderv2-guix.example.patch
 PYTHONPATH=/tmp/qubes-builderv2-current \
 python -m pytest \
   /tmp/qubes-builderv2-current/tests/test_objects.py::test_dist \
@@ -43,15 +48,20 @@ python -m pytest \
   /tmp/qubes-builderv2-current/tests/test_objects.py::test_template_plugin_supports_guix
 ```
 
-That focused check passed in a fresh patched checkout.  The full Builder v2
-test suite was not used as evidence in this environment because unrelated tests
-require Docker.  Do not claim full Builder v2 acceptance until Qubes
-maintainers accept the final integration path.
+That focused check passed in a fresh patched checkout with:
+
+```text
+3 passed in 0.12s
+```
+
+The full Builder v2 test suite was not used as evidence in this environment
+because unrelated tests require Docker.  Do not claim full Builder v2
+acceptance until Qubes maintainers accept the final integration path.
 
 The release-config patch was also applied to a fresh
-`/tmp/qubes-release-configs-current` checkout and the resulting R4.3 community
-template YAML was parsed to confirm the `builder-guix`, `guix`, and
-`guix-minimal` entries.
+`/tmp/qubes-release-configs-current` checkout at upstream commit `e7ad66d` and
+the resulting R4.3 community template YAML was parsed to confirm the
+`builder-guix`, `guix`, and `guix-minimal` entries.
 
 ## Submission Notes
 
