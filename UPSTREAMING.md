@@ -233,7 +233,7 @@ request or issue has been exhaustively reviewed.
   readiness.
   Local response: `builder-v2-template/` implements the standard hook shape;
   `native/modules/qubes/packages/qubes-vm.scm` packages the VM agents; and
-  `VALIDATION.md` separates current build, `qvm-template` lifecycle,
+  `VALIDATION.md` separates build, `qvm-template` lifecycle,
   RPM-mode openQA, update-proxy, and dynamic memory-pressure evidence from
   final signed-branch reruns.  The RPM-mode openQA path now has a passing
   rebuilt minimal job for the Guix-specific daemon/client proxy verifier and a

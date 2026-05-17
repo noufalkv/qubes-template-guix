@@ -881,7 +881,7 @@ state: done
 result: passed
 ```
 
-This is current release-review evidence for the RPM install path.  It is still
+This is recorded release-review evidence for the RPM install path.  It is still
 not a substitute for rerunning openQA from the final signed public branch or
 tag that Qubes reviewers are asked to evaluate.
 
