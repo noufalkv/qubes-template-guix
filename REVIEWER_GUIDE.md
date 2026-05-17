@@ -59,8 +59,9 @@ against a temporary install tree, and normal/minimal template RPMs are built,
 extracted, checked for Qubes Template Manager layout, and reassembled.
 `make guix-system-contract-check` requires Guix and instantiates the actual
 normal/minimal operating-system records to check Qubes-visible defaults such as
-`/dev/xvdc1` swap, default privileged programs, passwordless sudo, required
-Qubes services, and `meminfo-writer` defaults.
+`/dev/xvdc1` swap, the standard `user` account and Qubes group membership,
+default privileged programs, passwordless sudo, required Qubes services, and
+`meminfo-writer` defaults.
 
 The pin freshness check is useful provenance hygiene, but it is not runtime or
 release evidence:

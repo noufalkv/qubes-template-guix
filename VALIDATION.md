@@ -75,8 +75,9 @@ Guix system contract check passed
 
 That check instantiates the normal and minimal `operating-system` records with
 real Guix and asserts standard Qubes/Guix system contracts: `/dev/xvdc1` swap,
-unchanged Guix default privileged programs, passwordless `wheel` and `user`
-sudo, required Qubes services, and default `meminfo-writer` configuration.
+the standard `user` account with Qubes group membership, unchanged Guix default
+privileged programs, passwordless `wheel` and `user` sudo, required Qubes
+services, and default `meminfo-writer` configuration.
 
 After aligning the updates-proxy wrapper with Qubes' current
 `--use-stdin-socket` command, the touched Scheme file was synced to the GCP

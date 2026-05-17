@@ -1,6 +1,7 @@
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 (use-modules (gnu services)
              (gnu system)
+             (gnu system accounts)
              (gnu system file-systems)
              (guix gexp)
              (ice-9 match)
@@ -42,6 +43,23 @@
             "~a sudoers does not keep passwordless Qubes user sudo"
             variant)))
 
+(define (check-user-account variant os)
+  (let ((account (find (lambda (account)
+                         (string=? (user-account-name account) "user"))
+                       (operating-system-user-accounts os))))
+    (assert account
+            "~a missing standard Qubes user account"
+            variant)
+    (assert (string=? (user-account-group account) "users")
+            "~a Qubes user primary group is not users"
+            variant)
+    (for-each (lambda (group)
+                (assert (member group
+                                (user-account-supplementary-groups account))
+                        "~a Qubes user missing supplementary group: ~a"
+                        variant group))
+              '("wheel" "netdev" "audio" "video" "qubes"))))
+
 (define (check-meminfo-writer variant os)
   (let ((value (service-value-by-name os 'qubes-meminfo-writer))
         (threshold (@@ (qubes services qubes-vm)
@@ -82,6 +100,7 @@
               '(qubes-db qubes-meminfo-writer qubes-qrexec-agent
                 qubes-gui-agent qubes-guix-update-proxy))
     (check-sudoers variant os)
+    (check-user-account variant os)
     (check-meminfo-writer variant os)))
 
 (for-each check-system '(normal minimal))
