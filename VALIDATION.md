@@ -32,10 +32,10 @@ Guix update tooling through an Internet update target still remain open.
 ## Current HEAD Contract Checks
 
 The latest recorded local artifact checks passed at commit `42b8b11` after
-the May 17, 2026 source-only test policy cleanup.  The latest Guix-capable GCP
+the May 17, 2026 source-only test policy cleanup.  The latest Guix-capable remote builder
 system-contract rerun archived commit `e475c2b` after the unused qrexec
 fork-server Shepherd service was removed.  Later commits after `e475c2b` do
-not change the Guix system records or Scheme services covered by that GCP run.
+not change the Guix system records or Scheme services covered by that remote builder run.
 The post-`e475c2b` native rootfs-builder change is the pinned Guix channel
 policy; it is covered by the local `tests/build-native-rootfs-policy-check.sh`
 gate and the recorded missing-file policy check below.
@@ -46,7 +46,7 @@ Local artifact check:
 make check
 ```
 
-GCP Guix system-contract check:
+Remote Guix system-contract check:
 
 ```sh
 make guix-system-contract-check
@@ -55,6 +55,7 @@ make guix-system-contract-check
 `make check` currently runs `tests/script-cli-check.sh`,
 `tests/build-native-rootfs-policy-check.sh`,
 `tests/builder-hook-contract-check.sh`,
+`tests/builder-adapter-contract-check.sh`,
 `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`.
 The default suite does not include source-text, patch-shape, or
 release-config-fragment checks as substitute evidence.  Tests in this suite
@@ -80,7 +81,7 @@ the extracted filesystem, and validates the RPM-to-template metadata through
 short option form.
 
 The optional `make guix-system-contract-check` gate requires Guix.  It was run
-on the GCP review builder after adding the check, then rerun at commit
+on the remote Guix review builder after adding the check, then rerun at commit
 `e475c2b`, and passed with:
 
 ```text
@@ -103,7 +104,7 @@ recorded here as proof that the template works.
 
 Earlier targeted Scheme-load evidence is kept here for traceability.  After
 aligning the updates-proxy wrapper with Qubes' current
-`--use-stdin-socket` command, the touched Scheme file was synced to the GCP
+`--use-stdin-socket` command, the touched Scheme file was synced to the remote Guix builder
 builder checkout and loaded with real Guix:
 
 ```sh
@@ -120,7 +121,7 @@ version:
 ```
 
 After adding `qubes-guix-update-proxy-service-type`, the then-current tree was
-synced to the same GCP builder and both operating-system variants were
+synced to the same remote Guix builder and both operating-system variants were
 constructed with real Guix:
 
 ```sh
@@ -208,9 +209,9 @@ Result:
 release-config guix entries parsed
 ```
 
-The review source tree was also copied to the GCP builder as
+The review source tree was also copied to the remote Guix builder as
 `~/guix-review-current`.  On May 17, 2026, both the current local review tree
-and the synced GCP review checkout passed the network-dependent Qubes pin
+and the synced remote review checkout passed the network-dependent Qubes pin
 freshness check:
 
 ```sh
@@ -227,7 +228,7 @@ ok: qubes-gui-common v4.3.1 66b879e36d6cd2a01271fc8d4c2c0f3be85d0029
 ok: qubes-gui-agent-linux v4.3.16 bd8c395df20e64845ac4b3324552aebca32fea96
 ```
 
-The pinned Guix channel in `config/channels.scm` was resolved on the GCP builder
+The pinned Guix channel in `config/channels.scm` was resolved on the remote Guix builder
 with:
 
 ```text
@@ -248,10 +249,10 @@ error: missing pinned Guix channels file: .../config/channels.scm; set GUIX_CHAN
 This verifies that release builds no longer silently fall back to an unpinned
 Guix branch when the pinned channel file is absent.
 
-## Latest GCP Minimal Release Build Snapshot
+## Latest Remote Minimal Release Build Snapshot
 
 - Date: 2026-05-15.
-- Remote builder: `qubes-guix-dev-0508` in GCP zone `us-east1-d`.
+- Remote builder: remote Guix-capable review builder.
 - Remote source tree: `~/guix-review-current`.
 - Artifact directory:
   `/tmp/guix-review-release-minimal-202605152142`.
@@ -320,10 +321,10 @@ Root image disk usage after packaging:
 2.3G
 ```
 
-## Latest GCP Normal Release Build Snapshot
+## Latest Remote Normal Release Build Snapshot
 
 - Date: 2026-05-15.
-- Remote builder: `qubes-guix-dev-0508` in GCP zone `us-east1-d`.
+- Remote builder: remote Guix-capable review builder.
 - Remote source tree: `~/guix-review-current`.
 - Artifact directory:
   `/tmp/guix-review-release-normal-202605152143`.
@@ -393,7 +394,7 @@ Root image disk usage after packaging:
 ## Latest Nested Dom0 qvm-template Lifecycle And Smoke Snapshot
 
 - Date: 2026-05-16.
-- Remote builder: `qubes-guix-dev-0508` in GCP zone `us-east1-d`.
+- Remote builder: remote Guix-capable review builder.
 - Nested dom0: Qubes R4.3.0, booted from
   `/home/sandbox/qubes-nested/vm/qubes-r4.3.0.qcow2`.
 - Data shuttle images: `/tmp/qubes-guix-dom0-data.img` for the original
@@ -476,7 +477,7 @@ pgrep -x meminfo-writer
 
 ## Dynamic Memory-Balloon Pressure Check
 
-On May 16, 2026, the then-current review commit was copied to the GCP nested
+On May 16, 2026, the then-current review commit was copied to the nested
 builder as `/home/sandbox/guix-review-61f66bb`.  Nested dom0 was started with
 the existing data image:
 
@@ -563,7 +564,7 @@ install/reinstall/upgrade/downgrade operation.
 - Date: 2026-05-15.
 - Release-build source: local commit
   `40fae59 Add Qubes upstream review scaffolding`.
-- Remote builder: `qubes-guix-dev-0508` in GCP zone `us-east1-d`.
+- Remote builder: remote Guix-capable review builder.
 - Remote checkout: `~/guix-upstream-test`.
 - Artifact timestamp: `202605150001`.
 
@@ -737,7 +738,7 @@ RPM size:
 ## Builder V2 Content-Script Smoke
 
 After adding the standard content-script shape in `builder-v2-template/`, the
-minimal variant was smoke-tested on the GCP builder by creating a blank 20G
+minimal variant was smoke-tested on the remote Guix builder by creating a blank 20G
 ext4 root image, mounting it, and running:
 
 ```sh
@@ -791,8 +792,8 @@ templates, `guix` and `guix-minimal`, both using `vm-guix`.
 
 ## Default Updates-Proxy Target Check
 
-On May 16, 2026, the current working tree was synced to the GCP builder
-`qubes-guix-dev-0508` in zone `us-east1-d` after changing the
+On May 16, 2026, the current working tree was synced to a remote Guix-capable
+review builder after changing the
 `qubes-updates-proxy-forwarder` Shepherd requirement from qrexec/network
 services to `qubes-sysinit`, matching Qubes' socket-activated model more
 closely.  The builder produced and activation-tested:
@@ -852,9 +853,8 @@ proxy; that remains a separate update workflow check.
 
 ## RPM-Mode openQA Template Checks
 
-On May 16, 2026, the GCP openQA host `qubes-guix-dev-0508` in zone
-`us-east1-d` ran the RPM-mode openQA harness against the 2026051602 normal and
-minimal template RPMs.  The harness used
+On May 16, 2026, a remote openQA host ran the RPM-mode openQA harness against
+the 2026051602 normal and minimal template RPMs.  The harness used
 `openqa/qubesos/tests/guix_template.pm` with `GUIX_INSTALL_MODE=rpm`, copied
 helper scripts from the attached RPM asset disk, installed the template with
 `qvm-template --yes install --nogpgcheck`, checked for postinstall failures,

@@ -82,7 +82,7 @@ or issue.
 | --- | --- | --- |
 | Open-source licensing | `COPYING`, SPDX markers in code files, Qubes-template-style RPM `License: GPLv3+` metadata, upstream component license fields in Guix package definitions | Present |
 | Static hashes for downloaded source | `native/modules/qubes/packages/qubes-vm.scm`, `scripts/check-qubes-pins.sh` | Present, freshness check is networked |
-| Reproducible release inputs | `config/channels.scm`, installed `/etc/guix/channels.scm`, `VALIDATION.md` | Pinned and resolved with `guix time-machine -- describe` on GCP |
+| Reproducible release inputs | `config/channels.scm`, installed `/etc/guix/channels.scm`, `VALIDATION.md` | Pinned and resolved with `guix time-machine -- describe` on a remote Guix builder |
 | Builder-shaped build pipeline | `Makefile`, `builder-v2-template/`, `config/qubes-builderv2-guix.example.patch` | Reviewable sketch, not accepted upstream |
 | Template builder precedent | `TEMPLATE_PRECEDENTS.md`, `builder-v2-template/` | Hook mapping documented against Qubes template-builder model |
 | Qubes release-config wiring | `config/qubes-os-r4.3-templates-community-guix.example.yml`, `config/qubes-release-configs-guix.example.patch` | Reviewable sketch with placeholder maintainer identity |
@@ -156,13 +156,15 @@ The changes should be reviewed in this order:
    `native/modules/qubes/systems/guix-template.scm`.
 3. Image and template packaging:
    `scripts/build-native-rootfs.sh`, `scripts/package-native-template-rpm.sh`,
+   `tests/builder-adapter-contract-check.sh`,
    `tests/builder-rpm-contract-check.sh`, `tests/rpm-layout-check.sh`, and
    `scripts/builder-v2-template-adapter.sh`.
 4. Test and release harness:
    openQA files, nested-dom0 scripts, and
    `tests/build-native-rootfs-policy-check.sh`,
-   `tests/builder-hook-contract-check.sh`, `tests/builder-rpm-contract-check.sh`,
-   `tests/rpm-layout-check.sh`,
+   `tests/builder-hook-contract-check.sh`,
+   `tests/builder-adapter-contract-check.sh`,
+   `tests/builder-rpm-contract-check.sh`, `tests/rpm-layout-check.sh`,
    `scripts/test-update-proxy-default-target-dom0.sh`,
    `scripts/test-guix-update-proxy-config-dom0.sh`,
    `scripts/test-guix-update-proxy-download-dom0.sh`, and

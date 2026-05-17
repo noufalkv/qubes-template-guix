@@ -5,7 +5,7 @@ The current goal is to make it reviewable as a Qubes community template, not
 just locally installable.
 `REVIEW_NOTES.md` explains the non-obvious Qubes/Guix compatibility decisions
 and the intended review order for the patch set.
-`VALIDATION.md` records the latest local and GCP builder evidence without
+`VALIDATION.md` records the latest local and remote Guix builder evidence without
 treating current nested-dom0/openQA results as Qubes acceptance or final
 signed-branch release proof.
 `SUBMISSION_AUDIT.md` maps the upstreamability objective to concrete artifacts
@@ -36,7 +36,7 @@ The local artifact contract check passed at local commit `42b8b11`:
 make check
 ```
 
-The Guix system contract check passed on the Guix-capable GCP review builder
+The Guix system contract check passed on the Guix-capable remote review builder
 at commit `e475c2b`; later commits have not changed the Scheme system records
 covered by that run, but final signed-branch reruns are still required:
 
@@ -74,7 +74,7 @@ the channel with `GUIX_CHANNELS_FILE`, or bypass time-machine with
 The selected channel file is also installed as `/etc/guix/channels.scm` inside
 the template, giving all users the same default channel set for later
 `guix pull` unless they deliberately override it with per-user configuration.
-The pinned channel currently resolves on the GCP builder with
+The pinned channel currently resolves on the remote Guix builder with
 `guix time-machine -C config/channels.scm -- describe`; see `VALIDATION.md` for
 the exact commit output.
 
@@ -158,7 +158,7 @@ request or issue has been exhaustively reviewed.
   undocumented local builder state.
   Local response: `config/channels.scm`, `config/README.md`,
   `builder-v2-template/`, `Makefile.builder`, and `VALIDATION.md` record the
-  current known-good build inputs, GCP builder path, and Builder/release-config
+  current known-good build inputs, remote builder path, and Builder/release-config
   sketch checks.  Final submission still needs maintainer-owned Builder
   reproduction from the signed public branch.
 - Qubes Builder v2 template plugin:

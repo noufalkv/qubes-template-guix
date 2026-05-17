@@ -77,6 +77,9 @@ GPG fingerprint, signing path, and Builder v2 integration are accepted.
 - `tests/builder-hook-contract-check.sh` executes the Builder environment and
   layout hooks that do not require a Guix system build against a temporary
   install tree.
+- `tests/builder-adapter-contract-check.sh` executes the local Builder adapter
+  root-image path with a fake rootfs builder and validates the appmenu and
+  template metadata artifacts.
 - `tests/builder-rpm-contract-check.sh` feeds generated root images through
   the Builder v2 RPM adapter and validates the resulting template RPM metadata
   and payload.

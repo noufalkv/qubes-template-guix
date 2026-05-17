@@ -34,6 +34,7 @@ changes.
    - `tests/script-cli-check.sh`
    - `tests/build-native-rootfs-policy-check.sh`
    - `tests/builder-hook-contract-check.sh`
+   - `tests/builder-adapter-contract-check.sh`
    - `tests/builder-rpm-contract-check.sh`
    - `tests/guix-system-contract-check.scm`
    - `tests/guix-system-contract-check.sh`
@@ -185,12 +186,12 @@ separation of concerns:
 | `122ebd2` | Make the test policy explicit: source-shape/static checks are not upstream tests, and the public suite should exercise generated artifacts, Guix records, dom0 behavior, or openQA. |
 | `b4689eb` | Document the smaller VM-side component package split so selected upstream subdirectories, Python binding installation, and guest-runtime-only outputs are visible to reviewers. |
 | `7a9f370` | Drop the unused qrexec fork-server Shepherd service and document the actual upstream XDG-autostart ownership path. |
-| `ed32328` | Record the local artifact check and GCP Guix system-contract rerun after the qrexec fork-server service cleanup. |
+| `ed32328` | Record the local artifact check and remote Guix system-contract rerun after the qrexec fork-server service cleanup. |
 | `ded8826` | Refresh the Builder v2 and release-config sketch validation notes against current upstream checkouts and remove duplicate release-config result text. |
-| `b4167a8` | Clarify that the GCP Guix system-contract evidence is tied to commit `e475c2b` and, at that point in history, later commits were docs/evidence/history-map only. |
+| `b4167a8` | Clarify that the remote Guix system-contract evidence is tied to commit `e475c2b` and, at that point in history, later commits were docs/evidence/history-map only. |
 | `5a3f630` | Tighten the upstream submission drafts so missing release gates, Builder/release-config sketch checks, and focused-test limitations remain explicit. |
-| `7970c93` | Reclassify older GCP Guix REPL loads as historical evidence and make the executable system-contract gate the current Scheme service-graph check. |
-| `e0261a9` | Clarify dated runtime/openQA evidence so older GCP and nested-dom0 runs remain review evidence without being mistaken for final signed-branch proof. |
+| `7970c93` | Reclassify older remote Guix REPL loads as historical evidence and make the executable system-contract gate the current Scheme service-graph check. |
+| `e0261a9` | Clarify dated runtime/openQA evidence so older remote build and nested-dom0 runs remain review evidence without being mistaken for final signed-branch proof. |
 | `838fddc` | Adjust the security status wording so recorded openQA/default-update-target evidence is not mistaken for current final-release proof. |
 | `cefe65e` | Make pinned Guix channels mandatory by default for rootfs builds, leaving `GUIX_BRANCH` only as an explicit developer override. |
 | `26f4dc2` | Reword blocker sections so dated nested-dom0/update-proxy evidence is described as recorded evidence, not current final-gate proof. |
@@ -202,11 +203,11 @@ separation of concerns:
 | `d15a06a` | Ignore failed-run work directories from the native-rootfs policy check so generated validation artifacts stay out of review. |
 | `a3aa9a4` | Map auxiliary helper scripts and openQA glue as support tooling outside the native release artifact. |
 | `b4961f9` | Clarify that static source-shape and patch-shape scripts are excluded from repository tests, validation logs, and upstream patch series. |
-| `a06b4fb` | Tie current validation wording to dated local and GCP evidence instead of implying final signed-branch proof. |
+| `a06b4fb` | Tie current validation wording to dated local and remote evidence instead of implying final signed-branch proof. |
 | `07a3998` | Reword adaptation and openQA evidence notes so dated artifact evidence is not described as current release proof. |
 | `b3d09ed` | Fix missing required option handling in core build/package/runtime validation scripts and add an executable CLI contract check to `make check`. |
 | `8cd06bc` | Extend required option-value validation and CLI contract coverage across the remaining public helper scripts. |
-| `739e48e` | Quote GCP sync helper remote commands, add dry-run inspection, and cover hostile remote path input in the CLI contract check. |
+| `739e48e` | Quote remote Guix builder sync helper commands, add dry-run inspection, and cover hostile remote path input in the CLI contract check. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
