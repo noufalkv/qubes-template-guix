@@ -46,9 +46,10 @@ or issue.
 - Qubes R4.3 community template release config: community templates are wired
   through release config entries and publish to `templates-community-testing`
   before stable community promotion.
-- Current forum build guidance for R4.3 templates still centers Builder v2,
-  release-config YAML, `template fetch prep build`, a Qubes-sized root image,
-  and TemplateVM import/testing before treating a template as usable.
+- Current Qubes Forum build guidance for an R4.3 Fedora 42 template still
+  centers Builder v2, release-config YAML, `template fetch prep build`, a
+  Qubes-sized root image, and TemplateVM import/testing before treating a
+  template as usable.
 - Builder v2 forum guidance reinforces that contributors should make the
   component/distribution/template inputs explicit and inspect the generated
   template RPM metadata and payload before install.

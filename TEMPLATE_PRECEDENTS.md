@@ -8,16 +8,21 @@ different.
 
 - Qubes Forum guide, "Building a TemplateVM for a new OS":
   `https://forum.qubes-os.org/t/building-a-templatevm-for-a-new-os/18972`
+- Qubes Forum guide, "Building F42 template in R4.3":
+  `https://forum.qubes-os.org/t/building-f42-template-in-r4-3/40176`
+- Qubes Builder v2 documentation:
+  `https://doc.qubes-os.org/en/latest/developer/building/qubes-builder-v2.html`
 - Qubes Builder v2 template plugin checkout:
   `/tmp/qubes-builderv2/qubesbuilder/plugins/template/`
 - Qubes R4.3 community template release config checkout:
   `/tmp/qubes-release-configs/R4.3/qubes-os-r4.3-templates-community.yml`
 - Local Qubes agent source checkouts under `/home/user/qubes-opt/repos/`.
 
-The forum guide points new OS work at existing Fedora, Debian, and Arch template
-scripts and describes the relevant hook responsibilities.  This repository uses
-the same high-level hook vocabulary while delegating the actual system
-construction to Guix.
+The new-OS forum guide points template work at existing Fedora, Debian, and
+Arch scripts and describes the relevant hook responsibilities.  The R4.3 F42
+guide reinforces the current Builder v2 and release-config flow before import
+and TemplateVM testing.  This repository uses the same high-level hook
+vocabulary while delegating the actual system construction to Guix.
 
 ## Hook Mapping
 
