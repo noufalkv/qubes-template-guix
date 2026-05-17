@@ -355,9 +355,10 @@ These checks run in a normal VM and do not require dom0 or Guix:
 make check
 ```
 
-`make check` runs contract checks only.  It executes the Builder hooks
-against a temporary install tree, packages tiny normal and minimal ext4 root
-images through the Builder v2 RPM adapter, validates the generated
+`make check` runs contract checks only.  It executes the Builder
+environment/layout hooks that do not require a Guix system build against a
+temporary install tree, packages tiny normal and minimal ext4 root images
+through the Builder v2 RPM adapter, validates the generated
 `qvm-template` metadata, then builds and extracts template RPMs through the real
 packager, verifies the Qubes Template Manager payload layout, and reassembles
 the split root image.  These checks exercise generated artifacts and externally

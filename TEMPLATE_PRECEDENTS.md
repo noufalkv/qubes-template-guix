@@ -34,10 +34,10 @@ system construction to Guix.
 | Qubes template hook | Precedent responsibility | Guix implementation |
 | --- | --- | --- |
 | `00_prepare.sh` | Prepare the install root and early template state before package installation. | `builder-v2-template/00_prepare.sh` creates the install root and delegates rootfs setup state to `scripts/build-native-rootfs.sh --install-dir`. |
-| `01_install_core.sh` | Install base operating-system components. | Present as a no-op compatibility hook because Guix computes the full operating-system closure declaratively instead of incrementally installing distro packages. |
-| `02_install_groups.sh` | Install the user-facing package groups for the selected template flavor. | `builder-v2-template/02_install_groups.sh` selects normal versus minimal flavor inputs and appmenu sets; package membership is expressed in `native/qubes-guix.scm` and `native/qubes-guix-minimal.scm`. |
-| `04_install_qubes.sh` | Install Qubes VM packages and configure Qubes storage/runtime integration. | `builder-v2-template/04_install_qubes.sh` delegates to the native Guix system build.  Qubes packages live in `native/modules/qubes/packages/qubes-vm.scm`; Qubes services, swap, private-volume layout, and compatibility paths live in `native/modules/qubes/services/qubes-vm.scm` and `native/modules/qubes/systems/guix-template.scm`. |
-| `09_cleanup.sh` | Remove build-time/cache state and finalize the image. | `builder-v2-template/09_cleanup.sh` performs the reviewable cleanup boundary while Guix keeps package closures immutable and reproducible. |
+| `01_install_core.sh` | Install base operating-system components. | `builder-v2-template/01_install_core.sh` selects the normal or minimal Guix system from Builder's `TEMPLATE_FLAVOR`/`TEMPLATE_NAME`, labels the mounted ext4 root as `guix-root` when possible, and runs `scripts/build-native-rootfs.sh --install-dir` to materialize the Guix operating-system closure into the Builder install root. |
+| `02_install_groups.sh` | Install the user-facing package groups for the selected template flavor. | Present as a compatibility boundary.  Package membership is selected by the Guix system variant used by `01_install_core.sh` and is expressed in `native/qubes-guix.scm`, `native/qubes-guix-minimal.scm`, and `qubes-variant-packages`. |
+| `04_install_qubes.sh` | Install Qubes VM packages and configure Qubes storage/runtime integration. | `builder-v2-template/04_install_qubes.sh` creates `/home` and `/usr/local` in the mounted image before Builder's generic Qubes layout step.  The Qubes packages and services themselves are already part of the Guix system closure installed by `01_install_core.sh`. |
+| `09_cleanup.sh` | Remove build-time/cache state and finalize the image. | `builder-v2-template/09_cleanup.sh` syncs the mounted image at the reviewable cleanup boundary while Guix keeps package closures immutable and reproducible. |
 
 ## Release-Config Precedent
 
@@ -68,8 +68,9 @@ GPG fingerprint, signing path, and Builder v2 integration are accepted.
 
 ## Validation Tied To This Mapping
 
-- `tests/builder-hook-contract-check.sh` executes the Guix Builder hooks
-  against a temporary install tree.
+- `tests/builder-hook-contract-check.sh` executes the Builder environment and
+  layout hooks that do not require a Guix system build against a temporary
+  install tree.
 - `tests/builder-rpm-contract-check.sh` feeds generated root images through
   the Builder v2 RPM adapter and validates the resulting template RPM metadata
   and payload.

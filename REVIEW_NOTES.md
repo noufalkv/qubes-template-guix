@@ -248,8 +248,9 @@ The changes should be reviewed in this order:
   `dist: guix` or automatically discovers the adapter.
 - `builder-v2-template/` exposes the standard Builder v2 content-script shape
   for reviewers who prefer a `builder-guix` component over a template-plugin
-  special case.  Its install hook delegates to the same native Guix system
-  build logic through `scripts/build-native-rootfs.sh --install-dir`.
+  special case.  Its `01_install_core.sh` hook delegates to the same native
+  Guix system build logic through `scripts/build-native-rootfs.sh
+  --install-dir`.
 - `config/qubes-builderv2-guix.example.patch` is a review artifact for the
   matching Builder v2 side: it adds `vm-guix` distribution support and points
   the template plugin at `builder-guix/builder-v2-template`.
