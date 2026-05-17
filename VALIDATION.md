@@ -39,11 +39,15 @@ bash -n scripts/test-memory-balloon-dom0.sh
 bash -n scripts/test-guix-update-proxy-download-dom0.sh
 bash -n scripts/test-guix-update-proxy-stub-download-dom0.sh
 git diff --check
+git ls-files tests
 make check
 ```
 
 `make check` currently runs `tests/builder-hook-contract-check.sh`,
 `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`.
+`git ls-files tests` lists only those three tests; the default suite does not
+include source-text, patch-shape, or release-config-fragment checks as
+substitute evidence.
 The Builder hook contract check
 executes the Builder v2 hooks against a temporary install tree.  The Builder
 RPM contract check feeds generated ext4 root images through

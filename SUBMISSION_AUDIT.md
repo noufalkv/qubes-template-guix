@@ -99,6 +99,7 @@ bash -n scripts/test-guix-update-proxy-stub-download-dom0.sh
 bash -n scripts/test-memory-balloon-dom0.sh
 make check
 git diff --check
+git ls-files tests
 git status --short
 ./scripts/check-qubes-pins.sh
 PYTHONPATH=/tmp/qubes-builderv2-current python -m pytest /tmp/qubes-builderv2-current/tests/test_objects.py::test_dist /tmp/qubes-builderv2-current/tests/test_objects.py::test_dist_family /tmp/qubes-builderv2-current/tests/test_objects.py::test_template_plugin_supports_guix
