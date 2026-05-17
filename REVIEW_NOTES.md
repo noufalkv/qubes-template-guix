@@ -200,6 +200,10 @@ The changes should be reviewed in this order:
   normal installable RPM: it contains split root image parts, template metadata,
   appmenu allowlists, ghost private/volatile images, and a `%pre` guard that
   rejects direct package-manager installation.
+- `scripts/import-native-rootfs-dom0.sh` is test infrastructure for disposable
+  nested dom0/root-image smoke runs.  Its direct file-pool `truncate` fallback
+  is limited to a freshly created TemplateVM that the script has not started or
+  imported into yet; the release path remains the `qvm-template` RPM package.
 - Compatibility links under `/usr`, `/etc/qubes-rpc`, `/usr/lib/qubes`,
   `/run/qubes-service`, and `/var/run/qubes-service-environment` are deliberate.
   Upstream Qubes VM tools use fixed FHS-style paths, while Guix installs into

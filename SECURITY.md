@@ -29,6 +29,13 @@ trusted computing base of a published Guix template.  They still need ordinary
 review before use on a build host because they create VMs, copy artifacts, and
 run dom0-side test commands.
 
+`scripts/import-native-rootfs-dom0.sh` includes a file-pool truncate fallback
+for Qubes storage backends that reject root-volume shrinking through
+`qvm-volume resize -f`.  That fallback is scoped to a TemplateVM the script has
+just created and refuses to run if the target VM already exists.  It is only a
+root-image smoke-test helper; the release path is the Template Manager RPM
+installed through `qvm-template`.
+
 ## Source Integrity
 
 - Qubes VM agent sources are fetched from QubesOS Git repositories by exact
