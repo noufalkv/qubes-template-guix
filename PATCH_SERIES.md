@@ -101,6 +101,9 @@ the same separation of concerns:
 | `de41010` | Document the community-template maintainer trust path, handoff/removal policy, and remaining maintainer identity blocker. |
 | `b0c426a` | Tighten submission drafts so copied upstream text keeps proxy, memory-balloon, maintainer handoff, and final-release gates explicit. |
 | `7829b5a` | Clarify the non-obvious no-op bootloader closure behavior and the normal/minimal appmenu package split. |
+| `fee9ade` | Add this local history map so reviewers can see the current commit grouping before any public rewrite. |
+| `1bc7aab`, `a66b2d5`, `51c0d69`, `411e482` | Refresh pin freshness, completion-audit, local contract-check, and upstream sketch evidence against the current review tree. |
+| `ba1010d`, `3899a26` | Remove stale test names and review wording so local checks are presented as Builder hook, Builder RPM, and template RPM contracts rather than source-only checks. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
