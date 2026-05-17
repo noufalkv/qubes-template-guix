@@ -196,6 +196,7 @@ separation of concerns:
 | `59f3fd5` | Record the pinned-channel missing-file policy check so release builds no longer fall back to an unpinned Guix branch when the pinned channel file is absent. |
 | `437a7d3` | Remove source-only test-script wording from upstream-facing docs so the validation story remains limited to artifact and Qubes-visible contracts. |
 | `06a629f` | Add an executable native-rootfs policy check so the default local gate verifies missing pinned channels fail before image or mount work. |
+| `e23fd0c` | Tie the installed reconfiguration and package-test-policy adaptation rows to the executable native-rootfs pinned-channel policy gate. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
