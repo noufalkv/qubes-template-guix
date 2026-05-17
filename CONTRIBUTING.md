@@ -46,15 +46,14 @@ checkouts when changing files under `config/`.  Treat `make check`, rootfs
 activation, RPM lifecycle, and dom0/openQA runs as the evidence that the
 template behavior works.
 
-Run source hygiene and provenance checks separately:
+Keep source-only checks out of the upstream evidence path.  Formatting,
+parser-only, inventory, and patch-shape commands belong in a maintainer's
+private pre-commit workflow, not in `make check`, not in `VALIDATION.md`, and
+not as proof that the template works.
 
-```sh
-git diff --check
-./scripts/check-qubes-pins.sh
-```
-
-These checks catch formatting mistakes and stale Qubes source pins, but they
-are not substitutes for artifact, Guix system-record, or runtime evidence.
+When changing pinned Qubes sources, run `./scripts/check-qubes-pins.sh`
+directly and document the result as source provenance only.  It is not a
+template behavior test.
 
 For the Builder v2 sketch:
 

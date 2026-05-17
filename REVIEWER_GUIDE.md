@@ -67,13 +67,10 @@ normal/minimal operating-system records to check Qubes-visible defaults such as
 default privileged programs, passwordless sudo, required Qubes services, and
 `meminfo-writer` defaults.
 
-Source formatting and pin freshness checks are useful hygiene/provenance, but
-they are not runtime or release evidence:
-
-```sh
-git diff --check
-./scripts/check-qubes-pins.sh
-```
+No source-only checker is part of the reviewer evidence path.  Formatting,
+parser-only, inventory, patch-shape, and pin-freshness commands may help a
+maintainer prepare a branch, but they do not demonstrate that the template
+builds, installs, boots, or satisfies Qubes-visible contracts.
 
 ## Do Not Claim Yet
 

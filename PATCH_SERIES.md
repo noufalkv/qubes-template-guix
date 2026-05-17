@@ -45,7 +45,7 @@ changes.
    - `scripts/test-memory-balloon-dom0.sh`
    - `openqa/qubesos/`
 
-6. Pin freshness hygiene, not upstream-facing test evidence:
+6. Source provenance maintenance, not upstream-facing test evidence:
    - `scripts/check-qubes-pins.sh`
 
 7. Human-review documentation:
@@ -164,11 +164,11 @@ separation of concerns:
 | `221a2cf`, `011e18f`, `d4055e2`, `119ccf7`, `090fe88` | Anchor current template precedent sources, refresh forum precedent around Builder v2 and template-service scope, tighten the adaptation inventory against the actual Scheme/build implementation, and normalize upstream-facing hook terminology. |
 | `d017cab`, `aa3d497`, `13b7c85`, `d3c6c67`, `f4cfeb6`, `e21a5ec`, `30acbd4`, `f21deb1`, `ffbe2e0`, `8f9cf69`, `9dfd3d4` | Rework review hygiene around placeholders, SPDX/license evidence, removal of source-only test gates, artifact-backed test inventory, non-obvious-change audit coverage, generated-artifact hygiene, and validation proof language. |
 | `ddf4358` | Add a Guix-backed system contract check for normal/minimal Qubes-visible defaults: standard swap, default privileged programs, passwordless sudo, required services, and `meminfo-writer` defaults. |
-| `bfc6c34` | Replace the stale partial `bash -n` list with the broad tracked-shell parser pass and keep it labeled as syntax hygiene rather than release evidence. |
-| `0c55e04` | Keep the qubes-devel, contribution issue, and release-config draft evidence lists aligned with the current Guix contract and syntax-hygiene gates. |
+| `bfc6c34` | Keep parser-only source checks out of release evidence and treat them as maintainer-side branch preparation only. |
+| `0c55e04` | Keep the qubes-devel, contribution issue, and release-config draft evidence lists aligned with the current Guix contract gates. |
 | `a232db0` | Re-run the Builder v2 and release-config patch checks against fresh upstream checkouts and record the current focused-test/YAML-parse output. |
 | `b7a4969` | Extend the Guix-backed system contract to assert the standard `user` account, primary group, and Qubes-related supplementary groups for both variants. |
-| `5dbd24b` | Separate real contract evidence from source hygiene/provenance notes so source-only checks are not presented as upstream validation. |
+| `5dbd24b` | Keep source-only checks out of upstream validation and present only contract-backed checks as review evidence. |
 | `76605e5` | Clarify that the artifact contract suite runs locally while the Guix system-record contract gate runs on a Guix-capable builder. |
 | `d216fb3` | Document the standard Qubes `user` account and group membership in the security review notes. |
 | `bbc5251` | Record the Qubes openQA/integration-test precedent for dom0-dependent guest behavior. |

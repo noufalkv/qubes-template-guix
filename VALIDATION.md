@@ -78,16 +78,10 @@ the standard `user` account with Qubes group membership, unchanged Guix default
 privileged programs, passwordless `wheel` and `user` sudo, required Qubes
 services, and default `meminfo-writer` configuration.
 
-The following source-hygiene and inventory commands also passed, but they are
-not release evidence:
-
-```sh
-git ls-files "*.sh" "scripts/*.sh" "tests/*.sh" "builder-v2-template/*.sh" \
-  | sort -u \
-  | while IFS= read -r file; do bash -n "$file"; done
-git diff --check
-git ls-files tests
-```
+No source-only checker is part of the validation evidence.  Formatting,
+parser-only, inventory, or patch-shape commands are maintainer chores, not
+release gates, and should not be used as substitutes for artifact, Guix
+system-record, dom0, or openQA evidence.
 
 After aligning the updates-proxy wrapper with Qubes' current
 `--use-stdin-socket` command, the touched Scheme file was synced to the GCP
@@ -549,20 +543,20 @@ tree with `git archive`.
 
 ## Historical Release Preflight
 
-Local checks passed before remote release testing:
+Local contract checks passed before remote release testing:
 
 ```sh
-git diff --check
 make check
-make check-qubes-pins
 ```
 
-Remote checks passed with real Guix installed, so the Scheme module load path
-was covered there:
+Source pin provenance was checked separately with `make check-qubes-pins`.
+That was not a template behavior test.
+
+Remote contract checks passed with real Guix installed, so the Scheme module
+load path was covered there:
 
 ```sh
 make check
-make check-qubes-pins
 ```
 
 ## Normal Template Evidence

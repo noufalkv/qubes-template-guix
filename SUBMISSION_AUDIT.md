@@ -92,29 +92,21 @@ are removed.
 ## Latest Evidence
 
 Verification evidence includes the latest local artifact contract pass, the
-GCP Guix system-contract pass, the refreshed local+GCP pin freshness check,
-plus earlier targeted Builder/release-config checks:
+GCP Guix system-contract pass, plus earlier targeted Builder/release-config
+checks:
 
 ```sh
 make check
 # on the Guix-capable GCP review builder
 make guix-system-contract-check
-./scripts/check-qubes-pins.sh
 PYTHONPATH=/tmp/qubes-builderv2-current python -m pytest /tmp/qubes-builderv2-current/tests/test_objects.py::test_dist /tmp/qubes-builderv2-current/tests/test_objects.py::test_dist_family /tmp/qubes-builderv2-current/tests/test_objects.py::test_template_plugin_supports_guix
 # release-config YAML validation in /tmp/qubes-release-configs-current; see VALIDATION.md
 ```
 
-The following source hygiene and inventory commands also passed, but they are
-not substitutes for artifact, Guix system-record, or runtime evidence:
-
-```sh
-git ls-files "*.sh" "scripts/*.sh" "tests/*.sh" "builder-v2-template/*.sh" \
-  | sort -u \
-  | while IFS= read -r file; do bash -n "$file"; done
-git diff --check
-git ls-files tests
-git status --short
-```
+No source-only checker is counted here as validation evidence.  Formatting,
+parser-only, inventory, patch-shape, and pin-freshness commands are maintainer
+chores or provenance checks; they are not substitutes for artifact, Guix
+system-record, dom0, or openQA evidence.
 
 The review source tree was also copied to the GCP builder as
 `~/guix-review-current`.  There, `./scripts/check-qubes-pins.sh` passed against
