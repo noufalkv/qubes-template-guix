@@ -91,12 +91,13 @@ are removed.
 
 ## Latest Evidence
 
-Verification evidence includes the latest local contract pass, the refreshed
-local+GCP pin freshness check, plus earlier targeted Builder/release-config
-checks:
+Verification evidence includes the latest local artifact contract pass, the
+GCP Guix system-contract pass, the refreshed local+GCP pin freshness check,
+plus earlier targeted Builder/release-config checks:
 
 ```sh
 make check
+# on the Guix-capable GCP review builder
 make guix-system-contract-check
 ./scripts/check-qubes-pins.sh
 PYTHONPATH=/tmp/qubes-builderv2-current python -m pytest /tmp/qubes-builderv2-current/tests/test_objects.py::test_dist /tmp/qubes-builderv2-current/tests/test_objects.py::test_dist_family /tmp/qubes-builderv2-current/tests/test_objects.py::test_template_plugin_supports_guix

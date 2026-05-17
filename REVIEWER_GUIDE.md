@@ -46,10 +46,15 @@ not yet a publishable Qubes community template.
 
 `PATCH_SERIES.md` expands this into the intended review order.
 
-## Checks That Count As Local Evidence
+## Checks That Count As Review Evidence
 
 ```sh
 make check
+```
+
+Run the Guix record gate on a Guix-capable builder:
+
+```sh
 make guix-system-contract-check
 ```
 

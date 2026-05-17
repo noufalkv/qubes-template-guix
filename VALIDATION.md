@@ -31,11 +31,18 @@ Guix update tooling through an Internet update target still remain open.
 
 ## Current HEAD Contract Checks
 
-The current local tree passed the local artifact and system-contract checks
-after the May 17, 2026 audit refresh:
+The current tree passed the local artifact checks and the Guix-capable GCP
+system-contract check after the May 17, 2026 audit refresh.
+
+Local artifact check:
 
 ```sh
 make check
+```
+
+GCP Guix system-contract check:
+
+```sh
 make guix-system-contract-check
 ```
 
