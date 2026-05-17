@@ -176,6 +176,7 @@ separation of concerns:
 | `2e0dfd3` | Document the Qubes Template Manager RPM payload contract and direct-package-install guard. |
 | `9bf6ad9` | Remove source-only validation wording so upstream-facing evidence is limited to artifact, Guix system-record, dom0, or openQA contracts. |
 | `261721f` | Document the generated `/sbin/init` entrypoint that bridges Qubes' dom0-kernel boot path to the Guix system boot program. |
+| `630d7d3` | Correct the Builder hook review map so `01_install_core.sh`, `02_install_groups.sh`, and `04_install_qubes.sh` match their actual responsibilities. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
