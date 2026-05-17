@@ -69,6 +69,7 @@ Inspected evidence in the current tree:
 | Default test inventory is artifact-backed | `git ls-files tests` lists only the Builder hook, Builder RPM contract, and RPM layout checks; these tests execute code, build package artifacts, extract payloads, and validate external template contracts. |
 | Working tree clean | `git status --short` has no output. |
 | Generated artifacts stay out of review | `.gitignore` covers root images, RPMs, tarballs, cache/dist output, and current test work directories; `git ls-files` does not list generated RPM/image artifacts. |
+| Placeholder hygiene | `rg '<[A-Z][A-Z0-9_]*>'` finds placeholders only in draft/config/review-process files: `config/`, `SUBMISSION_DRAFTS.md`, `MAINTENANCE.md`, `UPSTREAMING.md`, and `CONTRIBUTING.md`. |
 | Qubes source pins are fresh | Current local and synced GCP `./scripts/check-qubes-pins.sh` runs passed for all pinned Qubes VM components on May 17, 2026. |
 | Prompt-to-artifact checklist exists | This file maps objective phrases to artifacts and marks incomplete external gates. |
 | Online expectations are traceable | `UPSTREAMING.md` contains an online source crosswalk for Qubes docs, Builder v2, release-configs, forum precedent, and comparable NixOS issue/PRs. |
