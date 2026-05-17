@@ -37,6 +37,7 @@ changes.
    - `scripts/test-template-rpm-lifecycle-dom0.sh`
    - `scripts/test-update-proxy-default-target-dom0.sh`
    - `scripts/test-guix-update-proxy-config-dom0.sh`
+   - `scripts/test-guix-update-proxy-download-dom0.sh`
    - `scripts/diagnose-update-proxy-dom0.sh`
    - `scripts/test-memory-balloon-dom0.sh`
    - `openqa/qubesos/`
