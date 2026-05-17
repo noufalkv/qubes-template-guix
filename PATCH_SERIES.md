@@ -166,6 +166,7 @@ the same separation of concerns:
 | `0c55e04` | Keep the qubes-devel, contribution issue, and release-config draft evidence lists aligned with the current Guix contract and syntax-hygiene gates. |
 | `a232db0` | Re-run the Builder v2 and release-config patch checks against fresh upstream checkouts and record the current focused-test/YAML-parse output. |
 | `b7a4969` | Extend the Guix-backed system contract to assert the standard `user` account, primary group, and Qubes-related supplementary groups for both variants. |
+| `5dbd24b` | Separate real contract evidence from source hygiene/provenance notes so source-only checks are not presented as upstream validation. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
