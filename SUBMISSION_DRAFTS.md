@@ -47,6 +47,7 @@ The repository includes:
   - openQA and qvm-template lifecycle harnesses.
   - Review notes, adaptation inventory, validation evidence, and maintenance
     policy.
+  - A maintainer handoff/removal policy for the community-template trust path.
 
 Validation snapshot from the signed public branch:
   - <make check result>
@@ -56,13 +57,19 @@ Validation snapshot from the signed public branch:
   - <minimal rootfs/RPM/openQA result>
   - <qvm-template lifecycle result>
   - <TemplateVM/AppVM smoke result>
+  - <controlled updates-proxy stub download result>
+  - <dynamic memory-balloon pressure result>
 
 Known remaining questions:
   - Preferred Builder v2 integration shape for dist: guix.
   - Whether Qubes reviewers prefer the Guix-specific source edits as separate
     patch files or as named Guix package phases with rationale.
+  - Whether the maintainer handoff/removal policy is sufficient for a community
+    template that depends on maintainer-owned builds.
   - Required promotion criteria from templates-community-testing to
     templates-community.
+  - Required evidence for real Guix pull/substitute/download behavior through an
+    Internet-capable Qubes update-proxy target.
 
 This work was assisted by generative AI.  I have manually reviewed the submitted
 changes, will maintain the package, and will take responsibility for fixing
@@ -99,6 +106,7 @@ https://github.com/<OWNER>/<REPOSITORY>
 Name: <NAME>
 GPG fingerprint: <GPG_FINGERPRINT>
 Signed tag or signed commit: <TAG_OR_COMMIT>
+Maintenance handoff plan: see MAINTENANCE.md
 
 ### Use case
 
@@ -144,8 +152,14 @@ Attach current evidence from the signed public branch:
   - TemplateVM/AppVM smoke for QubesDB, qrexec, GUI/appmenus, shutdown, /rw,
     /home, /usr/local, swap, and guest-side meminfo-writer startup
   - update proxy forwarding, generated Guix daemon/client proxy configuration,
-    a real Guix update/download through the proxy, and dynamic memory-balloon
-    resize behavior under dom0 pressure
+    controlled Guix client download through the Qubes updates proxy, real Guix
+    update/download through an Internet-capable update-proxy target, and dynamic
+    memory-balloon resize behavior under dom0 pressure
+
+Do not claim real Guix pull/substitute/download support until the Internet
+update-proxy target gate passes from the signed public branch.  A controlled
+stub download is useful proxy-path evidence, but it is not substitute-download
+or channel-update evidence.
 
 ### AI disclosure
 
@@ -203,6 +217,7 @@ It depends on accepted Builder v2 support for the Guix template distribution.
 Maintainer:
   <NAME>
   <GPG_FINGERPRINT>
+  Handoff/removal policy: see MAINTENANCE.md
 
 Repository:
   https://github.com/<OWNER>/<REPOSITORY>
@@ -212,7 +227,10 @@ Validation from the signed public branch:
   - <minimal variant evidence>
   - <openQA evidence>
   - <qvm-template lifecycle evidence>
+  - <controlled updates-proxy stub download evidence>
+  - <real Internet update-proxy Guix update/download evidence>
+  - <dynamic memory-balloon pressure evidence>
 
-Do not merge this PR while maintainer identity, signing, Builder v2 support, or
-fresh release validation is missing.
+Do not merge this PR while maintainer identity, signing, maintainer handoff
+policy, Builder v2 support, or fresh release validation is missing.
 ```
