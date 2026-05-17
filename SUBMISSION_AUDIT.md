@@ -103,10 +103,11 @@ PYTHONPATH=/tmp/qubes-builderv2-current python -m pytest /tmp/qubes-builderv2-cu
 # release-config YAML validation in /tmp/qubes-release-configs-current; see VALIDATION.md
 ```
 
-No source-only checker is counted here as validation evidence.  Formatting,
-parser-only, inventory, patch-shape, and pin-freshness commands are maintainer
-chores or provenance checks; they are not substitutes for artifact, Guix
-system-record, dom0, or openQA evidence.
+No source-only checker is present or counted here as validation evidence.
+Formatting, parser-only, inventory, patch-shape, and pin-freshness commands are
+manual maintainer chores or provenance checks; they are not substitutes for
+artifact, Guix system-record, dom0, or openQA evidence and should not be
+submitted as `static-check.sh`-style upstream tests.
 
 The review source tree was also copied to the GCP builder as
 `~/guix-review-current`.  There, `./scripts/check-qubes-pins.sh` passed against

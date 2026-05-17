@@ -22,9 +22,9 @@ Run before asking for review:
 make check
 ```
 
-Do not add tests that only grep source text, compare patch shape, or inspect
-whether code "looks right" as upstream evidence.  A check that only inspects
-this repository's source or patch text is not release evidence.  Local tests
+Do not commit or submit tests that only grep source text, compare patch shape,
+or inspect whether code "looks right".  A `static-check.sh`-style script is not
+upstream evidence and should not be part of the public test suite.  Local tests
 should execute build hooks, create or inspect generated artifacts, or validate
 Qubes-visible template contracts.  Grep or comparison checks are acceptable
 only when they inspect generated artifacts from the code path under test, such
@@ -46,10 +46,11 @@ checkouts when changing files under `config/`.  Treat `make check`, rootfs
 activation, RPM lifecycle, and dom0/openQA runs as the evidence that the
 template behavior works.
 
-Keep source-only checks out of the upstream evidence path.  Formatting,
-parser-only, inventory, and patch-shape commands belong in a maintainer's
-private pre-commit workflow, not in `make check`, not in `VALIDATION.md`, and
-not as proof that the template works.
+Keep source-only checks out of the repository test suite and the upstream
+evidence path.  Formatting, parser-only, inventory, and patch-shape commands
+may be run manually by a maintainer before committing, but do not add them as
+test scripts, `make` targets, validation logs, or proof that the template
+works.
 
 When changing pinned Qubes sources, run `./scripts/check-qubes-pins.sh`
 directly and document the result as source provenance only.  It is not a

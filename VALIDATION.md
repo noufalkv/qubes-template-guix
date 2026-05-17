@@ -49,7 +49,9 @@ make guix-system-contract-check
 `make check` currently runs `tests/builder-hook-contract-check.sh`,
 `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`.
 The default suite does not include source-text, patch-shape, or
-release-config-fragment checks as substitute evidence.
+release-config-fragment checks as substitute evidence.  Do not add a
+`static-check.sh`-style source-shape test to the public validation path; tests
+in this suite should exercise generated artifacts or Qubes-visible contracts.
 The Builder hook contract check
 executes the Builder v2 hooks against a temporary install tree.  The Builder
 RPM contract check feeds generated ext4 root images through
@@ -78,10 +80,10 @@ the standard `user` account with Qubes group membership, unchanged Guix default
 privileged programs, passwordless `wheel` and `user` sudo, required Qubes
 services, and default `meminfo-writer` configuration.
 
-No source-only checker is part of the validation evidence.  Formatting,
-parser-only, inventory, or patch-shape commands are maintainer chores, not
-release gates, and should not be used as substitutes for artifact, Guix
-system-record, dom0, or openQA evidence.
+No source-only checker is part of the validation evidence or the repository
+test suite.  Formatting, parser-only, inventory, or patch-shape commands are
+manual maintainer chores, not release gates, and should not be submitted as
+substitutes for artifact, Guix system-record, dom0, or openQA evidence.
 
 After aligning the updates-proxy wrapper with Qubes' current
 `--use-stdin-socket` command, the touched Scheme file was synced to the GCP

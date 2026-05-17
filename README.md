@@ -363,6 +363,8 @@ through the Builder v2 RPM adapter, validates the generated
 packager, verifies the Qubes Template Manager payload layout, and reassembles
 the split root image.  These checks exercise generated artifacts and externally
 visible package contracts, not source-code or patch-shape pattern matching.
+There is intentionally no `static-check.sh`-style source-shape test in the
+public validation path.
 
 `make check` fails if the tools required for those package-contract checks are
 missing.  It intentionally does not include text-only source or patch-shape

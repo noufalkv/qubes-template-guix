@@ -124,7 +124,8 @@ covers it, and any remaining gate that must not be claimed yet.
 5. `Add local and nested-Qubes validation harnesses`
    - Include artifact-backed tests, lifecycle scripts, update-proxy checks,
      memory-balloon checks, and openQA assets.
-   - Keep source-text and patch-shape checks out of the default test gate.
+   - Do not include `static-check.sh`-style source-text or patch-shape checks
+     in the public test suite.
 
 6. `Document review scope, adaptations, security, and maintenance`
    - Include `REVIEWER_GUIDE.md`, `REVIEW_NOTES.md`,
