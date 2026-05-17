@@ -24,8 +24,10 @@ the default update-target path later passed through the stock Qubes
 `sys-net` stub.  The current source contains a Guix-specific proxy
 configuration service, and a rebuilt `guix-minimal` RPM-mode openQA job passed
 the generated Guix client wrapper, updates-proxy forwarder, and `guix-daemon`
-service-state verifier.  Final signed-branch reruns and real Guix update
-tooling through the Qubes proxy still remain open.
+service-state verifier.  A later RPM-mode openQA run passed a controlled
+`guix download` through the generated wrapper and stock Qubes default-target
+policy using a temporary `sys-net` stub.  Final signed-branch reruns and real
+Guix update tooling through an Internet update target still remain open.
 
 ## Current HEAD Contract Checks
 
@@ -34,6 +36,7 @@ The current local tree has passed the local contract checks:
 ```sh
 bash -n scripts/test-memory-balloon-dom0.sh
 bash -n scripts/test-guix-update-proxy-download-dom0.sh
+bash -n scripts/test-guix-update-proxy-stub-download-dom0.sh
 git diff --check
 make check
 ```
@@ -880,22 +883,51 @@ refused `qubes.UpdatesProxy` in the nested openQA environment.  This is useful
 negative evidence: it confirms that the real-download verifier is wired into
 openQA and strict, but it is not a passing Guix update-tooling proxy run.
 
+On May 17, 2026, job 31 reran the same rebuilt minimal RPM-mode artifact with
+the deterministic stub-download proxy gate enabled and the public-Internet
+download gate disabled:
+
+```text
+id: 31
+BUILD: guix-minimal-rpm-r202605162304-stubdownload-fix-202605170229
+TEST: guix_template
+state: done
+result: passed
+root image: /home/sandbox/guix-review-current/root-minimal-r202605162304.img
+RPM: /home/sandbox/guix-review-current/dist/qubes-template-guix-minimal-4.3.0-202605162304.noarch.rpm
+RPM SHA256: 236641ab50919305d8e78bd9c9ef200582b3457cdd11973daea0d37f45b93904
+result dir: /var/lib/openqa/testresults/00000/00000031-qubesos-4.3-guix-template-x86_64-Buildguix-minimal-rpm-r202605162304-stubdownload-fix-202605170229-guix_template@qemu_x86_64
+```
+
+This run passed the earlier RPM install, postinstall, TemplateVM/AppVM smoke,
+and Guix proxy configuration markers, then created a temporary `sys-net` stub
+target and ran a real `guix download` through the generated Guix client wrapper
+and Qubes `qubes.UpdatesProxy` path.  The archived serial log showed
+`OPENQA_RC_000011_0` for proxy configuration, `downloaded 2 bytes`,
+`guix update proxy download check passed`, `guix update proxy stub download
+check passed: guix-minimal -> sys-net`, and `OPENQA_RC_000012_0` for the
+controlled stub-download gate.  This proves the Guix client wrapper can consume
+the local Qubes proxy through stock default-target policy in a deterministic
+nested openQA environment.  It still does not prove public Internet downloads,
+`guix pull`, or substitute downloads through a real update-proxy target.
+
 ## Not Yet Passed
 
 The following gates remain open and must not be claimed as passing from this
 snapshot:
 
-- End-to-end Guix update tooling through the Qubes update proxy remains
-  untested.  The default-target HTTP forwarding gate is now covered by the
-  2026051602 nested-dom0 run above, and RPM-mode openQA job 27 passed
+- End-to-end Guix update tooling through a real Internet update-proxy target
+  remains untested.  The default-target HTTP forwarding gate is covered by the
+  2026051602 nested-dom0 run above, RPM-mode openQA job 27 passed
   `scripts/test-guix-update-proxy-config-dom0.sh` for the generated
-  daemon/client proxy configuration.  The tree now includes
-  `scripts/test-guix-update-proxy-download-dom0.sh` and an opt-in openQA
-  `GUIX_RUN_PROXY_DOWNLOAD_TEST=1` gate for a real `guix download`; job 29
-  reached that gate and failed on dom0 `qubes.UpdatesProxy` refusal in the
-  nested openQA environment.  This snapshot does not yet contain a passing run
-  of that gate or prove that `guix pull`, substitute downloads, or channel
-  updates consume the proxy as intended.
+  daemon/client proxy configuration, and job 31 passed
+  `scripts/test-guix-update-proxy-stub-download-dom0.sh` for a controlled
+  `guix download` through a temporary `sys-net` stub target.  Job 29 reached the
+  public-network `scripts/test-guix-update-proxy-download-dom0.sh` gate and
+  failed on dom0 `qubes.UpdatesProxy` refusal in the nested openQA environment.
+  This snapshot does not yet contain a passing run of that public-network gate
+  or prove that `guix pull`, substitute downloads, or channel updates consume a
+  real Internet update-proxy target as intended.
 - Final signed-branch or signed-tag reruns of the rootfs build, image
   inspection, activation tests, RPM packaging, qvm-template lifecycle checks,
   and RPM-mode openQA.

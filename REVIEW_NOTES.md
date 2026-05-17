@@ -77,9 +77,9 @@ or issue.
 | Template builder precedent | `TEMPLATE_PRECEDENTS.md`, `builder-v2-template/` | Hook mapping documented against Qubes template-builder model |
 | Qubes release-config wiring | `config/qubes-os-r4.3-templates-community-guix.example.yml`, `config/qubes-release-configs-guix.example.patch` | Reviewable sketch with placeholder maintainer identity |
 | Template Manager RPM format | `scripts/package-native-template-rpm.sh`, `tests/rpm-layout-check.sh` | Locally tested |
-| Runtime Qubes integration | `native/modules/qubes/services/qubes-vm.scm`, `native/modules/qubes/systems/guix-template.scm`, `scripts/test-native-rootfs-activation.sh`, `scripts/test-template-rpm-lifecycle-dom0.sh`, `scripts/test-update-proxy-default-target-dom0.sh`, `scripts/test-guix-update-proxy-config-dom0.sh`, `scripts/test-guix-update-proxy-download-dom0.sh`, `scripts/test-memory-balloon-dom0.sh`, `VALIDATION.md` | Partially tested; nested-dom0 `qvm-template` install/reinstall/remove/upgrade/downgrade plus TemplateVM/AppVM smoke passed, including `/dev/xvdc1` swap, `meminfo-writer` startup, dynamic memory growth under pressure, controlled update-proxy qrexec forwarding, default update-target HTTP forwarding through stock Qubes policy, RPM-mode openQA jobs 8/9, and rebuilt minimal openQA job 27 with generated Guix daemon/client proxy verification.  OpenQA job 29 reached the opt-in real-download verifier but failed on dom0 `qubes.UpdatesProxy` refusal, so real Guix update-tooling proxy use and final signed-branch reruns remain unpassed gates. |
+| Runtime Qubes integration | `native/modules/qubes/services/qubes-vm.scm`, `native/modules/qubes/systems/guix-template.scm`, `scripts/test-native-rootfs-activation.sh`, `scripts/test-template-rpm-lifecycle-dom0.sh`, `scripts/test-update-proxy-default-target-dom0.sh`, `scripts/test-guix-update-proxy-config-dom0.sh`, `scripts/test-guix-update-proxy-download-dom0.sh`, `scripts/test-guix-update-proxy-stub-download-dom0.sh`, `scripts/test-memory-balloon-dom0.sh`, `VALIDATION.md` | Partially tested; nested-dom0 `qvm-template` install/reinstall/remove/upgrade/downgrade plus TemplateVM/AppVM smoke passed, including `/dev/xvdc1` swap, `meminfo-writer` startup, dynamic memory growth under pressure, controlled update-proxy qrexec forwarding, default update-target HTTP forwarding through stock Qubes policy, RPM-mode openQA jobs 8/9, rebuilt minimal openQA job 27 with generated Guix daemon/client proxy verification, and job 31 with a controlled `guix download` through a temporary `sys-net` stub target.  OpenQA job 29 reached the opt-in real-network download verifier but failed on dom0 `qubes.UpdatesProxy` refusal, so real Internet update-target downloads and final signed-branch reruns remain unpassed gates. |
 | Maintainer/update story | `MAINTENANCE.md` | Policy documented; actual maintainer identity and signed release process still missing |
-| Security-review framing | `SECURITY.md`, `ADAPTATION_INVENTORY.md` | Trust boundaries and sensitive adaptations documented; nested-dom0 smoke, dynamic memory pressure, default update-target HTTP forwarding, RPM-mode openQA jobs 8/9, and rebuilt minimal openQA job 27 with generated Guix proxy configuration verification are green; job 29 shows the real-download verifier is wired but currently blocked by dom0 updates-proxy refusal in the nested openQA environment; real Guix update-tooling proxy use and final signed-branch reruns remain |
+| Security-review framing | `SECURITY.md`, `ADAPTATION_INVENTORY.md` | Trust boundaries and sensitive adaptations documented; nested-dom0 smoke, dynamic memory pressure, default update-target HTTP forwarding, RPM-mode openQA jobs 8/9, rebuilt minimal openQA job 27 with generated Guix proxy configuration verification, and job 31 controlled Guix proxy download are green; job 29 shows the real-network download verifier is wired but currently blocked by dom0 updates-proxy refusal in the nested openQA environment; real Internet update-target Guix proxy use and final signed-branch reruns remain |
 | Human review burden | `REVIEW_NOTES.md`, `UPSTREAMING.md`, `VALIDATION.md` | Explained, but maintainer identity/signatures are still missing |
 
 ## Comparable Upstream Discussions
@@ -242,8 +242,10 @@ The changes should be reviewed in this order:
   shutdown, `/rw`, `/home`, `/usr/local`, `/dev/xvdc1` swap activation, and
   guest-side `meminfo-writer` startup.
 - Default update-target proxying.
-- A passing real Guix update-tooling proxy run.  The current opt-in openQA run
-  reached this gate, but job 29 failed with dom0 refusing
+- A passing real Guix update-tooling proxy run through an Internet update
+  target.  OpenQA job 31 proves a controlled `guix download` through the
+  generated wrapper and stock default-target policy using a temporary `sys-net`
+  stub, but job 29 failed the real-network download gate with dom0 refusing
   `qubes.UpdatesProxy`.
 
 ## Still Not Upstream-Complete

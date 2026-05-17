@@ -40,7 +40,7 @@ The default check suite executes the Builder content hooks against a temporary
 install tree and builds/extracts real template RPM layout tests for both `guix`
 and `guix-minimal`.  It fails when required RPM/image tooling is missing; the
 upstream-facing test story is based on generated artifacts and Qubes-visible
-contracts, not static source checks.
+contracts, not text-only source inspection.
 
 Qubes VM component sources are pinned to immutable upstream commits and Guix
 recursive content hashes.  The pinned R4.3 components are:
@@ -199,10 +199,11 @@ request or issue has been exhaustively reviewed.
   `VALIDATION.md` separates current build, `qvm-template` lifecycle,
   RPM-mode openQA, update-proxy, and dynamic memory-pressure evidence from
   final signed-branch reruns.  The RPM-mode openQA path now has a passing
-  rebuilt minimal job for the Guix-specific daemon/client proxy verifier.
-  OpenQA job 29 reached the opt-in real-download gate, but dom0 refused
-  `qubes.UpdatesProxy` in the nested test environment, so real Guix
-  update-tooling proxy use is still an open gate.  The opt-in
+  rebuilt minimal job for the Guix-specific daemon/client proxy verifier and a
+  later passing controlled `guix download` through a temporary `sys-net` stub.
+  OpenQA job 29 reached the opt-in public-network download gate, but dom0
+  refused `qubes.UpdatesProxy` in the nested test environment, so real Internet
+  Guix update-tooling proxy use is still an open gate.  The opt-in
   `scripts/test-guix-update-proxy-download-dom0.sh` gate is the intended check
   for a real `guix download` through Qubes updates proxy when the review
   environment has an allowed update target with working Internet access.
@@ -362,12 +363,14 @@ issue.  The current partial evidence snapshot is in `VALIDATION.md`.
   nested-dom0 evidence shows a Guix AppVM growing from 400 MiB to 698 MiB
   under guest allocation pressure; final release evidence must rerun it from
   the signed public branch.
-- Real Guix update/download behavior through the Qubes update proxy.  Current
-  evidence verifies Qubes forwarding, generated Guix proxy configuration, and
-  service state; openQA job 29 reached the real-download verifier but failed on
-  dom0 updates-proxy refusal.  Final evidence still needs a passing
-  `scripts/test-guix-update-proxy-download-dom0.sh` run and actual `guix pull`
-  or substitute downloads through the proxy from the signed public branch.
+- Real Guix update/download behavior through an Internet-capable Qubes update
+  proxy target.  Current evidence verifies Qubes forwarding, generated Guix
+  proxy configuration, service state, and a controlled `guix download` through a
+  temporary `sys-net` stub; openQA job 29 reached the public-network download
+  verifier but failed on dom0 updates-proxy refusal.  Final evidence still
+  needs a passing `scripts/test-guix-update-proxy-download-dom0.sh` run and
+  actual `guix pull` or substitute downloads through the proxy from the signed
+  public branch.
 - Optional Qubes dom0 integration results for `qubes.tests.integ.qrexec` and
   `qubes.tests.integ.vm_qrexec_gui`, with any nested-virtualization host limits
   called out separately.

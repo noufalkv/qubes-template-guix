@@ -320,8 +320,18 @@ configuration separately:
 ```
 
 That check confirms the Qubes service flag, generated `guix` wrapper, and
-`guix-daemon` proxy environment.  A release candidate should still run a real
-Guix update or download command through the Qubes proxy before submission:
+`guix-daemon` proxy environment.  Disposable nested-dom0/openQA environments
+can also run a deterministic Guix client download through the stock Qubes
+default update-target policy by creating a temporary `sys-net` stub:
+
+```sh
+./scripts/test-guix-update-proxy-stub-download-dom0.sh --template guix
+```
+
+That controlled stub check exercises the generated Guix client wrapper and
+Qubes `qubes.UpdatesProxy` forwarding without depending on public network
+availability.  A release candidate should still run a real Guix update or
+download command through the Qubes proxy before submission:
 
 ```sh
 ./scripts/test-guix-update-proxy-download-dom0.sh \
@@ -332,9 +342,10 @@ Guix update or download command through the Qubes proxy before submission:
 The download check depends on dom0 allowing `qubes.UpdatesProxy` from the
 TemplateVM to an update-proxy target with working Internet access.  On standard
 Qubes policy this normally means the default `sys-net` update target must
-exist and be usable.  The openQA harness stages the same script and runs it
-only when `GUIX_RUN_PROXY_DOWNLOAD_TEST=1` is set, so ordinary local RPM smoke
-does not silently depend on public network availability.
+exist and be usable.  The openQA harness stages the real-network script only
+when `GUIX_RUN_PROXY_DOWNLOAD_TEST=1` is set, so ordinary local RPM smoke does
+not silently depend on public network availability.  The controlled stub gate is
+separate and opt-in through `GUIX_RUN_PROXY_STUB_DOWNLOAD_TEST=1`.
 
 ## Local Checks
 
@@ -353,7 +364,7 @@ the split root image.  These checks exercise generated artifacts and externally
 visible package contracts, not source-code pattern matching.
 
 `make check` fails if the tools required for those package-contract checks are
-missing.  It intentionally does not include source-pattern or patch-sketch
+missing.  It intentionally does not include text-only source or patch-shape
 checks as substitute evidence for a working template.
 
 The runtime-focused root image check is

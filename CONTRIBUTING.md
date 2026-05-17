@@ -24,9 +24,10 @@ make check
 ./scripts/check-qubes-pins.sh
 ```
 
-Do not add source-pattern or patch-shape checks as upstream evidence.  Local
-tests should execute build hooks, create or inspect generated artifacts, or
-validate Qubes-visible template contracts.
+Do not add tests that only grep source text, compare patch shape, or inspect
+whether code "looks right" as upstream evidence.  Local tests should execute
+build hooks, create or inspect generated artifacts, or validate Qubes-visible
+template contracts.
 
 When fresh upstream checkouts are available, also run:
 
@@ -71,6 +72,9 @@ evidence from the signed public branch for:
   private-volume persistence, `/dev/xvdc1` swap activation, and guest-side
   `meminfo-writer` startup.
 - Update proxy forwarding and generated Guix daemon/client proxy configuration.
+- A controlled Guix client download through the Qubes updates proxy in
+  disposable/nested review environments, using
+  `scripts/test-guix-update-proxy-stub-download-dom0.sh`.
 - A real Guix update or download command through the Qubes updates proxy, such
   as `scripts/test-guix-update-proxy-download-dom0.sh` in a review environment
   with a working update-proxy target.

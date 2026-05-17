@@ -40,6 +40,7 @@ not yet a publishable Qubes community template.
   `scripts/test-update-proxy-default-target-dom0.sh`,
   `scripts/test-guix-update-proxy-config-dom0.sh`,
   `scripts/test-guix-update-proxy-download-dom0.sh`,
+  `scripts/test-guix-update-proxy-stub-download-dom0.sh`,
   `scripts/diagnose-update-proxy-dom0.sh`,
   `scripts/test-memory-balloon-dom0.sh`, and `openqa/qubesos/`.
 
@@ -72,8 +73,10 @@ release evidence:
 - Final signed-branch RPM-mode openQA has not been rerun.
 - Real `guix pull` or substitute downloads through the Qubes update proxy are
   not proven.  RPM-mode openQA job 27 proves the generated Guix client/daemon
-  proxy configuration and service state for the rebuilt minimal RPM only.
-  OpenQA job 29 reached the real-download verifier, but dom0 refused
-  `qubes.UpdatesProxy`; there is still no passing release evidence for real
-  Guix update tooling through the proxy.
+  proxy configuration and service state for the rebuilt minimal RPM, and job 31
+  proves a controlled `guix download` through stock Qubes default-target policy
+  using a temporary `sys-net` stub.  OpenQA job 29 reached the real-network
+  download verifier, but dom0 refused `qubes.UpdatesProxy`; there is still no
+  passing release evidence for real Guix update tooling through an Internet
+  update target.
 - Qubes maintainers have not reviewed or accepted the template.
