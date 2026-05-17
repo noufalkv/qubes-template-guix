@@ -32,7 +32,7 @@ complete.
 | Existing template precedent mapping | `TEMPLATE_PRECEDENTS.md`, `builder-v2-template/` | Guix hook mapping is documented against the Qubes template-builder model |
 | Builder v2 multi-repo change | `config/README.md`, `config/qubes-builderv2-guix.example.patch` | Patch sketch only; not accepted upstream |
 | Release-config multi-repo change | `config/README.md`, `config/qubes-release-configs-guix.example.patch` | Patch sketch only; maintainer identity placeholders remain |
-| Runtime validation snapshot | `VALIDATION.md` | Partial; current normal/minimal rootfs/RPM plus nested-dom0 qvm-template lifecycle, upgrade/downgrade, TemplateVM/AppVM smoke, dynamic memory-pressure, default update-target proxy, and RPM-mode openQA evidence present, including swap activation, `meminfo-writer` startup, memory growth under pressure, `127.0.0.1:8082` forwarding through stock Qubes policy, openQA jobs 8/9, rebuilt minimal openQA job 27 with generated Guix daemon/client proxy verification, and job 31 with controlled `guix download` through a temporary `sys-net` stub; openQA job 29 reached the opt-in real-network download gate but failed on dom0 `qubes.UpdatesProxy` refusal, so real Internet update-target Guix proxy use and final signed-branch reruns remain open |
+| Runtime validation snapshot | `VALIDATION.md` | Partial; dated normal/minimal rootfs/RPM plus nested-dom0 qvm-template lifecycle, upgrade/downgrade, TemplateVM/AppVM smoke, dynamic memory-pressure, default update-target proxy, and RPM-mode openQA evidence present, including swap activation, `meminfo-writer` startup, memory growth under pressure, `127.0.0.1:8082` forwarding through stock Qubes policy, openQA jobs 8/9, rebuilt minimal openQA job 27 with generated Guix daemon/client proxy verification, and job 31 with controlled `guix download` through a temporary `sys-net` stub; openQA job 29 reached the opt-in real-network download gate but failed on dom0 `qubes.UpdatesProxy` refusal, so real Internet update-target Guix proxy use and final signed-branch reruns remain open |
 | openQA and qvm-template lifecycle evidence | `openqa/`, `scripts/run-openqa-template-rpm.sh`, `scripts/test-template-rpm-lifecycle-dom0.sh`, `scripts/test-guix-update-proxy-config-dom0.sh`, `scripts/test-guix-update-proxy-download-dom0.sh`, `scripts/test-guix-update-proxy-stub-download-dom0.sh`, `VALIDATION.md` | qvm-template install/reinstall/remove/upgrade/downgrade and smoke passed for both variants in nested dom0; RPM-mode openQA jobs 8 and 9 passed for normal and minimal 2026051602 RPMs; rebuilt minimal RPM-mode openQA job 27 passed generated Guix daemon/client proxy verification; openQA job 31 passed a controlled `guix download` through stock default-target policy and a temporary `sys-net` stub; openQA job 29 proved the real-network download gate is wired and strict, but it failed on dom0 updates-proxy policy/default-target refusal and is not a passing Internet-target download run |
 
 ## Prompt-To-Artifact Checklist
@@ -92,14 +92,14 @@ are removed.
 
 ## Latest Evidence
 
-Verification evidence includes the latest local artifact contract pass, the
-GCP Guix system-contract pass at commit `e475c2b` after the qrexec fork-server
-service cleanup, and the current targeted Builder/release-config checks.  Later
-commits after `e475c2b` do not change the Scheme system records covered by
-that GCP run.  The post-`e475c2b` native rootfs-builder change is the pinned
-Guix channel policy; it is covered by the local
-`tests/build-native-rootfs-policy-check.sh` gate and the recorded missing-file
-policy check in `VALIDATION.md`:
+Verification evidence includes a local artifact-contract pass at `42b8b11`,
+the GCP Guix system-contract pass at commit `e475c2b` after the
+qrexec fork-server service cleanup, and the current targeted
+Builder/release-config checks.  Later commits after `e475c2b` do not change the
+Scheme system records covered by that GCP run.  The post-`e475c2b` native
+rootfs-builder change is the pinned Guix channel policy; it is covered by the
+local `tests/build-native-rootfs-policy-check.sh` gate and the recorded
+missing-file policy check in `VALIDATION.md`:
 
 ```sh
 make check

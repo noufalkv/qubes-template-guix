@@ -31,14 +31,14 @@ Guix update tooling through an Internet update target still remain open.
 
 ## Current HEAD Contract Checks
 
-The current tree passed the local artifact checks and the Guix-capable GCP
-system-contract check after the May 17, 2026 audit refresh.  The latest GCP
-rerun archived commit `e475c2b` after the unused qrexec fork-server Shepherd
-service was removed.  Later commits after `e475c2b` do not change the Guix
-system records or Scheme services covered by that GCP run.  The
-post-`e475c2b` native rootfs-builder change is the pinned Guix channel policy;
-it is covered by the local `tests/build-native-rootfs-policy-check.sh` gate and
-the recorded missing-file policy check below.
+The latest recorded local artifact checks passed at commit `42b8b11` after
+the May 17, 2026 source-only test policy cleanup.  The latest Guix-capable GCP
+system-contract rerun archived commit `e475c2b` after the unused qrexec
+fork-server Shepherd service was removed.  Later commits after `e475c2b` do
+not change the Guix system records or Scheme services covered by that GCP run.
+The post-`e475c2b` native rootfs-builder change is the pinned Guix channel
+policy; it is covered by the local `tests/build-native-rootfs-policy-check.sh`
+gate and the recorded missing-file policy check below.
 
 Local artifact check:
 

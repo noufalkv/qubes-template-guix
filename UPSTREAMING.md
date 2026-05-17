@@ -30,13 +30,15 @@ is in `COPYING`, and code/config entry points carry SPDX license identifiers.
 Guix package definitions still record the upstream Qubes component licenses
 individually.
 
-The local artifact contract check is green:
+The local artifact contract check passed at local commit `42b8b11`:
 
 ```sh
 make check
 ```
 
-The Guix system contract check is green on the Guix-capable GCP review builder:
+The Guix system contract check passed on the Guix-capable GCP review builder
+at commit `e475c2b`; later commits have not changed the Scheme system records
+covered by that run, but final signed-branch reruns are still required:
 
 ```sh
 make guix-system-contract-check
