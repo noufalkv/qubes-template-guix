@@ -160,6 +160,7 @@ The changes should be reviewed in this order:
    `scripts/builder-v2-template-adapter.sh`.
 4. Test and release harness:
    openQA files, nested-dom0 scripts, GCP builder scripts, and
+   `tests/build-native-rootfs-policy-check.sh`,
    `tests/builder-hook-contract-check.sh`, `tests/builder-rpm-contract-check.sh`,
    `tests/rpm-layout-check.sh`,
    `scripts/test-update-proxy-default-target-dom0.sh`,

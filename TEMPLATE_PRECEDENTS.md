@@ -68,6 +68,9 @@ GPG fingerprint, signing path, and Builder v2 integration are accepted.
 
 ## Validation Tied To This Mapping
 
+- `tests/build-native-rootfs-policy-check.sh` executes the native rootfs
+  builder's pinned-channel failure path and verifies that release builds do not
+  proceed to image or mount work without `config/channels.scm`.
 - `tests/builder-hook-contract-check.sh` executes the Builder environment and
   layout hooks that do not require a Guix system build against a temporary
   install tree.

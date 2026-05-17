@@ -207,8 +207,10 @@ request or issue has been exhaustively reviewed.
   the resulting template RPM metadata and payload before installing with
   `qvm-template`.
   Local response: `config/`, `builder-v2-template/`,
-  `scripts/package-native-template-rpm.sh`, and `tests/rpm-layout-check.sh`
-  make the Guix builder inputs and resulting RPM contract inspectable.
+  `scripts/package-native-template-rpm.sh`,
+  `tests/build-native-rootfs-policy-check.sh`, and
+  `tests/rpm-layout-check.sh` make the Guix builder inputs, pinned-channel
+  release-build policy, and resulting RPM contract inspectable.
 - Qubes Forum, "How to make a template":
   `https://forum.qubes-os.org/t/how-to-make-a-template/34320`
   Expectation: the right template-building path depends on the target OS and

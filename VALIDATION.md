@@ -34,9 +34,11 @@ Guix update tooling through an Internet update target still remain open.
 The current tree passed the local artifact checks and the Guix-capable GCP
 system-contract check after the May 17, 2026 audit refresh.  The latest GCP
 rerun archived commit `e475c2b` after the unused qrexec fork-server Shepherd
-service was removed.  Later commits after `e475c2b` are documentation,
-evidence, or history-map updates; they do not change the Guix system records or
-Scheme services covered by that GCP run.
+service was removed.  Later commits after `e475c2b` do not change the Guix
+system records or Scheme services covered by that GCP run.  The
+post-`e475c2b` native rootfs-builder change is the pinned Guix channel policy;
+it is covered by the local `tests/build-native-rootfs-policy-check.sh` gate and
+the recorded missing-file policy check below.
 
 Local artifact check:
 
@@ -50,14 +52,18 @@ GCP Guix system-contract check:
 make guix-system-contract-check
 ```
 
-`make check` currently runs `tests/builder-hook-contract-check.sh`,
+`make check` currently runs `tests/build-native-rootfs-policy-check.sh`,
+`tests/builder-hook-contract-check.sh`,
 `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`.
 The default suite does not include source-text, patch-shape, or
 release-config-fragment checks as substitute evidence.  Tests in this suite
 must exercise generated artifacts or Qubes-visible contracts.
-The Builder hook contract check
-executes the Builder v2 hooks against a temporary install tree.  The Builder
-RPM contract check feeds generated ext4 root images through
+The native rootfs policy check executes `scripts/build-native-rootfs.sh` from a
+temporary repository without `config/channels.scm` and asserts that it fails
+before fake `guix`, `sudo`, or `mountpoint` commands can run or image/mount
+artifacts can be created.  The Builder hook contract check executes the
+Builder v2 hooks against a temporary install tree.  The Builder RPM contract
+check feeds generated ext4 root images through
 `scripts/builder-v2-template-adapter.sh build-rpm`, validates the resulting
 `qubes-template-*` metadata with
 `scripts/test-template-rpm-lifecycle-dom0.sh --metadata-only`, extracts the

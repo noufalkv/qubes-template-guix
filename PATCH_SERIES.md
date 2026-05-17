@@ -31,6 +31,7 @@ changes.
    - `config/README.md`
 
 5. Validation and lifecycle harnesses:
+   - `tests/build-native-rootfs-policy-check.sh`
    - `tests/builder-hook-contract-check.sh`
    - `tests/builder-rpm-contract-check.sh`
    - `tests/guix-system-contract-check.scm`
@@ -185,7 +186,7 @@ separation of concerns:
 | `7a9f370` | Drop the unused qrexec fork-server Shepherd service and document the actual upstream XDG-autostart ownership path. |
 | `ed32328` | Record the local artifact check and GCP Guix system-contract rerun after the qrexec fork-server service cleanup. |
 | `ded8826` | Refresh the Builder v2 and release-config sketch validation notes against current upstream checkouts and remove duplicate release-config result text. |
-| `b4167a8` | Clarify that the GCP Guix system-contract evidence is tied to commit `e475c2b` and that later commits are docs/evidence/history-map only. |
+| `b4167a8` | Clarify that the GCP Guix system-contract evidence is tied to commit `e475c2b` and, at that point in history, later commits were docs/evidence/history-map only. |
 | `5a3f630` | Tighten the upstream submission drafts so missing release gates, Builder/release-config sketch checks, and focused-test limitations remain explicit. |
 | `7970c93` | Reclassify older GCP Guix REPL loads as historical evidence and make the executable system-contract gate the current Scheme service-graph check. |
 | `e0261a9` | Clarify dated runtime/openQA evidence so older GCP and nested-dom0 runs remain review evidence without being mistaken for final signed-branch proof. |
