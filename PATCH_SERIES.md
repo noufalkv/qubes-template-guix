@@ -181,6 +181,7 @@ separation of concerns:
 | `630d7d3` | Correct the Builder hook review map so `01_install_core.sh`, `02_install_groups.sh`, and `04_install_qubes.sh` match their actual responsibilities. |
 | `a32182e` | Document the safety boundary for the dom0 root-image import helper and keep it framed as test infrastructure, not the release path. |
 | `dd75cdf` | Document that the openQA setup script is for a dedicated review host because it rewrites local openQA tests, API credentials, worker configuration, and assets. |
+| `122ebd2` | Make the test policy explicit: source-shape/static checks are not upstream tests, and the public suite should exercise generated artifacts, Guix records, dom0 behavior, or openQA. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
