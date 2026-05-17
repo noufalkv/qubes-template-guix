@@ -32,6 +32,12 @@ git -C /tmp/qubes-release-configs apply --check \
 This is review hygiene for the sketch patches, not a test gate and not
 template-runtime evidence.
 
+The repository-local `make check` suite also parses
+`qubes-os-r4.3-templates-community-guix.example.yml` and validates the expected
+`builder-guix`, `guix`, and `guix-minimal` entries.  That local check only
+guards the example fragment shape; it does not prove that Qubes maintainers have
+accepted the release-config change.
+
 Focused checks used for the Builder v2 sketch, refreshed against current
 upstream sources on May 17, 2026, at upstream commit `ff36320`:
 

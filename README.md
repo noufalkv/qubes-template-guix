@@ -360,8 +360,10 @@ against a temporary install tree, packages tiny normal and minimal ext4 root
 images through the Builder v2 RPM adapter, validates the generated
 `qvm-template` metadata, then builds and extracts template RPMs through the real
 packager, verifies the Qubes Template Manager payload layout, and reassembles
-the split root image.  These checks exercise generated artifacts and externally
-visible package contracts, not source-code pattern matching.
+the split root image.  It also parses the example R4.3 release-config fragment
+and validates the `builder-guix`, `guix`, and `guix-minimal` entries.  These
+checks exercise generated artifacts, structured config, and externally visible
+package contracts, not source-code pattern matching.
 
 `make check` fails if the tools required for those package-contract checks are
 missing.  It intentionally does not include text-only source or patch-shape

@@ -55,7 +55,9 @@ make check
 
 `make check` runs contract checks only: Builder hooks are executed
 against a temporary install tree, and normal/minimal template RPMs are built,
-extracted, checked for Qubes Template Manager layout, and reassembled.
+extracted, checked for Qubes Template Manager layout, and reassembled.  It also
+parses the example R4.3 release-config fragment for the expected `builder-guix`,
+`guix`, and `guix-minimal` entries.
 
 The pin freshness check is useful provenance hygiene, but it is not runtime or
 release evidence:

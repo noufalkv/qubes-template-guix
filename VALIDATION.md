@@ -43,11 +43,12 @@ make check
 ```
 
 `make check` currently runs `tests/builder-hook-contract-check.sh`,
-`tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`.  The
-Builder hook contract check executes the Builder v2 hooks against a
-temporary install tree.  The Builder RPM contract check feeds generated ext4
-root images through `scripts/builder-v2-template-adapter.sh build-rpm`,
-validates the resulting `qubes-template-*` metadata with
+`tests/builder-rpm-contract-check.sh`, `tests/rpm-layout-check.sh`, and
+`tests/release-config-fragment-check.sh`.  The Builder hook contract check
+executes the Builder v2 hooks against a temporary install tree.  The Builder
+RPM contract check feeds generated ext4 root images through
+`scripts/builder-v2-template-adapter.sh build-rpm`, validates the resulting
+`qubes-template-*` metadata with
 `scripts/test-template-rpm-lifecycle-dom0.sh --metadata-only`, extracts the
 payload, and reads marker files back from the reassembled root images.  The RPM
 layout test builds real normal and minimal `qubes-template-*` RPMs from a
@@ -55,7 +56,9 @@ generated ext4 `root.img`, extracts the payload, checks the Qubes Template
 Manager layout, reassembles the split root image, reads the marker file from
 the extracted filesystem, and validates the RPM-to-template metadata through
 `scripts/test-template-rpm-lifecycle-dom0.sh` via a symlinked runner using the
-short option form.
+short option form.  The release-config fragment check parses the example R4.3
+community-template YAML and validates the `builder-guix`, `guix`, and
+`guix-minimal` entries plus the intentional maintainer placeholders.
 
 After aligning the updates-proxy wrapper with Qubes' current
 `--use-stdin-socket` command, the touched Scheme file was synced to the GCP

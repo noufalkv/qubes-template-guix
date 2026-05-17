@@ -34,6 +34,7 @@ changes.
    - `tests/builder-hook-contract-check.sh`
    - `tests/builder-rpm-contract-check.sh`
    - `tests/rpm-layout-check.sh`
+   - `tests/release-config-fragment-check.sh`
    - `scripts/test-template-rpm-lifecycle-dom0.sh`
    - `scripts/test-update-proxy-default-target-dom0.sh`
    - `scripts/test-guix-update-proxy-config-dom0.sh`
