@@ -201,6 +201,7 @@ separation of concerns:
 | `d15a06a` | Ignore failed-run work directories from the native-rootfs policy check so generated validation artifacts stay out of review. |
 | `a3aa9a4` | Map auxiliary helper scripts and openQA glue as support tooling outside the native release artifact. |
 | `b4961f9` | Clarify that static source-shape and patch-shape scripts are excluded from repository tests, validation logs, and upstream patch series. |
+| `a06b4fb` | Tie current validation wording to dated local and GCP evidence instead of implying final signed-branch proof. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
