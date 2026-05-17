@@ -172,6 +172,7 @@ separation of concerns:
 | `76605e5` | Clarify that the artifact contract suite runs locally while the Guix system-record contract gate runs on a Guix-capable builder. |
 | `d216fb3` | Document the standard Qubes `user` account and group membership in the security review notes. |
 | `bbc5251` | Record the Qubes openQA/integration-test precedent for dom0-dependent guest behavior. |
+| `714a051` | Make the omitted Guix base services explicit in the adaptation inventory and review notes. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
