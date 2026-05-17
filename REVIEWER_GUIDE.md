@@ -51,11 +51,16 @@ not yet a publishable Qubes community template.
 ```sh
 git diff --check
 make check
+make guix-system-contract-check
 ```
 
 `make check` runs contract checks only: Builder hooks are executed
 against a temporary install tree, and normal/minimal template RPMs are built,
 extracted, checked for Qubes Template Manager layout, and reassembled.
+`make guix-system-contract-check` requires Guix and instantiates the actual
+normal/minimal operating-system records to check Qubes-visible defaults such as
+`/dev/xvdc1` swap, default privileged programs, passwordless sudo, required
+Qubes services, and `meminfo-writer` defaults.
 
 The pin freshness check is useful provenance hygiene, but it is not runtime or
 release evidence:

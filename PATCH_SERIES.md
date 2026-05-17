@@ -33,6 +33,8 @@ changes.
 5. Validation and lifecycle harnesses:
    - `tests/builder-hook-contract-check.sh`
    - `tests/builder-rpm-contract-check.sh`
+   - `tests/guix-system-contract-check.scm`
+   - `tests/guix-system-contract-check.sh`
    - `tests/rpm-layout-check.sh`
    - `scripts/test-template-rpm-lifecycle-dom0.sh`
    - `scripts/test-update-proxy-default-target-dom0.sh`
@@ -159,6 +161,7 @@ the same separation of concerns:
 | `ba1010d`, `3899a26` | Remove stale test names and review wording so local checks are presented as Builder hook, Builder RPM, and template RPM contracts rather than source-only checks. |
 | `221a2cf`, `011e18f`, `d4055e2`, `119ccf7`, `090fe88` | Anchor current template precedent sources, refresh forum precedent around Builder v2 and template-service scope, tighten the adaptation inventory against the actual Scheme/build implementation, and normalize upstream-facing hook terminology. |
 | `d017cab`, `aa3d497`, `13b7c85`, `d3c6c67`, `f4cfeb6`, `e21a5ec`, `30acbd4`, `f21deb1`, `ffbe2e0`, `8f9cf69`, `9dfd3d4` | Rework review hygiene around placeholders, SPDX/license evidence, source-shape test gates, artifact-backed test inventory, non-obvious-change audit coverage, generated-artifact hygiene, and validation proof language. |
+| `Add Guix system contract check` | Add a Guix-backed system contract check for normal/minimal Qubes-visible defaults: standard swap, default privileged programs, passwordless sudo, required services, and `meminfo-writer` defaults. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process

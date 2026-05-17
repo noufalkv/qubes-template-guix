@@ -367,6 +367,18 @@ visible package contracts, not source-code or patch-shape pattern matching.
 missing.  It intentionally does not include text-only source or patch-shape
 checks as substitute evidence for a working template.
 
+If Guix is available, run the Guix record contract check as a separate gate:
+
+```sh
+make guix-system-contract-check
+```
+
+That check instantiates the actual normal and minimal `operating-system`
+records and verifies Qubes-visible defaults that should not drift silently:
+standard `/dev/xvdc1` swap, Guix default privileged programs, passwordless
+`wheel` and `user` sudo, and required Qubes services including QubesDB, qrexec,
+GUI, updates proxy, and `meminfo-writer`.
+
 The runtime-focused root image check is
 `scripts/test-native-rootfs-activation.sh`.  It mounts a writable copy of the
 root image, runs the generated Guix activation script in a chroot, verifies that

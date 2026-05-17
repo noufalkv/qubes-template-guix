@@ -41,13 +41,13 @@ bash -n scripts/test-guix-update-proxy-stub-download-dom0.sh
 git diff --check
 git ls-files tests
 make check
+make guix-system-contract-check
 ```
 
 `make check` currently runs `tests/builder-hook-contract-check.sh`,
 `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`.
-`git ls-files tests` lists only those three tests; the default suite does not
-include source-text, patch-shape, or release-config-fragment checks as
-substitute evidence.
+The default suite does not include source-text, patch-shape, or
+release-config-fragment checks as substitute evidence.
 The Builder hook contract check
 executes the Builder v2 hooks against a temporary install tree.  The Builder
 RPM contract check feeds generated ext4 root images through
@@ -61,6 +61,19 @@ Manager layout, reassembles the split root image, reads the marker file from
 the extracted filesystem, and validates the RPM-to-template metadata through
 `scripts/test-template-rpm-lifecycle-dom0.sh` via a symlinked runner using the
 short option form.
+
+The optional `make guix-system-contract-check` gate requires Guix.  It was run
+on the GCP review builder after adding the check and passed with:
+
+```text
+./tests/guix-system-contract-check.sh
+Guix system contract check passed
+```
+
+That check instantiates the normal and minimal `operating-system` records with
+real Guix and asserts standard Qubes/Guix system contracts: `/dev/xvdc1` swap,
+unchanged Guix default privileged programs, passwordless `wheel` and `user`
+sudo, required Qubes services, and default `meminfo-writer` configuration.
 
 After aligning the updates-proxy wrapper with Qubes' current
 `--use-stdin-socket` command, the touched Scheme file was synced to the GCP

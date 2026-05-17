@@ -30,7 +30,16 @@ this repository's source or patch text is not release evidence.  Local tests
 should execute build hooks, create or inspect generated artifacts, or validate
 Qubes-visible template contracts.
 
-When fresh upstream checkouts are available, also run:
+When Guix is available, also run:
+
+```sh
+make guix-system-contract-check
+```
+
+This is a real Guix record check, not a source-text check.  It instantiates both
+template variants and verifies Qubes-visible defaults such as `/dev/xvdc1`
+swap, passwordless sudo, default privileged programs, required Qubes services,
+and `meminfo-writer` defaults.
 
 Run the Builder v2 and release-config sketch checks directly in fresh upstream
 checkouts when changing files under `config/`.  Treat `make check`, rootfs

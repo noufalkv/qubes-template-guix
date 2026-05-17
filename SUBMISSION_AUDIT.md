@@ -27,6 +27,7 @@ complete.
 | Guix channel reproducibility | `config/channels.scm`, installed `/etc/guix/channels.scm`, `VALIDATION.md` | Present; `guix time-machine -- describe` passed on GCP |
 | Template RPM format | `scripts/package-native-template-rpm.sh`, `tests/rpm-layout-check.sh` | Locally tested for normal and minimal variants |
 | Executable build contracts | `tests/builder-hook-contract-check.sh`, `tests/builder-rpm-contract-check.sh`, `tests/rpm-layout-check.sh`, `make check` | Present; local run passes and exercises Builder hook outputs, Builder adapter RPM output, and real template RPM layout |
+| Guix system record contracts | `tests/guix-system-contract-check.scm`, `make guix-system-contract-check`, `VALIDATION.md` | Present; GCP Guix run instantiates normal/minimal systems and verifies swap, privileged-programs, passwordless sudo, Qubes services, and `meminfo-writer` defaults |
 | Builder v2 content-script shape | `builder-v2-template/`, `scripts/build-native-rootfs.sh --install-dir` | Present as a reviewable component shape |
 | Existing template precedent mapping | `TEMPLATE_PRECEDENTS.md`, `builder-v2-template/` | Guix hook mapping is documented against the Qubes template-builder model |
 | Builder v2 multi-repo change | `config/README.md`, `config/qubes-builderv2-guix.example.patch` | Patch sketch only; not accepted upstream |
@@ -44,7 +45,7 @@ complete.
 | Upstream process may span multiple repos | `config/qubes-builderv2-guix.example.patch`, `config/qubes-release-configs-guix.example.patch`, `config/README.md` | Builder v2 and release-config targets are separated and named |
 | Clear commit history | `git log --oneline`, `PATCH_SERIES.md` | Clean review branch present with a current local history map; final public branch still needs maintainer signing |
 | Every non-obvious change explained | `REVIEW_NOTES.md`, `ADAPTATION_INVENTORY.md`, `MAINTENANCE.md` | Package phases, services, update model, 20G root image sizing, installed reconfiguration inputs, no-op bootloader closure handling, normal/minimal appmenu split, and review-sensitive choices are documented |
-| Tests should exercise real contracts | `tests/builder-hook-contract-check.sh`, `tests/builder-rpm-contract-check.sh`, `tests/rpm-layout-check.sh`, `VALIDATION.md` | Default local checks execute Builder hooks against a temporary install tree, feed generated images through the Builder RPM adapter, build/extract/reassemble RPM layouts, and validate RPM lifecycle metadata; missing RPM/image tooling is a hard failure, not a false pass |
+| Tests should exercise real contracts | `tests/builder-hook-contract-check.sh`, `tests/builder-rpm-contract-check.sh`, `tests/rpm-layout-check.sh`, `tests/guix-system-contract-check.scm`, `VALIDATION.md` | Default local checks execute Builder hooks against a temporary install tree, feed generated images through the Builder RPM adapter, build/extract/reassemble RPM layouts, and validate RPM lifecycle metadata; the Guix-only gate instantiates real system records and checks Qubes-visible defaults; missing RPM/image/Guix tooling is a hard failure for the relevant gate, not a false pass |
 
 ## Current Completion Audit
 
@@ -65,8 +66,8 @@ Inspected evidence in the current tree:
 | Check | Evidence |
 | --- | --- |
 | Clean public branch history | `git log --oneline --decorate --max-count=5` shows only scoped review commits on `master`; `PATCH_SERIES.md` maps the implementation and evidence commits to review purpose. |
-| Tracked tests exercise build contracts | `make check` runs `tests/builder-hook-contract-check.sh`, `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`. |
-| Default test inventory is artifact-backed | `git ls-files tests` lists only the Builder hook, Builder RPM contract, and RPM layout checks; these tests execute code, build package artifacts, extract payloads, and validate external template contracts. |
+| Default tests exercise build contracts | `make check` runs `tests/builder-hook-contract-check.sh`, `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`. |
+| Test inventory is contract-backed | `git ls-files tests` lists Builder hook, Builder RPM contract, RPM layout, and Guix system contract checks; these tests execute code, build package artifacts, extract payloads, validate external template contracts, or instantiate real Guix system records. |
 | Working tree clean | `git status --short` has no output. |
 | Generated artifacts stay out of review | `.gitignore` covers root images, RPMs, tarballs, cache/dist output, and current test work directories; `git ls-files` does not list generated RPM/image artifacts. |
 | License/SPDX hygiene | `COPYING` is tracked; code and build entry points under `Makefile*`, `scripts/`, `tests/`, `native/`, `builder-v2-template/`, and `config/*.scm` carry SPDX headers, excluding data-only appmenu allowlists and `template.conf`. |
@@ -79,6 +80,7 @@ Inspected evidence in the current tree:
 | Template-builder precedent is explicit | `TEMPLATE_PRECEDENTS.md` maps Guix hooks to the standard Qubes template hook responsibilities and release-config model. |
 | Contributor workflow is explicit | `CONTRIBUTING.md` lists required checks, release evidence, review rules, and multi-repo ordering. |
 | Local tests cover real contracts | `make check` runs `tests/builder-hook-contract-check.sh`, `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`; these execute Builder hooks against a temporary install tree, package generated normal and minimal root images through the Builder adapter, build/extract/reassemble normal and minimal template RPM layouts, and validate the RPM metadata path through the dom0 lifecycle harness in metadata-only mode. |
+| Guix system contracts are executable | `make guix-system-contract-check` passed on the GCP Guix builder; it instantiates both variants and checks `/dev/xvdc1` swap, default privileged programs, passwordless sudo, required Qubes services, and `meminfo-writer` defaults. |
 | Builder v2 sketch has focused tests | Fresh patched checkout `/tmp/qubes-builderv2-current` at upstream `ff36320` passed distribution and template-plugin support tests for `vm-guix`. |
 | Release-config sketch parses after apply | Fresh patched checkout `/tmp/qubes-release-configs-current` at upstream `e7ad66d` parsed the resulting R4.3 community template YAML and confirmed `builder-guix`, `guix`, and `guix-minimal`. |
 | Submission drafts exist | `SUBMISSION_DRAFTS.md` provides editable `qubes-devel`, `[Contribution]`, Builder v2 PR, and release-config PR drafts with placeholder, maintainer handoff, controlled-vs-real proxy, and validation warnings. |
@@ -100,6 +102,7 @@ bash -n scripts/test-guix-update-proxy-download-dom0.sh
 bash -n scripts/test-guix-update-proxy-stub-download-dom0.sh
 bash -n scripts/test-memory-balloon-dom0.sh
 make check
+make guix-system-contract-check
 git diff --check
 git ls-files tests
 git status --short

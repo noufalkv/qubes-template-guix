@@ -34,6 +34,7 @@ The local contract checks are green:
 
 ```sh
 make check
+make guix-system-contract-check
 ```
 
 The default check suite executes the Builder hooks against a temporary
@@ -41,6 +42,11 @@ install tree and builds/extracts real template RPM layout tests for both `guix`
 and `guix-minimal`.  It fails when required RPM/image tooling is missing; the
 upstream-facing test story is based on generated artifacts and Qubes-visible
 contracts, not text-only source inspection.
+The Guix system contract check is separate because it requires Guix.  It
+instantiates both operating-system variants and verifies Qubes-visible defaults
+that reviewers asked to preserve: `/dev/xvdc1` swap, default privileged
+programs, passwordless sudo, required Qubes services, and `meminfo-writer`
+defaults.
 
 Qubes VM component sources are pinned to immutable upstream commits and Guix
 recursive content hashes.  The pinned R4.3 components are:
@@ -323,6 +329,9 @@ request for Qubes to host an opaque prebuilt image.
   mutation of `/etc/pam.d`.
 - Qubes meminfo writer is packaged and started through a configurable Shepherd
   service.
+- Normal and minimal Guix system records have an executable contract check for
+  standard swap, default privileged programs, passwordless sudo, required
+  Qubes services, and `meminfo-writer` defaults.
 - Disabled upstream package tests include local rationale in the package
   definitions.
 - Qubes VM component freshness is checkable with an explicit maintainer command

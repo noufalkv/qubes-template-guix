@@ -75,6 +75,10 @@ GPG fingerprint, signing path, and Builder v2 integration are accepted.
   and payload.
 - `tests/rpm-layout-check.sh` builds and extracts normal and minimal template
   RPM layouts.
+- `tests/guix-system-contract-check.scm` instantiates the normal and minimal
+  Guix `operating-system` records and checks Qubes-visible defaults: standard
+  swap, default privileged programs, passwordless sudo, required Qubes
+  services, and `meminfo-writer` defaults.
 - `VALIDATION.md` records patch application against fresh Builder v2 and
   release-config checkouts, focused Builder v2 distribution tests, and
   release-config YAML validation.
