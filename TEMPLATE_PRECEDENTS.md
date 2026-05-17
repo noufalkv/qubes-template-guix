@@ -68,6 +68,9 @@ GPG fingerprint, signing path, and Builder v2 integration are accepted.
 
 ## Validation Tied To This Mapping
 
+- `tests/script-cli-check.sh` executes public build/package/runtime validation
+  scripts with missing required option values and verifies useful failure
+  messages before external commands or side effects.
 - `tests/build-native-rootfs-policy-check.sh` executes the native rootfs
   builder's pinned-channel failure path and verifies that release builds do not
   proceed to image or mount work without `config/channels.scm`.

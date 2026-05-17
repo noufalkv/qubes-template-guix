@@ -58,11 +58,11 @@ Run the Guix record gate on a Guix-capable builder:
 make guix-system-contract-check
 ```
 
-`make check` runs contract checks only: the native rootfs builder's
-pinned-channel failure path is executed before image/mount work, Builder hooks
-are executed against a temporary install tree, and normal/minimal template RPMs
-are built, extracted, checked for Qubes Template Manager layout, and
-reassembled.
+`make check` runs contract checks only: public script missing-value handling is
+executed, the native rootfs builder's pinned-channel failure path is executed
+before image/mount work, Builder hooks are executed against a temporary install
+tree, and normal/minimal template RPMs are built, extracted, checked for Qubes
+Template Manager layout, and reassembled.
 `make guix-system-contract-check` requires Guix and instantiates the actual
 normal/minimal operating-system records to check Qubes-visible defaults such as
 `/dev/xvdc1` swap, the standard `user` account and Qubes group membership,

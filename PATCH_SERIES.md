@@ -31,6 +31,7 @@ changes.
    - `config/README.md`
 
 5. Validation and lifecycle harnesses:
+   - `tests/script-cli-check.sh`
    - `tests/build-native-rootfs-policy-check.sh`
    - `tests/builder-hook-contract-check.sh`
    - `tests/builder-rpm-contract-check.sh`
@@ -203,6 +204,7 @@ separation of concerns:
 | `b4961f9` | Clarify that static source-shape and patch-shape scripts are excluded from repository tests, validation logs, and upstream patch series. |
 | `a06b4fb` | Tie current validation wording to dated local and GCP evidence instead of implying final signed-branch proof. |
 | `07a3998` | Reword adaptation and openQA evidence notes so dated artifact evidence is not described as current release proof. |
+| `b3d09ed` | Fix missing required option handling in core build/package/runtime validation scripts and add an executable CLI contract check to `make check`. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process

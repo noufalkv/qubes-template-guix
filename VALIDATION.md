@@ -52,13 +52,17 @@ GCP Guix system-contract check:
 make guix-system-contract-check
 ```
 
-`make check` currently runs `tests/build-native-rootfs-policy-check.sh`,
+`make check` currently runs `tests/script-cli-check.sh`,
+`tests/build-native-rootfs-policy-check.sh`,
 `tests/builder-hook-contract-check.sh`,
 `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`.
 The default suite does not include source-text, patch-shape, or
 release-config-fragment checks as substitute evidence.  Tests in this suite
 must exercise generated artifacts or Qubes-visible contracts.
-The native rootfs policy check executes `scripts/build-native-rootfs.sh` from a
+The script CLI check executes public build/package/runtime validation scripts
+with missing required option values and asserts useful errors before external
+commands or side effects.  The native rootfs policy check executes
+`scripts/build-native-rootfs.sh` from a
 temporary repository without `config/channels.scm` and asserts that it fails
 before fake `guix`, `sudo`, or `mountpoint` commands can run or image/mount
 artifacts can be created.  The Builder hook contract check executes the
