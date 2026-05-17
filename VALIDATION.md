@@ -53,9 +53,8 @@ make guix-system-contract-check
 `make check` currently runs `tests/builder-hook-contract-check.sh`,
 `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`.
 The default suite does not include source-text, patch-shape, or
-release-config-fragment checks as substitute evidence.  Do not add a
-`static-check.sh`-style source-shape test to the public validation path; tests
-in this suite should exercise generated artifacts or Qubes-visible contracts.
+release-config-fragment checks as substitute evidence.  Tests in this suite
+must exercise generated artifacts or Qubes-visible contracts.
 The Builder hook contract check
 executes the Builder v2 hooks against a temporary install tree.  The Builder
 RPM contract check feeds generated ext4 root images through

@@ -23,9 +23,9 @@ make check
 ```
 
 Do not commit or submit tests that only grep source text, compare patch shape,
-or inspect whether code "looks right".  A `static-check.sh`-style script is not
-upstream evidence and should not be part of the public test suite.  Local tests
-should execute build hooks, create or inspect generated artifacts, or validate
+or inspect whether code "looks right".  Source-only checks are not upstream
+evidence and should not be part of the public test suite.  Local tests should
+execute build hooks, create or inspect generated artifacts, or validate
 Qubes-visible template contracts.  Grep or comparison checks are acceptable
 only when they inspect generated artifacts from the code path under test, such
 as extracted RPM metadata or files read back from a generated root image.

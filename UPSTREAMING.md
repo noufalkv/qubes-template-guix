@@ -46,8 +46,8 @@ The default check suite executes the Builder hooks against a temporary
 install tree and builds/extracts real template RPM layout tests for both `guix`
 and `guix-minimal`.  It fails when required RPM/image tooling is missing; the
 upstream-facing test story is based on generated artifacts and Qubes-visible
-contracts, not text-only source inspection.  Do not carry source-shape or
-`static-check.sh`-style tests in the upstream patch series.
+contracts, not text-only source inspection.  Do not carry source-only or
+patch-shape tests in the upstream patch series.
 The Guix system contract check is separate because it requires Guix in `PATH`.
 It instantiates both operating-system variants and verifies Qubes-visible
 defaults that reviewers asked to preserve: `/dev/xvdc1` swap, the standard
