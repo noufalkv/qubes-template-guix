@@ -190,6 +190,10 @@ The changes should be reviewed in this order:
   does not start independent console, login, networking, log-rotation, or
   sysctl policy that Qubes normally owns.  The exact omitted service list is in
   `ADAPTATION_INVENTORY.md`.
+- The template RPM is intentionally a Qubes Template Manager payload, not a
+  normal installable RPM: it contains split root image parts, template metadata,
+  appmenu allowlists, ghost private/volatile images, and a `%pre` guard that
+  rejects direct package-manager installation.
 - Compatibility links under `/usr`, `/etc/qubes-rpc`, `/usr/lib/qubes`,
   `/run/qubes-service`, and `/var/run/qubes-service-environment` are deliberate.
   Upstream Qubes VM tools use fixed FHS-style paths, while Guix installs into
