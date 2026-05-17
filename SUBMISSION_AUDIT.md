@@ -95,12 +95,9 @@ Verification evidence includes the latest local pass, the refreshed local+GCP
 pin freshness check, plus earlier targeted Builder/release-config checks:
 
 ```sh
-bash -n scripts/test-native-guix-template-dom0.sh
-bash -n scripts/test-update-proxy-default-target-dom0.sh
-bash -n scripts/test-guix-update-proxy-config-dom0.sh
-bash -n scripts/test-guix-update-proxy-download-dom0.sh
-bash -n scripts/test-guix-update-proxy-stub-download-dom0.sh
-bash -n scripts/test-memory-balloon-dom0.sh
+git ls-files "*.sh" "scripts/*.sh" "tests/*.sh" "builder-v2-template/*.sh" \
+  | sort -u \
+  | while IFS= read -r file; do bash -n "$file"; done
 make check
 make guix-system-contract-check
 git diff --check
@@ -110,6 +107,9 @@ git status --short
 PYTHONPATH=/tmp/qubes-builderv2-current python -m pytest /tmp/qubes-builderv2-current/tests/test_objects.py::test_dist /tmp/qubes-builderv2-current/tests/test_objects.py::test_dist_family /tmp/qubes-builderv2-current/tests/test_objects.py::test_template_plugin_supports_guix
 # release-config YAML validation in /tmp/qubes-release-configs-current; see VALIDATION.md
 ```
+
+The shell parser pass is hygiene for tracked shell entry points, not release
+evidence by itself.
 
 The review source tree was also copied to the GCP builder as
 `~/guix-review-current`.  There, `./scripts/check-qubes-pins.sh` passed against

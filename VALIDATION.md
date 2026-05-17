@@ -35,14 +35,17 @@ The current local tree passed the local contract checks after the May 17, 2026
 audit refresh:
 
 ```sh
-bash -n scripts/test-memory-balloon-dom0.sh
-bash -n scripts/test-guix-update-proxy-download-dom0.sh
-bash -n scripts/test-guix-update-proxy-stub-download-dom0.sh
+git ls-files "*.sh" "scripts/*.sh" "tests/*.sh" "builder-v2-template/*.sh" \
+  | sort -u \
+  | while IFS= read -r file; do bash -n "$file"; done
 git diff --check
 git ls-files tests
 make check
 make guix-system-contract-check
 ```
+
+The `bash -n` pass is syntax hygiene for tracked shell entry points, not
+release evidence by itself.
 
 `make check` currently runs `tests/builder-hook-contract-check.sh`,
 `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`.
