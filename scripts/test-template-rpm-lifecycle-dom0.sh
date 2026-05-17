@@ -55,22 +55,30 @@ need() {
     command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
 }
 
+require_arg() {
+    [ "$#" -ge 2 ] || die "$1 requires a value"
+}
+
 while [ "$#" -gt 0 ]; do
     case "$1" in
         -r|--rpm)
-            install_rpm="${2:-}"
+            require_arg "$@"
+            install_rpm="$2"
             shift 2
             ;;
         -u|--upgrade-rpm)
-            upgrade_rpm="${2:-}"
+            require_arg "$@"
+            upgrade_rpm="$2"
             shift 2
             ;;
         -d|--downgrade-rpm)
-            downgrade_rpm="${2:-}"
+            require_arg "$@"
+            downgrade_rpm="$2"
             shift 2
             ;;
         -e|--expect-template)
-            expect_template="${2:-}"
+            require_arg "$@"
+            expect_template="$2"
             shift 2
             ;;
         -m|--metadata-only)
@@ -90,11 +98,13 @@ while [ "$#" -gt 0 ]; do
             shift
             ;;
         -a|--appvm)
-            appvm_name="${2:-}"
+            require_arg "$@"
+            appvm_name="$2"
             shift 2
             ;;
         -l|--log-dir)
-            log_dir="${2:-}"
+            require_arg "$@"
+            log_dir="$2"
             shift 2
             ;;
         -h|--help)

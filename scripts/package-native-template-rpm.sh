@@ -54,6 +54,10 @@ need() {
     command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
 }
 
+require_arg() {
+    [ "$#" -ge 2 ] || die "$1 requires a value"
+}
+
 validate_never_pipe() {
     case "$1" in
         *'|'*) die "$2 must not contain |" ;;
@@ -92,35 +96,43 @@ trap cleanup EXIT
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --root-image)
-            root_image="${2:-}"
+            require_arg "$@"
+            root_image="$2"
             shift 2
             ;;
         --name)
-            template_name="${2:-}"
+            require_arg "$@"
+            template_name="$2"
             shift 2
             ;;
         --version)
-            version="${2:-}"
+            require_arg "$@"
+            version="$2"
             shift 2
             ;;
         --release)
-            release="${2:-}"
+            require_arg "$@"
+            release="$2"
             shift 2
             ;;
         --output-dir)
-            output_dir="${2:-}"
+            require_arg "$@"
+            output_dir="$2"
             shift 2
             ;;
         --split-size)
-            split_size="${2:-}"
+            require_arg "$@"
+            split_size="$2"
             shift 2
             ;;
         --gui)
-            gui_enabled="${2:-}"
+            require_arg "$@"
+            gui_enabled="$2"
             shift 2
             ;;
         --appmenu-entry)
-            appmenu_entries+=("${2:-}")
+            require_arg "$@"
+            appmenu_entries+=("$2")
             appmenu_entries_set=1
             shift 2
             ;;

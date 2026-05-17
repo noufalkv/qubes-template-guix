@@ -46,34 +46,45 @@ need() {
     command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
 }
 
+require_arg() {
+    [ "$#" -ge 2 ] || die "$1 requires a value"
+}
+
 while [ "$#" -gt 0 ]; do
     case "$1" in
         -t|--template)
-            template_name="${2:-}"
+            require_arg "$@"
+            template_name="$2"
             shift 2
             ;;
         -a|--appvm)
-            appvm_name="${2:-}"
+            require_arg "$@"
+            appvm_name="$2"
             shift 2
             ;;
         -m|--memory)
-            initial_memory="${2:-}"
+            require_arg "$@"
+            initial_memory="$2"
             shift 2
             ;;
         -M|--maxmem)
-            max_memory="${2:-}"
+            require_arg "$@"
+            max_memory="$2"
             shift 2
             ;;
         -A|--allocate)
-            allocation_mb="${2:-}"
+            require_arg "$@"
+            allocation_mb="$2"
             shift 2
             ;;
         -g|--min-growth)
-            min_growth="${2:-}"
+            require_arg "$@"
+            min_growth="$2"
             shift 2
             ;;
         -T|--timeout)
-            timeout_seconds="${2:-}"
+            require_arg "$@"
+            timeout_seconds="$2"
             shift 2
             ;;
         -R|--replace-existing)

@@ -54,6 +54,10 @@ need() {
     command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
 }
 
+require_arg() {
+    [ "$#" -ge 2 ] || die "$1 requires a value"
+}
+
 guix_system_command=()
 
 set_guix_system_command() {
@@ -134,27 +138,33 @@ trap cleanup EXIT
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --variant)
-            variant="${2:-}"
+            require_arg "$@"
+            variant="$2"
             shift 2
             ;;
         --config)
-            config="${2:-}"
+            require_arg "$@"
+            config="$2"
             shift 2
             ;;
         --output)
-            output="${2:-}"
+            require_arg "$@"
+            output="$2"
             shift 2
             ;;
         --size)
-            size="${2:-}"
+            require_arg "$@"
+            size="$2"
             shift 2
             ;;
         --fs-label)
-            fs_label="${2:-}"
+            require_arg "$@"
+            fs_label="$2"
             shift 2
             ;;
         --install-dir)
-            install_dir="${2:-}"
+            require_arg "$@"
+            install_dir="$2"
             shift 2
             ;;
         -h|--help)
