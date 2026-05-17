@@ -81,3 +81,27 @@ changes.
 Before public submission, publish only the cleaned review branch.  Keep any
 local backup refs private, and do not ask Qubes reviewers to review generated
 artifacts or obsolete experimental history.
+
+## Current Local History Map
+
+The current `master` history through the implementation and evidence commits is
+already scoped into review-oriented commits, but it has not been signed or
+published by a maintainer.  This documentation section is intentionally not
+listed in its own table.  If the branch is rewritten before submission, preserve
+the same separation of concerns:
+
+| Commit | Purpose |
+| --- | --- |
+| `912d9bc` | Introduce the native Guix TemplateVM scaffold, package definitions, service mapping, image tooling, RPM packager, Builder-shaped hooks, and initial documentation. |
+| `197425e` through `a32c69b` | Replace prose-only confidence with artifact-backed validation, rootfs/RPM checks, Builder/release-config sketch evidence, and the prompt-to-artifact audit. |
+| `eecd56f`, `4d62762`, `05ed2bf`, `7206de0` | Add and document the opt-in real Guix updates-proxy download gate, including the negative nested-openQA result where dom0 refused `qubes.UpdatesProxy`. |
+| `d5b003f`, `853980f`, `e9b0ec4`, `71e77e0`, `f69fc2d`, `e7c40aa`, `616a0c5`, `96b87b8` | Tighten review notes around package-test policy, GUI scope, Builder environment reproducibility, remaining service adaptations, and artifact-based test policy. |
+| `e072163`, `c2f2609` | Add the controlled `sys-net` stub proxy download gate and fix the harness by shutting down the source template before cloning the stub target. |
+| `7c2668b` | Remove static-check framing, record the controlled proxy evidence, and document that local tests must exercise artifacts and Qubes-visible contracts. |
+| `de41010` | Document the community-template maintainer trust path, handoff/removal policy, and remaining maintainer identity blocker. |
+| `b0c426a` | Tighten submission drafts so copied upstream text keeps proxy, memory-balloon, maintainer handoff, and final-release gates explicit. |
+| `7829b5a` | Clarify the non-obvious no-op bootloader closure behavior and the normal/minimal appmenu package split. |
+
+The public submission branch may squash or reorder these, but it should not lose
+the traceability between implementation, validation evidence, upstream process
+mapping, and remaining blockers.
