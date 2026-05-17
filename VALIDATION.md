@@ -85,18 +85,23 @@ constructed with real Guix:
 
 ```sh
 cd /home/sandbox/guix-review-current
-guix repl -L native/modules
-,use (qubes systems guix-template)
-(begin
-  (qubes-template-operating-system #:variant 'normal)
-  (qubes-template-operating-system #:variant 'minimal)
-  (display "loaded normal and minimal systems\n")
-  (exit 0))
+guix repl -L native/modules -- /dev/stdin <<'EOF'
+(use-modules (guix packages)
+             (qubes packages qubes-vm)
+             (qubes systems guix-template))
+(display (package-version qubes-vm-core))
+(newline)
+(qubes-template-operating-system #:variant 'normal)
+(qubes-template-operating-system #:variant 'minimal)
+(display "loaded normal and minimal systems")
+(newline)
+EOF
 ```
 
 Observed result:
 
 ```text
+4.3.42
 loaded normal and minimal systems
 ```
 

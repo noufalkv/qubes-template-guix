@@ -113,13 +113,13 @@ The review source tree was also copied to the GCP builder as
 the live Qubes GitHub tags, and the pinned Guix channel resolved with
 `guix time-machine -C config/channels.scm -- describe`.
 
-After adding the Guix-specific updates-proxy configuration service, the synced
-current tree also loaded both `normal` and `minimal` operating-system variants
-with real Guix on the GCP builder.  This checks the Scheme service graph.  A
-later rebuilt-image boot test in RPM-mode openQA job 27 also verified the
-generated Guix client wrapper, updates-proxy forwarder, and `guix-daemon`
-service state for `guix-minimal`.  That still does not prove real `guix pull`
-or substitute downloads using the Qubes proxy.
+The synced current tree also loaded both `normal` and `minimal`
+operating-system variants with real Guix on the GCP builder and printed the
+expected `qubes-vm-core` package version, `4.3.42`.  This checks the Scheme
+service graph.  A later rebuilt-image boot test in RPM-mode openQA job 27 also
+verified the generated Guix client wrapper, updates-proxy forwarder, and
+`guix-daemon` service state for `guix-minimal`.  That still does not prove real
+`guix pull` or substitute downloads using the Qubes proxy.
 
 The same GCP source tree also produced a fresh `guix-minimal` 20G root image,
 passed image inspection and activation, and built:
