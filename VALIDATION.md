@@ -34,7 +34,9 @@ Guix update tooling through an Internet update target still remain open.
 The current tree passed the local artifact checks and the Guix-capable GCP
 system-contract check after the May 17, 2026 audit refresh.  The latest GCP
 rerun archived commit `e475c2b` after the unused qrexec fork-server Shepherd
-service was removed.
+service was removed.  Later commits after `e475c2b` are documentation,
+evidence, or history-map updates; they do not change the Guix system records or
+Scheme services covered by that GCP run.
 
 Local artifact check:
 
