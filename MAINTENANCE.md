@@ -60,9 +60,12 @@ Template releases are built from pinned inputs:
 - The Guix channel used by release builds is pinned in `config/channels.scm`.
 - The release-config and Builder v2 integration sketches are in `config/`.
 
-Release builds must not default to an unpinned Guix branch.  Builders may
-override channels deliberately, but the published template release should record
-the channel commit used to build it.
+Release builds must not default to an unpinned Guix branch.
+`scripts/build-native-rootfs.sh` uses `config/channels.scm` by default and
+fails if no pinned channel file is available.  `GUIX_BRANCH` is an explicit
+developer-only override, not a release-build default.  Builders may override
+channels deliberately, but the published template release should record the
+channel commit used to build it.
 
 ## Updating Qubes Components
 

@@ -40,9 +40,8 @@ Environment:
   GUIX_CHANNELS_FILE
                     Optional channels.scm passed to guix time-machine -C.
                     Default: config/channels.scm.
-  GUIX_BRANCH       Guix branch for the default time-machine build.
-                    Used only when config/channels.scm is absent.
-                    Default: master.
+  GUIX_BRANCH       Explicit developer override used only when no channels file
+                    is available. Release builds should not use this.
 EOF
 }
 
@@ -69,8 +68,10 @@ set_guix_system_command() {
                 guix_system_command=(guix time-machine -C "$GUIX_CHANNELS_FILE" -- system)
             elif [ -r "$default_channels_file" ]; then
                 guix_system_command=(guix time-machine -C "$default_channels_file" -- system)
+            elif [ -n "${GUIX_BRANCH:-}" ]; then
+                guix_system_command=(guix time-machine "--branch=$GUIX_BRANCH" -- system)
             else
-                guix_system_command=(guix time-machine "--branch=${GUIX_BRANCH:-master}" -- system)
+                die "missing pinned Guix channels file: $default_channels_file; set GUIX_CHANNELS_FILE or explicit developer-only GUIX_BRANCH"
             fi
             ;;
     esac
