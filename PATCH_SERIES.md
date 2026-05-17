@@ -202,6 +202,7 @@ separation of concerns:
 | `a3aa9a4` | Map auxiliary helper scripts and openQA glue as support tooling outside the native release artifact. |
 | `b4961f9` | Clarify that static source-shape and patch-shape scripts are excluded from repository tests, validation logs, and upstream patch series. |
 | `a06b4fb` | Tie current validation wording to dated local and GCP evidence instead of implying final signed-branch proof. |
+| `07a3998` | Reword adaptation and openQA evidence notes so dated artifact evidence is not described as current release proof. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
