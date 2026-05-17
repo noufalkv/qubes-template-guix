@@ -2,7 +2,8 @@
 
 These drafts are intentionally not final upstream text.  Replace every
 placeholder, refresh every validation result from the signed public branch, and
-remove any claim that is not backed by `VALIDATION.md` before submitting.
+remove any claim that is not backed by `VALIDATION.md` before submitting.  If a
+release gate is still missing, say so explicitly instead of omitting it.
 
 ## qubes-devel Design Thread
 
@@ -58,7 +59,11 @@ Validation snapshot from the signed public branch:
   - <minimal rootfs/RPM/openQA result>
   - <qvm-template lifecycle result>
   - <TemplateVM/AppVM smoke result>
+  - <Builder v2 focused test result>
+  - <release-config YAML validation result>
   - <controlled updates-proxy stub download result>
+  - <real Internet update-proxy Guix update/download result, or explicit
+    missing-gate statement>
   - <dynamic memory-balloon pressure result>
 
 Known remaining questions:
@@ -197,6 +202,10 @@ Validation:
   - python -m pytest tests/test_objects.py::test_dist_family
   - python -m pytest tests/test_objects.py::test_template_plugin_supports_guix
   - <additional Builder v2 tests requested by maintainers>
+
+Do not treat those focused tests as proof that the full Builder v2 suite or the
+template release is accepted.  The release-config PR and template publication
+remain separate review steps.
 ```
 
 ## Release-Configs Pull Request
