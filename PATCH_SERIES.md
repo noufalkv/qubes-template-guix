@@ -189,6 +189,7 @@ separation of concerns:
 | `b4167a8` | Clarify that the GCP Guix system-contract evidence is tied to commit `e475c2b` and that later commits are docs/evidence/history-map only. |
 | `5a3f630` | Tighten the upstream submission drafts so missing release gates, Builder/release-config sketch checks, and focused-test limitations remain explicit. |
 | `7970c93` | Reclassify older GCP Guix REPL loads as historical evidence and make the executable system-contract gate the current Scheme service-graph check. |
+| `e0261a9` | Clarify dated runtime/openQA evidence so older GCP and nested-dom0 runs remain review evidence without being mistaken for final signed-branch proof. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
