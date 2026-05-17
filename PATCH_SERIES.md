@@ -109,8 +109,9 @@ covers it, and any remaining gate that must not be claimed yet.
 3. `Add Builder-shaped template hooks for Guix`
    - Include `builder-v2-template/`, `Makefile.builder`, and the local
      Builder hook contract.
-   - Explain why Guix keeps no-op compatibility hooks where Guix computes the
-     system closure declaratively.
+   - Explain that `01_install_core.sh` materializes the Guix system closure,
+     while later compatibility hooks only preserve Builder's expected hook and
+     layout boundaries.
 
 4. `Add Qubes Builder v2 and release-config review sketches`
    - Include `config/channels.scm`, `config/README.md`,
