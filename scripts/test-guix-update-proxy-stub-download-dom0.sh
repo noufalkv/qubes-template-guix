@@ -86,7 +86,9 @@ esac
 [ "$download_timeout" -gt 0 ] || die "timeout must be greater than zero"
 
 need qvm-create
+need qvm-check
 need qvm-ls
+need qvm-kill
 need qvm-prefs
 need qvm-remove
 need qvm-run
@@ -113,6 +115,12 @@ vm_exists "$template_name" || die "template VM does not exist: $template_name"
 
 if vm_exists "$target_vm"; then
     die "refusing to install an updates-proxy stub into existing target: $target_vm"
+fi
+
+if qvm-check --running "$template_name" >/dev/null 2>&1; then
+    qvm-shutdown --wait "$template_name" >/dev/null 2>&1 ||
+        qvm-kill "$template_name" >/dev/null 2>&1 ||
+        die "could not stop running template before cloning: $template_name"
 fi
 
 qvm-create -C StandaloneVM -t "$template_name" --label red "$target_vm"
