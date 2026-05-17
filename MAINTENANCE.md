@@ -155,4 +155,13 @@ a clean tree:
   `scripts/test-template-rpm-lifecycle-dom0.sh`;
 - TemplateVM and AppVM qrexec, QubesDB, GUI, appmenu, shutdown, and private
   volume persistence smoke tests;
+- standard Qubes `/dev/xvdc1` swap activation and guest-side
+  `meminfo-writer` startup;
+- update proxy forwarding and generated Guix daemon/client proxy
+  configuration;
+- controlled Guix client download through the Qubes updates proxy in
+  disposable/nested review environments;
+- real Guix update/download behavior through an Internet-capable Qubes
+  update-proxy target;
+- dynamic memory-balloon resize behavior under dom0 pressure;
 - RPM-mode openQA for both variants.
