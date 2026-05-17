@@ -14,7 +14,7 @@ and explicitly lists what still cannot be claimed.
 service adaptations to their rationale and validation status.
 `SECURITY.md` summarizes trust boundaries, source integrity controls,
 privileged guest behavior, and unproven runtime security gates.
-`TEMPLATE_PRECEDENTS.md` maps the Guix content hooks and release-config sketch
+`TEMPLATE_PRECEDENTS.md` maps the Guix Builder hooks and release-config sketch
 to existing Qubes template-builder precedent.
 `CONTRIBUTING.md` captures the expected signed-history, testing, release
 evidence, and multi-repo contribution workflow for future changes.
@@ -200,7 +200,7 @@ request or issue has been exhaustively reviewed.
 - Qubes Forum, "Building a TemplateVM for a new OS":
   `https://forum.qubes-os.org/t/building-a-templatevm-for-a-new-os/18972`
   Expectation: new OS templates should start from Builder scripts, adapt the
-  standard content hooks, package the Qubes VM agents, and prove qrexec plus GUI
+  standard template hooks, package the Qubes VM agents, and prove qrexec plus GUI
   readiness.
   Local response: `builder-v2-template/` implements the standard hook shape;
   `native/modules/qubes/packages/qubes-vm.scm` packages the VM agents; and
