@@ -454,7 +454,7 @@ pgrep -x meminfo-writer
 
 ## Dynamic Memory-Balloon Pressure Check
 
-On May 16, 2026, the current review commit was copied to the GCP nested
+On May 16, 2026, the then-current review commit was copied to the GCP nested
 builder as `/home/sandbox/guix-review-61f66bb`.  Nested dom0 was started with
 the existing data image:
 

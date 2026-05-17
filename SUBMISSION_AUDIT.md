@@ -208,8 +208,8 @@ job 9:  BUILD=guix-minimal-rpm-2026051602-inline-marker  TEST=guix_template   re
 
 Those jobs exercised the RPM asset path, `qvm-template --yes install
 --nogpgcheck`, postinstall failure checks, and the dom0 TemplateVM/AppVM smoke
-harness.  They are current review evidence, not a replacement for final reruns
-from the signed public branch.
+harness.  They are review evidence for this prototype, not a replacement for
+final reruns from the signed public branch.
 
 After the Guix update-proxy service change, RPM-mode openQA job 27 passed for a
 rebuilt `guix-minimal` RPM:
