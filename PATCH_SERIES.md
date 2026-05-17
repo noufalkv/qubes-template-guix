@@ -155,7 +155,7 @@ the same separation of concerns:
 | `b0c426a` | Tighten submission drafts so copied upstream text keeps proxy, memory-balloon, maintainer handoff, and final-release gates explicit. |
 | `7829b5a` | Clarify the non-obvious no-op bootloader closure behavior and the normal/minimal appmenu package split. |
 | `fee9ade` | Add this local history map so reviewers can see the current commit grouping before any public rewrite. |
-| `1bc7aab`, `a66b2d5`, `51c0d69`, `411e482` | Refresh pin freshness, completion-audit, local contract-check, and upstream sketch evidence against the current review tree. |
+| `1bc7aab`, `a66b2d5`, `51c0d69`, `411e482`, `d098ae9` | Refresh pin freshness, completion-audit, local contract-check, Guix module-load, and upstream sketch evidence against the current review tree. |
 | `ba1010d`, `3899a26` | Remove stale test names and review wording so local checks are presented as Builder hook, Builder RPM, and template RPM contracts rather than source-only checks. |
 | `221a2cf`, `011e18f`, `d4055e2`, `119ccf7`, `090fe88` | Anchor current template precedent sources, refresh forum precedent around Builder v2 and template-service scope, tighten the adaptation inventory against the actual Scheme/build implementation, and normalize upstream-facing hook terminology. |
 | `d017cab`, `aa3d497`, `13b7c85`, `d3c6c67`, `f4cfeb6`, `e21a5ec`, `30acbd4`, `f21deb1`, `ffbe2e0`, `8f9cf69`, `9dfd3d4` | Rework review hygiene around placeholders, SPDX/license evidence, source-shape test gates, artifact-backed test inventory, non-obvious-change audit coverage, generated-artifact hygiene, and validation proof language. |
