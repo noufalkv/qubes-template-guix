@@ -17,9 +17,11 @@
 /mnt.*/
 /work/
 /work.builder-v2/
+/work.builder-rpm.*/
 /work.package.*/
 /work.openqa-rpm.*
 /work.rpm-layout.*/
+/builder-hook-contract-check.*/
 /preflight-check.*/
 /dist/
 /.cache/
