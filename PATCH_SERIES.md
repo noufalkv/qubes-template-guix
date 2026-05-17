@@ -197,6 +197,7 @@ separation of concerns:
 | `437a7d3` | Remove source-only test-script wording from upstream-facing docs so the validation story remains limited to artifact and Qubes-visible contracts. |
 | `06a629f` | Add an executable native-rootfs policy check so the default local gate verifies missing pinned channels fail before image or mount work. |
 | `e23fd0c` | Tie the installed reconfiguration and package-test-policy adaptation rows to the executable native-rootfs pinned-channel policy gate. |
+| `6745425` | Refresh the Builder v2 and release-config sketch evidence after the current local review head, keeping the upstream commits and focused results explicit. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
