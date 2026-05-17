@@ -23,7 +23,6 @@
             qubes-misc-post-service-type
             qubes-qrexec-pam-service-type
             qubes-qrexec-agent-service-type
-            qubes-qrexec-fork-server-service-type
             qubes-gui-agent-service-type
             %qubes-vm-headless-services
             %qubes-vm-gui-services))
@@ -338,12 +337,6 @@
 
 (define %qubes-private-dirs-mounted-command
   "if findmnt -rn /rw >/dev/null 2>&1 && findmnt -rn /home >/dev/null 2>&1 && findmnt -rn /usr/local >/dev/null 2>&1; then echo 'Qubes private directories already mounted'; exit 0; fi")
-
-(define %qubes-user-runtime-dir-command
-  (string-append
-   "user=$(qubesdb-read /default-user 2>/dev/null || echo user); "
-   "uid=$(id -u \"$user\"); gid=$(id -g \"$user\"); "
-   "install -d -m 0700 -o \"$uid\" -g \"$gid\" \"/run/user/$uid\""))
 
 (define (qubes-db-shepherd-service _)
   (list
@@ -770,57 +763,6 @@
     (list (service-extension shepherd-root-service-type qubes-qrexec-agent-shepherd-service)))
    (default-value #f)
    (description "Run the Qubes qrexec agent.")))
-
-(define (qubes-qrexec-fork-server-shepherd-service _)
-  (list
-   (shepherd-service
-    (provision '(qubes-qrexec-fork-server))
-    (requirement '(qubes-qrexec-agent qubes-gui-agent))
-    (documentation "Run the user qrexec fork server for Qubes GUI sessions.")
-    (start #~(make-forkexec-constructor
-              (list "/run/current-system/profile/bin/sh" "-c"
-                    #$(string-append
-                       %qubes-runtime-setup-command
-                       "; " %qubes-user-runtime-dir-command
-                       "; user=$(qubesdb-read /default-user 2>/dev/null || echo user)"
-                       "; uid=$(id -u \"$user\")"
-                       "; gid=$(id -g \"$user\")"
-                       "; home=$(getent passwd \"$user\" | cut -d: -f6)"
-                       "; [ -n \"$home\" ] || home=\"/home/$user\""
-                       "; socket=\"/var/run/qubes/qrexec-server.$user.sock\""
-                       "; touch \"$home/.xsession-errors\""
-                       "; chown \"$uid:$gid\" \"$home/.xsession-errors\""
-                       ;; Qubes' WaitForSession RPC is served by the user
-                       ;; qrexec fork server.  Start that fork server only
-                       ;; after Xorg has opened :0, otherwise GUI tests can
-                       ;; observe a user session before applications can
-                       ;; connect to the display.
-                       "; i=0"
-                       "; while [ ! -S /tmp/.X11-unix/X0 ] && [ \"$i\" -lt 240 ]; do"
-                       " sleep 0.25; i=$((i + 1)); done"
-                       "; if [ ! -S /tmp/.X11-unix/X0 ]; then"
-                       " echo 'timed out waiting for X display :0' >&2; exit 1; fi"
-                       "; export "
-                       "HOME=\"$home\" USER=\"$user\" LOGNAME=\"$user\" "
-                       "SHELL=/run/current-system/profile/bin/sh "
-                       "DISPLAY=:0 XDG_RUNTIME_DIR=\"/run/user/$uid\" "
-                       "DBUS_SESSION_BUS_ADDRESS=\"unix:path=/run/user/$uid/bus\" "
-                       "QUBES_QREXEC_FORK_SOCKET=\"$socket\""
-                       "; exec /run/current-system/profile/bin/su "
-                       "-m -s /run/current-system/profile/bin/sh \"$user\" -c "
-                       "'exec /run/current-system/profile/bin/qrexec-fork-server "
-                       "\"$QUBES_QREXEC_FORK_SOCKET\"'"))
-              #:log-file "/var/log/qubes-qrexec-fork-server.log"))
-    (stop #~(make-kill-destructor)))))
-
-(define qubes-qrexec-fork-server-service-type
-  (service-type
-   (name 'qubes-qrexec-fork-server)
-   (extensions
-    (list (service-extension shepherd-root-service-type
-                             qubes-qrexec-fork-server-shepherd-service)))
-   (default-value #f)
-   (description "Run qrexec-fork-server for the Qubes default user.")))
 
 (define (qubes-gui-agent-shepherd-service _)
   (list

@@ -878,9 +878,9 @@ exec /usr/bin/qubes-session
               ;; session side unprivileged, but let root own xinit/Xorg.
               ;; Guix xinit's default xinitrc sources its immutable store
               ;; xinitrc.d, not the profile hook above, so run qubes-session
-              ;; directly.  The separate Shepherd qrexec fork-server service
-              ;; waits for the display socket before exposing
-              ;; qubes.WaitForSession.
+              ;; directly.  The upstream XDG autostart launcher remains the
+              ;; owner of qrexec-fork-server; qubes.WaitForSession waits for
+              ;; that server's socket.
               (substitute* (string-append #$output "/usr/bin/qubes-run-xorg")
                 (("qubes-xorg-wrapper \\$DISPLAY_XORG -nolisten")
                  "qubes-xorg-wrapper $DISPLAY_XORG -modulepath /run/current-system/profile/lib/xorg/modules -nolisten")
