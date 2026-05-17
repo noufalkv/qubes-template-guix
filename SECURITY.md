@@ -103,6 +103,6 @@ signed public branch has fresh evidence:
   and ProxyVM behavior.
 
 Until those are complete, the correct status is a reviewable prototype with
-build, packaging, nested-dom0 lifecycle, nested-dom0 smoke, current RPM-mode
-openQA, and current default update-target proxy evidence, not a published or
+build, packaging, nested-dom0 lifecycle, nested-dom0 smoke, recorded RPM-mode
+openQA, and recorded default update-target proxy evidence, not a published or
 security-reviewed Qubes community template.
