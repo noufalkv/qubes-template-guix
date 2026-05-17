@@ -206,6 +206,7 @@ separation of concerns:
 | `07a3998` | Reword adaptation and openQA evidence notes so dated artifact evidence is not described as current release proof. |
 | `b3d09ed` | Fix missing required option handling in core build/package/runtime validation scripts and add an executable CLI contract check to `make check`. |
 | `8cd06bc` | Extend required option-value validation and CLI contract coverage across the remaining public helper scripts. |
+| `739e48e` | Quote GCP sync helper remote commands, add dry-run inspection, and cover hostile remote path input in the CLI contract check. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process

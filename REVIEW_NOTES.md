@@ -181,7 +181,7 @@ Auxiliary local helpers are intentionally outside the release artifact:
 | --- | --- |
 | `openqa/qubesos/main.pm`, `openqa/qubesos/lib/guixdom0distribution.pm` | openQA loader and dom0 serial-console glue for the local Guix template test module. |
 | `scripts/diagnose-guix-postinstall-dom0.sh` | dom0-side diagnostic collector for failed `qvm-template` post-install or qrexec startup investigations. |
-| `scripts/gcloud-create-nested-builder.sh`, `scripts/gcloud-sync-and-setup-builder.sh`, `scripts/gcp-builder-setup.sh` | Disposable GCP nested-virtualization builder bootstrap and sync helpers used to obtain build/test evidence; they are not the Qubes release path. |
+| `scripts/gcloud-create-nested-builder.sh`, `scripts/gcloud-sync-and-setup-builder.sh`, `scripts/gcp-builder-setup.sh` | Disposable GCP nested-virtualization builder bootstrap and sync helpers used to obtain build/test evidence; they are not the Qubes release path.  The sync helper quotes the remote work directory in generated shell commands and exposes `--dry-run` so reviewers can inspect those commands without contacting GCP. |
 | `scripts/install-guix-foreign.sh` | Foreign-distribution Guix installer used by the fallback "Guix inside Debian/Fedora/Arch template" path, not by the native Guix System TemplateVM release path. |
 
 ## Non-Obvious Guix-Specific Decisions
