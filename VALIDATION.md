@@ -853,6 +853,33 @@ verifier output included `checking Qubes updates-proxy forwarder`,
 `checking guix-daemon service state`, `It is running`, and
 `guix update proxy config check passed`.
 
+On May 17, 2026, job 29 reran the same rebuilt minimal RPM-mode artifact with
+the opt-in real-download proxy gate enabled:
+
+```text
+id: 29
+BUILD: guix-minimal-rpm-r202605162304-proxydownload-short-202605170046
+TEST: guix_template
+state: done
+result: failed
+root image: /home/sandbox/guix-review-current/root-minimal-r202605162304.img
+RPM: /home/sandbox/guix-review-current/dist/qubes-template-guix-minimal-4.3.0-202605162304.noarch.rpm
+RPM SHA256: 236641ab50919305d8e78bd9c9ef200582b3457cdd11973daea0d37f45b93904
+result dir: /var/lib/openqa/testresults/00000/00000029-qubesos-4.3-guix-template-x86_64-Buildguix-minimal-rpm-r202605162304-proxydownload-short-202605170046-guix_template@qemu_x86_64
+```
+
+This failed at the new optional real-download gate, not at the earlier template
+integration gates.  The archived serial log showed `OPENQA_RC_000007_0`,
+`OPENQA_RC_000008_0`, `OPENQA_RC_000009_0`, TemplateVM/AppVM smoke success
+`OPENQA_RC_000010_0`, and Guix proxy configuration success
+`OPENQA_RC_000011_0`.  The failing marker was `OPENQA_RC_000012_1` from
+`scripts/test-guix-update-proxy-download-dom0.sh`.  Guest logs showed
+`Request refused` from `qrexec-client-vm` and `socat ... child ... exited with
+status 126`, so this run reached the Qubes updates-proxy forwarder but dom0
+refused `qubes.UpdatesProxy` in the nested openQA environment.  This is useful
+negative evidence: it confirms that the real-download verifier is wired into
+openQA and strict, but it is not a passing Guix update-tooling proxy run.
+
 ## Not Yet Passed
 
 The following gates remain open and must not be claimed as passing from this
@@ -864,10 +891,11 @@ snapshot:
   `scripts/test-guix-update-proxy-config-dom0.sh` for the generated
   daemon/client proxy configuration.  The tree now includes
   `scripts/test-guix-update-proxy-download-dom0.sh` and an opt-in openQA
-  `GUIX_RUN_PROXY_DOWNLOAD_TEST=1` gate for a real `guix download`, but this
-  snapshot does not yet contain a passing run of that gate or prove that
-  `guix pull`, substitute downloads, or channel updates consume the proxy as
-  intended.
+  `GUIX_RUN_PROXY_DOWNLOAD_TEST=1` gate for a real `guix download`; job 29
+  reached that gate and failed on dom0 `qubes.UpdatesProxy` refusal in the
+  nested openQA environment.  This snapshot does not yet contain a passing run
+  of that gate or prove that `guix pull`, substitute downloads, or channel
+  updates consume the proxy as intended.
 - Final signed-branch or signed-tag reruns of the rootfs build, image
   inspection, activation tests, RPM packaging, qvm-template lifecycle checks,
   and RPM-mode openQA.

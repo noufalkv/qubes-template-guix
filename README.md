@@ -329,10 +329,12 @@ Guix update or download command through the Qubes proxy before submission:
   --download-url https://guix.gnu.org/
 ```
 
-The download check depends on an update-proxy target with working Internet
-access.  The openQA harness stages the same script and runs it only when
-`GUIX_RUN_PROXY_DOWNLOAD_TEST=1` is set, so ordinary local RPM smoke does not
-silently depend on public network availability.
+The download check depends on dom0 allowing `qubes.UpdatesProxy` from the
+TemplateVM to an update-proxy target with working Internet access.  On standard
+Qubes policy this normally means the default `sys-net` update target must
+exist and be usable.  The openQA harness stages the same script and runs it
+only when `GUIX_RUN_PROXY_DOWNLOAD_TEST=1` is set, so ordinary local RPM smoke
+does not silently depend on public network availability.
 
 ## Local Checks
 

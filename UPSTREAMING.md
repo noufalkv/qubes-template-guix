@@ -189,11 +189,13 @@ request or issue has been exhaustively reviewed.
   `VALIDATION.md` separates current build, `qvm-template` lifecycle,
   RPM-mode openQA, update-proxy, and dynamic memory-pressure evidence from
   final signed-branch reruns.  The RPM-mode openQA path now has a passing
-  rebuilt minimal job for the Guix-specific daemon/client proxy verifier, but
-  real Guix update-tooling proxy use is still an open gate.  An opt-in
-  `scripts/test-guix-update-proxy-download-dom0.sh` gate now exists for a real
-  `guix download` through Qubes updates proxy when the review environment has
-  working Internet access.
+  rebuilt minimal job for the Guix-specific daemon/client proxy verifier.
+  OpenQA job 29 reached the opt-in real-download gate, but dom0 refused
+  `qubes.UpdatesProxy` in the nested test environment, so real Guix
+  update-tooling proxy use is still an open gate.  The opt-in
+  `scripts/test-guix-update-proxy-download-dom0.sh` gate is the intended check
+  for a real `guix download` through Qubes updates proxy when the review
+  environment has an allowed update target with working Internet access.
 - Qubes Forum, Gentoo template maintenance infrastructure:
   `https://forum.qubes-os.org/t/new-gentoo-templates-and-maintenance-infrastructure/961`
   Expectation: source-style community templates need maintainer-owned build
@@ -352,7 +354,8 @@ issue.  The current partial evidence snapshot is in `VALIDATION.md`.
   the signed public branch.
 - Real Guix update/download behavior through the Qubes update proxy.  Current
   evidence verifies Qubes forwarding, generated Guix proxy configuration, and
-  service state; final evidence still needs a passing
+  service state; openQA job 29 reached the real-download verifier but failed on
+  dom0 updates-proxy refusal.  Final evidence still needs a passing
   `scripts/test-guix-update-proxy-download-dom0.sh` run and actual `guix pull`
   or substitute downloads through the proxy from the signed public branch.
 - Optional Qubes dom0 integration results for `qubes.tests.integ.qrexec` and

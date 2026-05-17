@@ -30,8 +30,8 @@ complete.
 | Existing template precedent mapping | `TEMPLATE_PRECEDENTS.md`, `builder-v2-template/` | Guix hook mapping is documented against the Qubes template-builder model |
 | Builder v2 multi-repo change | `config/README.md`, `config/qubes-builderv2-guix.example.patch` | Patch sketch only; not accepted upstream |
 | Release-config multi-repo change | `config/README.md`, `config/qubes-release-configs-guix.example.patch` | Patch sketch only; maintainer identity placeholders remain |
-| Runtime validation snapshot | `VALIDATION.md` | Partial; current normal/minimal rootfs/RPM plus nested-dom0 qvm-template lifecycle, upgrade/downgrade, TemplateVM/AppVM smoke, dynamic memory-pressure, default update-target proxy, and RPM-mode openQA evidence present, including swap activation, `meminfo-writer` startup, memory growth under pressure, `127.0.0.1:8082` forwarding through stock Qubes policy, openQA jobs 8/9, and rebuilt minimal openQA job 27 with generated Guix daemon/client proxy verification; a real-download proxy verifier now exists but has no passing run yet, and final signed-branch reruns remain open |
-| openQA and qvm-template lifecycle evidence | `openqa/`, `scripts/run-openqa-template-rpm.sh`, `scripts/test-template-rpm-lifecycle-dom0.sh`, `scripts/test-guix-update-proxy-config-dom0.sh`, `scripts/test-guix-update-proxy-download-dom0.sh`, `VALIDATION.md` | qvm-template install/reinstall/remove/upgrade/downgrade and smoke passed for both variants in nested dom0; RPM-mode openQA jobs 8 and 9 passed for normal and minimal 2026051602 RPMs; rebuilt minimal RPM-mode openQA job 27 passed generated Guix daemon/client proxy verification; opt-in real-download openQA gate exists but is not yet passed |
+| Runtime validation snapshot | `VALIDATION.md` | Partial; current normal/minimal rootfs/RPM plus nested-dom0 qvm-template lifecycle, upgrade/downgrade, TemplateVM/AppVM smoke, dynamic memory-pressure, default update-target proxy, and RPM-mode openQA evidence present, including swap activation, `meminfo-writer` startup, memory growth under pressure, `127.0.0.1:8082` forwarding through stock Qubes policy, openQA jobs 8/9, and rebuilt minimal openQA job 27 with generated Guix daemon/client proxy verification; openQA job 29 reached the opt-in real-download gate but failed on dom0 `qubes.UpdatesProxy` refusal, so real Guix update-tooling proxy use and final signed-branch reruns remain open |
+| openQA and qvm-template lifecycle evidence | `openqa/`, `scripts/run-openqa-template-rpm.sh`, `scripts/test-template-rpm-lifecycle-dom0.sh`, `scripts/test-guix-update-proxy-config-dom0.sh`, `scripts/test-guix-update-proxy-download-dom0.sh`, `VALIDATION.md` | qvm-template install/reinstall/remove/upgrade/downgrade and smoke passed for both variants in nested dom0; RPM-mode openQA jobs 8 and 9 passed for normal and minimal 2026051602 RPMs; rebuilt minimal RPM-mode openQA job 27 passed generated Guix daemon/client proxy verification; openQA job 29 proved the real-download gate is wired and strict, but it failed on dom0 updates-proxy policy/default-target refusal and is not a passing download run |
 
 ## Prompt-To-Artifact Checklist
 
@@ -214,6 +214,14 @@ updates-proxy forwarder, and `guix-daemon` service-state checks.  It is still
 review evidence from the current GCP/openQA tree, not final signed-branch
 release evidence.
 
+OpenQA job 29 then enabled `GUIX_RUN_PROXY_DOWNLOAD_TEST=1` for the same
+rebuilt minimal RPM.  It passed the earlier install, postinstall, smoke, and
+Guix proxy-configuration steps, then failed the opt-in real-download step with
+`Request refused` from `qrexec-client-vm` and a `socat` child exit status 126.
+That is negative evidence: the download verifier is wired and strict, but the
+current nested openQA environment did not provide an allowed/default
+`qubes.UpdatesProxy` target for a real Guix download.
+
 ## Do Not Claim Yet
 
 Do not claim that:
@@ -232,9 +240,9 @@ Do not claim that:
   proxy.  The current evidence proves the default `qubes.UpdatesProxy` HTTP
   forwarding path through stock Qubes policy, and the source now configures
   Guix daemon/client proxy use.  RPM-mode openQA job 27 passed the generated
-  daemon/client proxy verifier, but it does not yet prove `guix pull` or
-  substitute downloads using that proxy.  The real-download verifier is present
-  but has no passing release evidence yet.
+  daemon/client proxy verifier, and job 29 reached the real-download verifier,
+  but it failed on dom0 updates-proxy refusal.  The tree still does not prove
+  `guix pull`, `guix download`, or substitute downloads using that proxy.
 - Qubes maintainers have reviewed or accepted the template.
 
 Until those items are complete, the correct upstream status is: reviewable

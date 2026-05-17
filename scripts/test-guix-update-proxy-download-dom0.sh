@@ -107,6 +107,13 @@ diagnose_proxy_download() {
     echo '== proxy service logs =='
     cat /var/log/qubes-guix-update-proxy.log 2>/dev/null || true
     cat /var/log/qubes-updates-proxy-forwarder.log 2>/dev/null || true
+    if grep -Fq 'Request refused' /var/log/qubes-updates-proxy-forwarder.log 2>/dev/null; then
+        echo '== likely dom0 updates-proxy policy refusal =='
+        echo 'The guest forwarder reached qrexec-client-vm, but dom0 refused qubes.UpdatesProxy.'
+        echo 'Check that the standard Qubes qubes.UpdatesProxy policy is present'
+        echo 'and that its default target, normally sys-net, exists and can'
+        echo 'provide the updates proxy.'
+    fi
 }
 
 trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "guix update proxy download check failed with status $rc"; diagnose_proxy_download; fi; exit "$rc"' EXIT
