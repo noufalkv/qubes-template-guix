@@ -89,8 +89,10 @@ evidence from the signed public branch for:
   patch files, convert the rows identified in `ADAPTATION_INVENTORY.md`.
 - Do not replace standard Qubes behavior with Guix-specific policy unless the
   reason is documented and covered by validation.
-- Keep placeholders such as `<OWNER>` and `<MAINTAINER_GPG_FINGERPRINT>` only
-  in draft/config files that explicitly warn not to submit them unchanged.
+- Keep placeholders such as `<OWNER>`, `<REPOSITORY>`, `<NAME>`,
+  `<GPG_FINGERPRINT>`, and `<MAINTAINER_GPG_FINGERPRINT>` only in draft/config
+  or review-process files that explicitly warn not to submit them unchanged, or
+  in tests that validate those draft/config placeholders.
 - Disclose generative-AI assistance in the upstream discussion and only submit
   changes a human maintainer has reviewed and will maintain.
 
