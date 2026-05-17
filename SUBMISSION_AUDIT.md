@@ -43,7 +43,7 @@ complete.
 | Inspect maintainer expectations online | `UPSTREAMING.md`, `REVIEW_NOTES.md` | Targeted review captured; exhaustive review of every Qubes issue/PR remains unclaimed |
 | Upstream process may span multiple repos | `config/qubes-builderv2-guix.example.patch`, `config/qubes-release-configs-guix.example.patch`, `config/README.md` | Builder v2 and release-config targets are separated and named |
 | Clear commit history | `git log --oneline`, `PATCH_SERIES.md` | Clean review branch present with a current local history map; final public branch still needs maintainer signing |
-| Every non-obvious change explained | `REVIEW_NOTES.md`, `ADAPTATION_INVENTORY.md`, `MAINTENANCE.md` | Package phases, services, update model, no-op bootloader closure handling, normal/minimal appmenu split, and review-sensitive choices are documented |
+| Every non-obvious change explained | `REVIEW_NOTES.md`, `ADAPTATION_INVENTORY.md`, `MAINTENANCE.md` | Package phases, services, update model, 20G root image sizing, installed reconfiguration inputs, no-op bootloader closure handling, normal/minimal appmenu split, and review-sensitive choices are documented |
 | Tests should exercise real contracts | `tests/builder-hook-contract-check.sh`, `tests/builder-rpm-contract-check.sh`, `tests/rpm-layout-check.sh`, `VALIDATION.md` | Default local checks execute Builder hooks against a temporary install tree, feed generated images through the Builder RPM adapter, build/extract/reassemble RPM layouts, and validate RPM lifecycle metadata; missing RPM/image tooling is a hard failure, not a false pass |
 
 ## Current Completion Audit
@@ -72,7 +72,7 @@ Inspected evidence in the current tree:
 | Qubes source pins are fresh | Current local and synced GCP `./scripts/check-qubes-pins.sh` runs passed for all pinned Qubes VM components on May 17, 2026. |
 | Prompt-to-artifact checklist exists | This file maps objective phrases to artifacts and marks incomplete external gates. |
 | Online expectations are traceable | `UPSTREAMING.md` contains an online source crosswalk for Qubes docs, Builder v2, release-configs, forum precedent, and comparable NixOS issue/PRs. |
-| Non-obvious changes are explained | `REVIEW_NOTES.md`, `ADAPTATION_INVENTORY.md`, and `MAINTENANCE.md` explain package phases, Shepherd services, FHS compatibility paths, update model, swap, guest-side memory ballooning plumbing, no-op bootloader closure handling, normal/minimal appmenu differences, maintainer handoff, and review-sensitive source edits. |
+| Non-obvious changes are explained | `REVIEW_NOTES.md`, `ADAPTATION_INVENTORY.md`, and `MAINTENANCE.md` explain package phases, Shepherd services, FHS compatibility paths, update model, 20G root image sizing, installed reconfiguration inputs, swap, guest-side memory ballooning plumbing, no-op bootloader closure handling, normal/minimal appmenu differences, maintainer handoff, and review-sensitive source edits. |
 | Security-sensitive scope is explicit | `SECURITY.md` separates dom0 trust boundaries, guest privileged behavior, source integrity, and unproven runtime gates. |
 | Template-builder precedent is explicit | `TEMPLATE_PRECEDENTS.md` maps Guix hooks to the standard Qubes template hook responsibilities and release-config model. |
 | Contributor workflow is explicit | `CONTRIBUTING.md` lists required checks, release evidence, review rules, and multi-repo ordering. |
