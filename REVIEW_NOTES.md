@@ -283,7 +283,7 @@ The changes should be reviewed in this order:
   `root.img.part.NN` payloads.
 - Final signed-branch RPM-mode openQA reruns for both variants.
 - `qvm-template --yes install --nogpgcheck` install, reinstall, remove,
-  upgrade, and downgrade checks for both variants.  Current nested-dom0
+  upgrade, and downgrade checks for both variants.  Recorded nested-dom0
   evidence covers install, reinstall, metadata checks, smoke, distinct-EVR
   upgrade, downgrade, and remove.
 - TemplateVM and AppVM smoke results for QubesDB, qrexec, GUI/appmenus,

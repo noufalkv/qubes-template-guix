@@ -264,7 +264,7 @@ Do not claim that:
 - Final signed-branch or signed-tag release evidence has been rerun, including
   RPM-mode openQA.
 - End-to-end Guix update tooling is freshly green through a real Internet
-  update-proxy target.  The current evidence verifies the default
+  update-proxy target.  The recorded evidence verifies the default
   `qubes.UpdatesProxy` HTTP forwarding path through stock Qubes policy, the
   generated Guix daemon/client proxy configuration, and a controlled `guix
   download` through a temporary `sys-net` stub target.  RPM-mode openQA job 29
