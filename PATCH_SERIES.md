@@ -173,6 +173,7 @@ separation of concerns:
 | `d216fb3` | Document the standard Qubes `user` account and group membership in the security review notes. |
 | `bbc5251` | Record the Qubes openQA/integration-test precedent for dom0-dependent guest behavior. |
 | `714a051` | Make the omitted Guix base services explicit in the adaptation inventory and review notes. |
+| `2e0dfd3` | Document the Qubes Template Manager RPM payload contract and direct-package-install guard. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
