@@ -29,7 +29,9 @@ install_mode="${GUIX_INSTALL_MODE:-}"
 run_qubes_system_tests="${GUIX_RUN_QUBES_SYSTEM_TESTS:-0}"
 qubes_system_tests="${GUIX_QUBES_SYSTEM_TESTS:-qubes.tests.integ.qrexec:14400 qubes.tests.integ.vm_qrexec_gui:14400}"
 run_proxy_download_test="${GUIX_RUN_PROXY_DOWNLOAD_TEST:-0}"
+run_proxy_stub_download_test="${GUIX_RUN_PROXY_STUB_DOWNLOAD_TEST:-0}"
 guix_proxy_download_url="${GUIX_PROXY_DOWNLOAD_URL:-https://guix.gnu.org/}"
+guix_proxy_stub_download_url="${GUIX_PROXY_STUB_DOWNLOAD_URL:-http://qubes-guix-test/}"
 guix_proxy_download_timeout="${GUIX_PROXY_DOWNLOAD_TIMEOUT:-240}"
 guix_expect_commands="${GUIX_EXPECT_COMMANDS:-}"
 guix_expect_desktops="${GUIX_EXPECT_DESKTOPS:-}"
@@ -181,8 +183,14 @@ sudo install -o geekotest -g root -m 0644 \
     "$repo_root/scripts/test-native-guix-template-dom0.sh" \
     "$tests_dest/data/test-native-guix-template-dom0.sh"
 sudo install -o geekotest -g root -m 0644 \
+    "$repo_root/scripts/test-guix-update-proxy-config-dom0.sh" \
+    "$tests_dest/data/test-guix-update-proxy-config-dom0.sh"
+sudo install -o geekotest -g root -m 0644 \
     "$repo_root/scripts/test-guix-update-proxy-download-dom0.sh" \
     "$tests_dest/data/test-guix-update-proxy-download-dom0.sh"
+sudo install -o geekotest -g root -m 0644 \
+    "$repo_root/scripts/test-guix-update-proxy-stub-download-dom0.sh" \
+    "$tests_dest/data/test-guix-update-proxy-stub-download-dom0.sh"
 sudo install -o geekotest -g root -m 0644 \
     "$repo_root/scripts/diagnose-guix-postinstall-dom0.sh" \
     "$tests_dest/data/diagnose-guix-postinstall-dom0.sh"
@@ -267,6 +275,7 @@ if [ "$install_mode" = "rpm" ]; then
     cp "$repo_root/scripts/test-native-guix-template-dom0.sh" "$rpm_staging/"
     cp "$repo_root/scripts/test-guix-update-proxy-config-dom0.sh" "$rpm_staging/"
     cp "$repo_root/scripts/test-guix-update-proxy-download-dom0.sh" "$rpm_staging/"
+    cp "$repo_root/scripts/test-guix-update-proxy-stub-download-dom0.sh" "$rpm_staging/"
     cp "$repo_root/scripts/diagnose-guix-postinstall-dom0.sh" "$rpm_staging/"
     if [ "$run_qubes_system_tests" = "1" ]; then
         cp "$nose2_rpm" "$rpm_staging/python3-nose2.rpm"
@@ -391,7 +400,9 @@ job_args=(
     GUIX_RUN_QUBES_SYSTEM_TESTS="$run_qubes_system_tests"
     GUIX_QUBES_SYSTEM_TESTS="$qubes_system_tests"
     GUIX_RUN_PROXY_DOWNLOAD_TEST="$run_proxy_download_test"
+    GUIX_RUN_PROXY_STUB_DOWNLOAD_TEST="$run_proxy_stub_download_test"
     GUIX_PROXY_DOWNLOAD_URL="$guix_proxy_download_url"
+    GUIX_PROXY_STUB_DOWNLOAD_URL="$guix_proxy_stub_download_url"
     GUIX_PROXY_DOWNLOAD_TIMEOUT="$guix_proxy_download_timeout"
     GUIX_EXPECT_COMMANDS="$guix_expect_commands"
     GUIX_EXPECT_DESKTOPS="$guix_expect_desktops"

@@ -164,6 +164,7 @@ sub stage_rpm_asset_files {
         'import-native-rootfs-dom0.sh',
         'test-guix-update-proxy-config-dom0.sh',
         'test-guix-update-proxy-download-dom0.sh',
+        'test-guix-update-proxy-stub-download-dom0.sh',
         'test-native-guix-template-dom0.sh',
     );
 
@@ -245,6 +246,7 @@ sub run {
         stage_data_file('test-native-guix-template-dom0.sh', '/root/test-native-guix-template-dom0.sh');
         stage_data_file('test-guix-update-proxy-config-dom0.sh', '/root/test-guix-update-proxy-config-dom0.sh');
         stage_data_file('test-guix-update-proxy-download-dom0.sh', '/root/test-guix-update-proxy-download-dom0.sh');
+        stage_data_file('test-guix-update-proxy-stub-download-dom0.sh', '/root/test-guix-update-proxy-stub-download-dom0.sh');
         stage_data_file('diagnose-guix-postinstall-dom0.sh', '/root/diagnose-guix-postinstall-dom0.sh');
         if (get_var('GUIX_RUN_QUBES_SYSTEM_TESTS', '0') eq '1') {
             stage_data_file('python3-nose2.rpm', '/root/python3-nose2.rpm');
@@ -371,6 +373,21 @@ sub run {
         dom0_assert_script_run('tar czf /root/openqa-guix-logs.tgz /root/openqa-guix-*.log /root/openqa-guix-root-device 2>/dev/null || true', timeout => 120);
         upload_logs('/root/openqa-guix-logs.tgz', failok => 1);
         die "Guix update proxy config check failed";
+    }
+
+    if (get_var('GUIX_RUN_PROXY_STUB_DOWNLOAD_TEST', '0') eq '1') {
+        my $proxy_stub_download_cmd = join(' ',
+            '/root/test-guix-update-proxy-stub-download-dom0.sh',
+            '--template', shell_quote($template),
+            '--download-url', shell_quote(get_var('GUIX_PROXY_STUB_DOWNLOAD_URL', 'http://qubes-guix-test/')),
+            '--timeout', shell_quote(get_var('GUIX_PROXY_DOWNLOAD_TIMEOUT', '240')),
+            '2>&1 | tee /root/openqa-guix-update-proxy-stub-download.log /dev/' . $testapi::serialdev);
+        my $proxy_stub_download_status = dom0_script_run(checked_shell_command($proxy_stub_download_cmd), timeout => 1200);
+        if (!defined $proxy_stub_download_status || $proxy_stub_download_status != 0) {
+            dom0_assert_script_run('tar czf /root/openqa-guix-logs.tgz /root/openqa-guix-*.log /root/openqa-guix-root-device 2>/dev/null || true', timeout => 120);
+            upload_logs('/root/openqa-guix-logs.tgz', failok => 1);
+            die "Guix update proxy stub download check failed";
+        }
     }
 
     if (get_var('GUIX_RUN_PROXY_DOWNLOAD_TEST', '0') eq '1') {
