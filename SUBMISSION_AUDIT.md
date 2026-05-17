@@ -21,6 +21,7 @@ complete.
 | Maintainer/update story | `MAINTENANCE.md`, `UPSTREAMING.md` | Present as a policy artifact, including handoff/removal policy for an unmaintained community template; actual maintainer identity still missing |
 | Contribution workflow | `CONTRIBUTING.md`, `PATCH_SERIES.md` | Signed-history, testing, placeholder, release evidence, and multi-repo flow rules documented |
 | Submission handoff | `SUBMISSION_DRAFTS.md`, `PATCH_SERIES.md` | Drafts present; placeholders and final evidence must be replaced before use |
+| Generated artifact hygiene | `.gitignore`, `git ls-files`, `git status --short` | Generated images, RPMs, tarballs, caches, dist output, and current test work directories are ignored; no generated artifacts are tracked |
 | Immutable Qubes source pins and hashes | `native/modules/qubes/packages/qubes-vm.scm` | Present |
 | Pin freshness check | `scripts/check-qubes-pins.sh`, `make check-qubes-pins`, `VALIDATION.md` | Present; passed locally and in the synced GCP review checkout against live tags on May 17, 2026 |
 | Guix channel reproducibility | `config/channels.scm`, installed `/etc/guix/channels.scm`, `VALIDATION.md` | Present; `guix time-machine -- describe` passed on GCP |
@@ -67,6 +68,7 @@ Inspected evidence in the current tree:
 | Tracked tests exercise build contracts | `make check` runs `tests/builder-hook-contract-check.sh`, `tests/builder-rpm-contract-check.sh`, `tests/rpm-layout-check.sh`, and `tests/release-config-fragment-check.sh`. |
 | Default test inventory is artifact-backed | `git ls-files tests` lists only the Builder hook, Builder RPM contract, RPM layout, and release-config fragment checks; these tests execute code, build package artifacts, extract payloads, parse structured config, and validate external template contracts. |
 | Working tree clean | `git status --short` has no output. |
+| Generated artifacts stay out of review | `.gitignore` covers root images, RPMs, tarballs, cache/dist output, and current test work directories; `git ls-files` does not list generated RPM/image artifacts. |
 | Qubes source pins are fresh | Current local and synced GCP `./scripts/check-qubes-pins.sh` runs passed for all pinned Qubes VM components on May 17, 2026. |
 | Prompt-to-artifact checklist exists | This file maps objective phrases to artifacts and marks incomplete external gates. |
 | Online expectations are traceable | `UPSTREAMING.md` contains an online source crosswalk for Qubes docs, Builder v2, release-configs, forum precedent, and comparable NixOS issue/PRs. |
