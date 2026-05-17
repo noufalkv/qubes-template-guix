@@ -52,7 +52,7 @@ release_from_timestamp() {
 }
 
 build_rootimg() {
-    local variant root_dir root_img appmenus_dir template_conf
+    local variant root_dir root_img appmenus_dir source_appmenus_dir template_conf
 
     validate_template_name "$template_name"
     variant="$(variant_from_builder)"
@@ -68,15 +68,13 @@ build_rootimg() {
         --size "$template_root_size"
 
     case "$variant" in
-        minimal) printf '%s\n' xterm.desktop >"$appmenus_dir/guix.desktop" ;;
-        *) printf '%s\n' xfce4-terminal.desktop >"$appmenus_dir/guix.desktop" ;;
+        minimal) source_appmenus_dir="$repo_root/builder-v2-template/appmenus_guix_minimal" ;;
+        *) source_appmenus_dir="$repo_root/builder-v2-template/appmenus" ;;
     esac
+    rm -rf "$appmenus_dir"
+    cp -a "$source_appmenus_dir" "$appmenus_dir"
 
-    cat >"$template_conf" <<EOF
-virt-mode=pvh
-qrexec=1
-gui=1
-EOF
+    cp "$repo_root/builder-v2-template/template.conf" "$template_conf"
 }
 
 build_rpm() {
