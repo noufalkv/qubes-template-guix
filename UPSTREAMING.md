@@ -264,7 +264,8 @@ request or issue has been exhaustively reviewed.
   `https://github.com/QubesOS/qubes-core-agent-linux/pull/481`
   Expectation: declarative/non-FHS templates need complete Qubes package
   coverage, distro metadata, update integration, signed/rebased reviewable
-  changes, and continuity across rebuilds.
+  changes, continuity across rebuilds, and openQA/integration evidence for
+  behavior that depends on dom0 rather than ordinary unit-test-only coverage.
   Local response: `REVIEW_NOTES.md`, `MAINTENANCE.md`,
   `ADAPTATION_INVENTORY.md`, and the Builder/release-config sketches keep those
   expectations visible instead of hiding them behind a local RPM build.

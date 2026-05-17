@@ -127,6 +127,13 @@ review expectations:
 - `QubesOS/qubes-core-agent-linux#481` was merged and added distribution
   metadata reporting to dom0.  The Guix package build passes `DIST=guix` and
   `release=Guix` so this template can participate in that model.
+- The same merged distribution-metadata PR records the Qubes testing norm for
+  dom0-dependent guest behavior: reviewers asked for coverage, and the
+  maintainer pointed that path at integration testing through openQA because
+  ordinary unit tests do not have a running dom0 to communicate with.  That
+  supports keeping Guix system-record checks, artifact checks, and RPM-mode
+  openQA as separate evidence layers rather than pretending one unit test can
+  cover the whole TemplateVM contract.
 - The community template trust model makes `MAINTENANCE.md` part of the review
   surface: the repo needs a named maintainer, signing key, update cadence, and a
   removal/handoff plan before publication.
