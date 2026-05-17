@@ -198,6 +198,7 @@ separation of concerns:
 | `06a629f` | Add an executable native-rootfs policy check so the default local gate verifies missing pinned channels fail before image or mount work. |
 | `e23fd0c` | Tie the installed reconfiguration and package-test-policy adaptation rows to the executable native-rootfs pinned-channel policy gate. |
 | `6745425` | Refresh the Builder v2 and release-config sketch evidence after the current local review head, keeping the upstream commits and focused results explicit. |
+| `d15a06a` | Ignore failed-run work directories from the native-rootfs policy check so generated validation artifacts stay out of review. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
