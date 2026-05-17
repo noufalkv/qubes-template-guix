@@ -174,6 +174,8 @@ separation of concerns:
 | `bbc5251` | Record the Qubes openQA/integration-test precedent for dom0-dependent guest behavior. |
 | `714a051` | Make the omitted Guix base services explicit in the adaptation inventory and review notes. |
 | `2e0dfd3` | Document the Qubes Template Manager RPM payload contract and direct-package-install guard. |
+| `9bf6ad9` | Remove source-only validation wording so upstream-facing evidence is limited to artifact, Guix system-record, dom0, or openQA contracts. |
+| `261721f` | Document the generated `/sbin/init` entrypoint that bridges Qubes' dom0-kernel boot path to the Guix system boot program. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
