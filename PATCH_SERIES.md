@@ -170,6 +170,8 @@ the same separation of concerns:
 | `80f2b78` | Keep the local history map aligned with the source-hygiene evidence split. |
 | `76605e5` | Clarify that the artifact contract suite runs locally while the Guix system-record contract gate runs on a Guix-capable builder. |
 | `d216fb3` | Document the standard Qubes `user` account and group membership in the security review notes. |
+| `71c91bf` | Keep the local history map aligned with the Qubes user security-contract note. |
+| `bbc5251` | Record the Qubes openQA/integration-test precedent for dom0-dependent guest behavior. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
