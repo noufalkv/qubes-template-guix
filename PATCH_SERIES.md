@@ -182,6 +182,7 @@ separation of concerns:
 | `a32182e` | Document the safety boundary for the dom0 root-image import helper and keep it framed as test infrastructure, not the release path. |
 | `dd75cdf` | Document that the openQA setup script is for a dedicated review host because it rewrites local openQA tests, API credentials, worker configuration, and assets. |
 | `122ebd2` | Make the test policy explicit: source-shape/static checks are not upstream tests, and the public suite should exercise generated artifacts, Guix records, dom0 behavior, or openQA. |
+| `b4689eb` | Document the smaller VM-side component package split so selected upstream subdirectories, Python binding installation, and guest-runtime-only outputs are visible to reviewers. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
