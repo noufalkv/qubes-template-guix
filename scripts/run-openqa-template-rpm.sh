@@ -31,18 +31,25 @@ die() {
     exit 1
 }
 
+require_arg() {
+    [ "$#" -ge 2 ] || die "$1 requires a value"
+}
+
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --variant)
-            variant="${2:-}"
+            require_arg "$@"
+            variant="$2"
             shift 2
             ;;
         --version)
-            version="${2:-}"
+            require_arg "$@"
+            version="$2"
             shift 2
             ;;
         --release)
-            release="${2:-}"
+            require_arg "$@"
+            release="$2"
             shift 2
             ;;
         --run-system-tests)

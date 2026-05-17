@@ -25,18 +25,25 @@ die() {
     exit 1
 }
 
+require_arg() {
+    [ "$#" -ge 2 ] || die "$1 requires a value"
+}
+
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --name)
-            instance="${2:-}"
+            require_arg "$@"
+            instance="$2"
             shift 2
             ;;
         --zone)
-            zone="${2:-}"
+            require_arg "$@"
+            zone="$2"
             shift 2
             ;;
         --remote)
-            remote_dir="${2:-}"
+            require_arg "$@"
+            remote_dir="$2"
             shift 2
             ;;
         -h|--help)

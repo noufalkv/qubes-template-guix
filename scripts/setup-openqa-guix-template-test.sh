@@ -74,6 +74,10 @@ need() {
     command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
 }
 
+require_arg() {
+    [ "$#" -ge 2 ] || die "$1 requires a value"
+}
+
 ensure_nose2_rpm() {
     local tmp
 
@@ -103,19 +107,23 @@ trap cleanup EXIT
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --tests-source)
-            tests_source="${2:-}"
+            require_arg "$@"
+            tests_source="$2"
             shift 2
             ;;
         --qubes-disk)
-            qubes_disk="${2:-}"
+            require_arg "$@"
+            qubes_disk="$2"
             shift 2
             ;;
         --guix-root-image)
-            guix_root_image="${2:-}"
+            require_arg "$@"
+            guix_root_image="$2"
             shift 2
             ;;
         --template-rpm)
-            guix_template_rpm="${2:-}"
+            require_arg "$@"
+            guix_template_rpm="$2"
             shift 2
             ;;
         --no-schedule)

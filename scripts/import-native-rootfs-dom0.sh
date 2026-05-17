@@ -31,22 +31,30 @@ need() {
     command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
 }
 
+require_arg() {
+    [ "$#" -ge 2 ] || die "$1 requires a value"
+}
+
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --image)
-            image="${2:-}"
+            require_arg "$@"
+            image="$2"
             shift 2
             ;;
         --name)
-            template_name="${2:-}"
+            require_arg "$@"
+            template_name="$2"
             shift 2
             ;;
         --root-size)
-            root_size="${2:-}"
+            require_arg "$@"
+            root_size="$2"
             shift 2
             ;;
         --label)
-            label="${2:-}"
+            require_arg "$@"
+            label="$2"
             shift 2
             ;;
         -h|--help)

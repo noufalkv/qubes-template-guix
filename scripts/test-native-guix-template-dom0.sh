@@ -53,6 +53,10 @@ need() {
     command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
 }
 
+require_arg() {
+    [ "$#" -ge 2 ] || die "$1 requires a value"
+}
+
 run_as_root() {
     if [ "$(id -u)" -eq 0 ]; then
         "$@"
@@ -395,6 +399,7 @@ infer_qvm_run_target() {
     while [ "$#" -gt 0 ]; do
         case "$1" in
             --user|--service|--dispvm)
+                [ "$#" -ge 2 ] || return 0
                 shift 2
                 ;;
             --*)
@@ -797,11 +802,13 @@ trap on_exit EXIT
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --template)
-            template_name="${2:-}"
+            require_arg "$@"
+            template_name="$2"
             shift 2
             ;;
         --appvm)
-            appvm_name="${2:-}"
+            require_arg "$@"
+            appvm_name="$2"
             shift 2
             ;;
         --run-system-tests)
@@ -809,15 +816,18 @@ while [ "$#" -gt 0 ]; do
             shift
             ;;
         --system-tests)
-            system_tests="${2:-}"
+            require_arg "$@"
+            system_tests="$2"
             shift 2
             ;;
         --expect-command)
-            expected_commands+=("${2:-}")
+            require_arg "$@"
+            expected_commands+=("$2")
             shift 2
             ;;
         --expect-desktop)
-            expected_desktops+=("${2:-}")
+            require_arg "$@"
+            expected_desktops+=("$2")
             shift 2
             ;;
         --keep-appvm)

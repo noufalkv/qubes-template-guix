@@ -32,26 +32,35 @@ die() {
     exit 1
 }
 
+require_arg() {
+    [ "$#" -ge 2 ] || die "$1 requires a value"
+}
+
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --name)
-            instance="${2:-}"
+            require_arg "$@"
+            instance="$2"
             shift 2
             ;;
         --zone)
-            zone="${2:-}"
+            require_arg "$@"
+            zone="$2"
             shift 2
             ;;
         --type)
-            machine_type="${2:-}"
+            require_arg "$@"
+            machine_type="$2"
             shift 2
             ;;
         --disk)
-            disk_size="${2:-}"
+            require_arg "$@"
+            disk_size="$2"
             shift 2
             ;;
         --project)
-            project="${2:-}"
+            require_arg "$@"
+            project="$2"
             shift 2
             ;;
         -h|--help)

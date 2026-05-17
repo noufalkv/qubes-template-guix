@@ -35,6 +35,10 @@ need() {
     command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
 }
 
+require_arg() {
+    [ "$#" -ge 2 ] || die "$1 requires a value"
+}
+
 run_blkid() {
     if command -v blkid >/dev/null 2>&1; then
         blkid "$@"
@@ -46,19 +50,23 @@ run_blkid() {
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --image)
-            image="${2:-}"
+            require_arg "$@"
+            image="$2"
             shift 2
             ;;
         --fs-label)
-            fs_label="${2:-}"
+            require_arg "$@"
+            fs_label="$2"
             shift 2
             ;;
         --expect-command)
-            expected_commands+=("${2:-}")
+            require_arg "$@"
+            expected_commands+=("$2")
             shift 2
             ;;
         --expect-desktop)
-            expected_desktops+=("${2:-}")
+            require_arg "$@"
+            expected_desktops+=("$2")
             shift 2
             ;;
         -h|--help)

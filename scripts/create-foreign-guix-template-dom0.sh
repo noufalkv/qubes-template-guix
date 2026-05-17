@@ -38,6 +38,10 @@ need() {
     command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
 }
 
+require_arg() {
+    [ "$#" -ge 2 ] || die "$1 requires a value"
+}
+
 run() {
     printf '+'
     printf ' %q' "$@"
@@ -88,15 +92,18 @@ copy_installer_to_vm() {
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --base)
-            base_template="${2:-}"
+            require_arg "$@"
+            base_template="$2"
             shift 2
             ;;
         --name)
-            template_name="${2:-}"
+            require_arg "$@"
+            template_name="$2"
             shift 2
             ;;
         --netvm)
-            netvm="${2:-}"
+            require_arg "$@"
+            netvm="$2"
             shift 2
             ;;
         --reuse)
