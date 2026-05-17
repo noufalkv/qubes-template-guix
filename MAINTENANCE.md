@@ -95,8 +95,10 @@ network policy.  The implementation provides a Guix-facing forwarder to
 client-side Guix commands when `updates-proxy-setup` is enabled.  RPM-mode
 openQA job 27 validated the generated Guix proxy wrapper, updates-proxy
 forwarder, and `guix-daemon` service state in a rebuilt `guix-minimal`
-TemplateVM.  A real Guix update/download command through the proxy remains a
-release gate before submission.
+TemplateVM.  OpenQA job 29 reached the real-download verifier, but dom0
+refused `qubes.UpdatesProxy` in the nested test environment.  A passing real
+Guix update/download command through the proxy remains a release gate before
+submission.
 
 ## Rollback
 
