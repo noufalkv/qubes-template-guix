@@ -92,8 +92,8 @@ are removed.
 ## Latest Evidence
 
 Verification evidence includes the latest local artifact contract pass, the
-GCP Guix system-contract pass, plus earlier targeted Builder/release-config
-checks:
+GCP Guix system-contract pass at commit `e475c2b` after the qrexec fork-server
+service cleanup, plus earlier targeted Builder/release-config checks:
 
 ```sh
 make check

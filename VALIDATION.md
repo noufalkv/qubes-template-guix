@@ -32,7 +32,9 @@ Guix update tooling through an Internet update target still remain open.
 ## Current HEAD Contract Checks
 
 The current tree passed the local artifact checks and the Guix-capable GCP
-system-contract check after the May 17, 2026 audit refresh.
+system-contract check after the May 17, 2026 audit refresh.  The latest GCP
+rerun archived commit `e475c2b` after the unused qrexec fork-server Shepherd
+service was removed.
 
 Local artifact check:
 
@@ -67,7 +69,8 @@ the extracted filesystem, and validates the RPM-to-template metadata through
 short option form.
 
 The optional `make guix-system-contract-check` gate requires Guix.  It was run
-on the GCP review builder after adding the check and passed with:
+on the GCP review builder after adding the check, then rerun at commit
+`e475c2b`, and passed with:
 
 ```text
 ./tests/guix-system-contract-check.sh
