@@ -217,6 +217,11 @@ The changes should be reviewed in this order:
 - QubesDB is patched to stay in the foreground because Shepherd supervises the
   process it starts; the upstream daemon mode would otherwise hide the real
   process from service supervision.
+- The smaller VM-side packages build explicit upstream subdirectories instead
+  of importing RPM/Deb packaging fragments: vchan, `linux-utils/qrexec-lib`,
+  `linux-utils/qmemman`, and QubesDB daemon/client/bindings.  This keeps the
+  Guix package outputs limited to guest runtime pieces and leaves service
+  policy in the Guix system definition.
 - qrexec PAM support is enabled with the upstream make variable instead of
   patching upstream PAM detection.
 - PAM service files are provided through Guix `pam-root-service-type`, not by
