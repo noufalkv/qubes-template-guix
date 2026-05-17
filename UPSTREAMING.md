@@ -171,6 +171,14 @@ request or issue has been exhaustively reviewed.
   and `config/qubes-release-configs-guix.example.patch` provide the matching
   `builder-guix`, `guix`, and `guix-minimal` skeletons with maintainer
   placeholders.
+- Qubes template documentation:
+  `https://doc.qubes-os.org/en/latest/user/templates/templates.html`
+  Expectation: community templates are not updated by the Qubes Project in the
+  same way as official templates; users trust the template maintainer as part of
+  the template trust path.
+  Local response: `MAINTENANCE.md` makes maintainer identity, signing key,
+  update cadence, security rebuild inputs, and handoff/removal policy explicit
+  blockers before asking for publication.
 - Qubes Forum, "Building F42 template in R4.3":
   `https://forum.qubes-os.org/t/building-f42-template-in-r4-3/40176`
   Expectation: current R4.3 template-build practice uses Builder v2 with a
@@ -218,6 +226,14 @@ request or issue has been exhaustively reviewed.
   install/reinstall/remove, and RPM-mode openQA is green for the 2026051602
   RPMs.  `SUBMISSION_AUDIT.md` still blocks upstream claims until final
   signed-branch release evidence and maintainer-owned publication pieces exist.
+- Qubes Forum, "Gentoo template missing?":
+  `https://forum.qubes-os.org/t/gentoo-template-missing/39654`
+  Expectation: when a community template loses active maintenance, users may no
+  longer find it through Template Manager and may be directed to rebuild it
+  themselves.
+  Local response: `MAINTENANCE.md` requires a handoff plan and explicitly says
+  to stop promotion or ask Qubes maintainers to remove/hide the template if no
+  replacement maintainer is available.
 - Comparable NixOS contribution issue and PRs:
   `https://github.com/QubesOS/qubes-issues/issues/7992`,
   `https://github.com/QubesOS/qubes-core-admin-linux/pull/168`, and
@@ -252,6 +268,11 @@ closest precedent for a new source-style template: it started in
 `qubes-templates-community-testing`, required automated build testing beyond
 normal CI capacity, used openQA as part of validation, and later moved toward
 stable community templates after repeated successful infrastructure work.
+The template documentation and later Gentoo availability discussion also make
+maintainer continuity a release property, not only a social detail: users trust
+the community template maintainer, and a template that no longer has an active
+maintainer may disappear from Template Manager rather than remain a supported
+download.
 
 For Guix, the practical implication is that an upstream submission should lead
 with build/test infrastructure and maintainer commitments, not only with a
@@ -424,6 +445,8 @@ with local validation, not as a publishable Qubes community template.
   `https://doc.qubes-os.org/en/latest/introduction/contributing.html`
 - Qubes Template Manager package format:
   `https://doc.qubes-os.org/en/latest/developer/system/template-manager.html`
+- Qubes template trust and update model:
+  `https://doc.qubes-os.org/en/latest/user/templates/templates.html`
 - Qubes `qvm-template` command reference:
   `https://dev.qubes-os.org/projects/core-admin-client/en/latest/manpages/qvm-template.html`
 - Qubes Builder v2 template plugin:

@@ -5,6 +5,13 @@ Qubes TemplateVM.  It is part of the review surface for Qubes maintainers; it
 does not replace the need for a named human maintainer, a public repository, and
 signed releases.
 
+Community template maintenance is part of the user trust path.  Qubes
+documentation says community templates are not updated by the Qubes Project in
+the same way official templates are; users also trust the community template
+maintainer.  Recent Gentoo template availability discussion shows the practical
+failure mode: if the template is no longer maintained, users may need to build it
+themselves or use an unofficial source instead of finding it in Template Manager.
+
 ## Maintainer Ownership
 
 The template should be submitted as a community-maintained template first, not
@@ -38,6 +45,10 @@ If the maintainer can no longer publish timely updates, the expected handoff is:
 
 The release-config maintainer fingerprint is part of the trust path.  It should
 not be changed silently.
+
+This handoff policy is a publication gate.  If no replacement maintainer exists,
+the responsible action is to keep the template out of stable community
+publication or ask Qubes maintainers to hide/remove it until maintenance resumes.
 
 ## Release Inputs
 

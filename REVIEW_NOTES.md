@@ -57,6 +57,9 @@ or issue.
 - Gentoo community-template precedent: source-oriented community templates need
   maintainer ownership, long build timeouts, and automated validation beyond
   normal CI capacity.
+- Community template trust and availability: users trust the template
+  maintainer, and unmaintained community templates may disappear from Template
+  Manager rather than remain a normal supported download.
 - NixOS template issue and follow-up PRs: maintainers expect complete Qubes
   package coverage, real Builder support, update mechanism integration,
   qrexec/GUI/appmenu continuity across rebuilds, and signed/rebased PRs rather
@@ -117,6 +120,9 @@ review expectations:
 - `QubesOS/qubes-core-agent-linux#481` was merged and added distribution
   metadata reporting to dom0.  The Guix package build passes `DIST=guix` and
   `release=Guix` so this template can participate in that model.
+- The community template trust model makes `MAINTENANCE.md` part of the review
+  surface: the repo needs a named maintainer, signing key, update cadence, and a
+  removal/handoff plan before publication.
 - Later comments on the NixOS tracker call out app menu launching, GUI session
   environment, keymap sync, audio, time sync, and DispVM startup as practical
   usability gates.  For Guix, the current nested-dom0 smoke covers the basic
