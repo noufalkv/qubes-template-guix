@@ -163,6 +163,7 @@ the same separation of concerns:
 | `d017cab`, `aa3d497`, `13b7c85`, `d3c6c67`, `f4cfeb6`, `e21a5ec`, `30acbd4`, `f21deb1`, `ffbe2e0`, `8f9cf69`, `9dfd3d4` | Rework review hygiene around placeholders, SPDX/license evidence, source-shape test gates, artifact-backed test inventory, non-obvious-change audit coverage, generated-artifact hygiene, and validation proof language. |
 | `Add Guix system contract check` | Add a Guix-backed system contract check for normal/minimal Qubes-visible defaults: standard swap, default privileged programs, passwordless sudo, required services, and `meminfo-writer` defaults. |
 | `Record broad shell syntax evidence` | Replace the stale partial `bash -n` list with the broad tracked-shell parser pass and keep it labeled as syntax hygiene rather than release evidence. |
+| `Refresh submission evidence drafts` | Keep the qubes-devel, contribution issue, and release-config draft evidence lists aligned with the current Guix contract and syntax-hygiene gates. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
