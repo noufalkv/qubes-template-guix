@@ -186,6 +186,12 @@ The changes should be reviewed in this order:
 - `/etc/guix/channels.scm` is installed from the selected pinned channel file.
   This gives all users a declarative default channel without baking an
   imperative per-user `guix pull` profile into the template image.
+- `scripts/build-native-rootfs.sh` writes a generated `/sbin/init` wrapper
+  because Qubes dom0 supplies the VM kernel and enters the guest root at
+  `/sbin/init`, while Guix's `--no-bootloader` image build leaves the boot
+  program under `/var/guix/profiles/system`.  The wrapper prepares early
+  runtime mounts and Qubes runtime directories, exports `GUIX_NEW_SYSTEM`, and
+  then executes the Guix boot program.
 - Several stock Guix base services are deliberately omitted so the TemplateVM
   does not start independent console, login, networking, log-rotation, or
   sysctl policy that Qubes normally owns.  The exact omitted service list is in
