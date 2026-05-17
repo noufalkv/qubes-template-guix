@@ -186,6 +186,7 @@ separation of concerns:
 | `7a9f370` | Drop the unused qrexec fork-server Shepherd service and document the actual upstream XDG-autostart ownership path. |
 | `ed32328` | Record the local artifact check and GCP Guix system-contract rerun after the qrexec fork-server service cleanup. |
 | `ded8826` | Refresh the Builder v2 and release-config sketch validation notes against current upstream checkouts and remove duplicate release-config result text. |
+| `b4167a8` | Clarify that the GCP Guix system-contract evidence is tied to commit `e475c2b` and that later commits are docs/evidence/history-map only. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
