@@ -191,6 +191,7 @@ separation of concerns:
 | `7970c93` | Reclassify older GCP Guix REPL loads as historical evidence and make the executable system-contract gate the current Scheme service-graph check. |
 | `e0261a9` | Clarify dated runtime/openQA evidence so older GCP and nested-dom0 runs remain review evidence without being mistaken for final signed-branch proof. |
 | `838fddc` | Adjust the security status wording so recorded openQA/default-update-target evidence is not mistaken for current final-release proof. |
+| `cefe65e` | Make pinned Guix channels mandatory by default for rootfs builds, leaving `GUIX_BRANCH` only as an explicit developer override. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
