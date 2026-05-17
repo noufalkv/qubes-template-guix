@@ -143,7 +143,7 @@ PYTHONPATH=/tmp/qubes-builderv2-current \
 Result:
 
 ```text
-3 passed in 0.12s
+3 passed in 0.10s
 ```
 
 The release-config sketch also passed an applied-config YAML validation in a
@@ -169,8 +169,14 @@ assert components['builder-guix']['branch'] == 'main'
 assert templates['guix']['dist'] == 'guix'
 assert templates['guix-minimal']['dist'] == 'guix'
 assert templates['guix-minimal']['flavor'] == 'minimal'
-print('release-config guix entries validated')
+print('release-config guix entries parsed')
 PY
+```
+
+Result:
+
+```text
+release-config guix entries parsed
 ```
 
 Result:

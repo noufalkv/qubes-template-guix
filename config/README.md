@@ -51,7 +51,7 @@ python -m pytest \
 That focused check passed in a fresh patched checkout with:
 
 ```text
-3 passed in 0.12s
+3 passed in 0.10s
 ```
 
 The full Builder v2 test suite was not used as evidence in this environment

@@ -164,6 +164,7 @@ the same separation of concerns:
 | `Add Guix system contract check` | Add a Guix-backed system contract check for normal/minimal Qubes-visible defaults: standard swap, default privileged programs, passwordless sudo, required services, and `meminfo-writer` defaults. |
 | `Record broad shell syntax evidence` | Replace the stale partial `bash -n` list with the broad tracked-shell parser pass and keep it labeled as syntax hygiene rather than release evidence. |
 | `Refresh submission evidence drafts` | Keep the qubes-devel, contribution issue, and release-config draft evidence lists aligned with the current Guix contract and syntax-hygiene gates. |
+| `Refresh multi-repo sketch evidence` | Re-run the Builder v2 and release-config patch checks against fresh upstream checkouts and record the current focused-test/YAML-parse output. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
