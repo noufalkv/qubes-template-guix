@@ -205,6 +205,7 @@ separation of concerns:
 | `a06b4fb` | Tie current validation wording to dated local and GCP evidence instead of implying final signed-branch proof. |
 | `07a3998` | Reword adaptation and openQA evidence notes so dated artifact evidence is not described as current release proof. |
 | `b3d09ed` | Fix missing required option handling in core build/package/runtime validation scripts and add an executable CLI contract check to `make check`. |
+| `8cd06bc` | Extend required option-value validation and CLI contract coverage across the remaining public helper scripts. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
