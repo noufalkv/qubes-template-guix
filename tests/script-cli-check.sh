@@ -42,4 +42,41 @@ check_missing_value scripts/gcloud-sync-and-setup-builder.sh --name
 check_missing_value scripts/setup-openqa-guix-template-test.sh --tests-source
 check_missing_value scripts/test-native-guix-template-dom0.sh --template
 
+gcloud_sync_output="$(
+    "$repo_root/scripts/gcloud-sync-and-setup-builder.sh" \
+        --dry-run \
+        --name qubes-guix-test \
+        --zone test-zone \
+        --remote "remote path; touch /tmp/qubes-guix-bad" 2>&1
+)"
+
+printf '%s\n' "$gcloud_sync_output" |
+    grep -Fq "rm -rf -- 'remote path; touch /tmp/qubes-guix-bad'" || {
+        printf 'gcloud sync dry-run did not quote remote cleanup path:\n%s\n' \
+            "$gcloud_sync_output" >&2
+        exit 1
+    }
+
+printf '%s\n' "$gcloud_sync_output" |
+    grep -Fq "WORKDIR='remote path; touch /tmp/qubes-guix-bad'" || {
+        printf 'gcloud sync dry-run did not quote remote setup path:\n%s\n' \
+            "$gcloud_sync_output" >&2
+        exit 1
+    }
+
+gcloud_sync_home_output="$(
+    "$repo_root/scripts/gcloud-sync-and-setup-builder.sh" \
+        --dry-run \
+        --name qubes-guix-test \
+        --zone test-zone \
+        --remote "~/remote path; touch /tmp/qubes-guix-bad" 2>&1
+)"
+
+printf '%s\n' "$gcloud_sync_home_output" |
+    grep -Fq "rm -rf -- \$HOME/'remote path; touch /tmp/qubes-guix-bad'" || {
+        printf 'gcloud sync dry-run did not preserve safe ~/ expansion:\n%s\n' \
+            "$gcloud_sync_home_output" >&2
+        exit 1
+    }
+
 printf 'script CLI contract check passed\n'
