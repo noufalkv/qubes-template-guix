@@ -31,7 +31,8 @@ Guix update tooling through an Internet update target still remain open.
 
 ## Current HEAD Contract Checks
 
-The current local tree has passed the local contract checks:
+The current local tree passed the local contract checks after the May 17, 2026
+audit refresh:
 
 ```sh
 bash -n scripts/test-memory-balloon-dom0.sh
