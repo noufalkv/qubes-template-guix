@@ -24,6 +24,10 @@ make check
 ./scripts/check-qubes-pins.sh
 ```
 
+Do not add source-pattern or patch-shape checks as upstream evidence.  Local
+tests should execute build hooks, create or inspect generated artifacts, or
+validate Qubes-visible template contracts.
+
 When fresh upstream checkouts are available, also run:
 
 Run the Builder v2 and release-config sketch checks directly in fresh upstream
