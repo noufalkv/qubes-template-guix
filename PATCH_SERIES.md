@@ -141,9 +141,11 @@ covers it, and any remaining gate that must not be claimed yet.
 
 The current `master` history through the implementation and evidence commits is
 already scoped into review-oriented commits, but it has not been signed or
-published by a maintainer.  This documentation section is intentionally not
-listed in its own table.  If the branch is rewritten before submission, preserve
-the same separation of concerns:
+published by a maintainer.  This documentation section and later map-only
+maintenance commits are intentionally not exhaustively listed in their own
+table; otherwise the map would need a new self-referential entry after every
+map edit.  If the branch is rewritten before submission, preserve the same
+separation of concerns:
 
 | Commit | Purpose |
 | --- | --- |
@@ -167,10 +169,8 @@ the same separation of concerns:
 | `a232db0` | Re-run the Builder v2 and release-config patch checks against fresh upstream checkouts and record the current focused-test/YAML-parse output. |
 | `b7a4969` | Extend the Guix-backed system contract to assert the standard `user` account, primary group, and Qubes-related supplementary groups for both variants. |
 | `5dbd24b` | Separate real contract evidence from source hygiene/provenance notes so source-only checks are not presented as upstream validation. |
-| `80f2b78` | Keep the local history map aligned with the source-hygiene evidence split. |
 | `76605e5` | Clarify that the artifact contract suite runs locally while the Guix system-record contract gate runs on a Guix-capable builder. |
 | `d216fb3` | Document the standard Qubes `user` account and group membership in the security review notes. |
-| `71c91bf` | Keep the local history map aligned with the Qubes user security-contract note. |
 | `bbc5251` | Record the Qubes openQA/integration-test precedent for dom0-dependent guest behavior. |
 
 The public submission branch may squash or reorder these, but it should not lose
