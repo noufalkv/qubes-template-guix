@@ -45,6 +45,10 @@ run dom0-side test commands.
 - `qubes.PostInstall` is forced to run as root because Qubes post-install hooks
   update root-owned template state and Qubes integration tests expect that
   behavior.
+- The standard Qubes `user` account is kept as the primary interactive account,
+  with primary group `users` and supplementary `wheel`, `netdev`, `audio`,
+  `video`, and `qubes` groups.  This is the expected TemplateVM guest account
+  contract, not a Guix-specific privilege model.
 - Qubes-style passwordless sudo and default privileged helper behavior are
   treated as compatibility requirements, not new policy invented by this
   template.
