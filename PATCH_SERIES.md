@@ -167,6 +167,8 @@ the same separation of concerns:
 | `a232db0` | Re-run the Builder v2 and release-config patch checks against fresh upstream checkouts and record the current focused-test/YAML-parse output. |
 | `b7a4969` | Extend the Guix-backed system contract to assert the standard `user` account, primary group, and Qubes-related supplementary groups for both variants. |
 | `5dbd24b` | Separate real contract evidence from source hygiene/provenance notes so source-only checks are not presented as upstream validation. |
+| `80f2b78` | Keep the local history map aligned with the source-hygiene evidence split. |
+| `76605e5` | Clarify that the artifact contract suite runs locally while the Guix system-record contract gate runs on a Guix-capable builder. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
