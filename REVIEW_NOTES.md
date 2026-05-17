@@ -186,6 +186,10 @@ The changes should be reviewed in this order:
 - `/etc/guix/channels.scm` is installed from the selected pinned channel file.
   This gives all users a declarative default channel without baking an
   imperative per-user `guix pull` profile into the template image.
+- Several stock Guix base services are deliberately omitted so the TemplateVM
+  does not start independent console, login, networking, log-rotation, or
+  sysctl policy that Qubes normally owns.  The exact omitted service list is in
+  `ADAPTATION_INVENTORY.md`.
 - Compatibility links under `/usr`, `/etc/qubes-rpc`, `/usr/lib/qubes`,
   `/run/qubes-service`, and `/var/run/qubes-service-environment` are deliberate.
   Upstream Qubes VM tools use fixed FHS-style paths, while Guix installs into
