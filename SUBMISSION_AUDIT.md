@@ -74,8 +74,8 @@ Inspected evidence in the current tree:
 | Template-builder precedent is explicit | `TEMPLATE_PRECEDENTS.md` maps Guix hooks to the standard Qubes template hook responsibilities and release-config model. |
 | Contributor workflow is explicit | `CONTRIBUTING.md` lists required checks, release evidence, review rules, and multi-repo ordering. |
 | Local tests cover real contracts | `make check` runs `tests/builder-content-check.sh`, `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`; these execute Builder content hooks, package generated normal and minimal root images through the Builder adapter, build/extract/reassemble normal and minimal template RPM layouts, and validate the RPM metadata path through the dom0 lifecycle harness in metadata-only mode. |
-| Builder v2 sketch has focused tests | Fresh patched checkout `/tmp/qubes-builderv2-current` passed distribution and template-plugin support tests for `vm-guix`. |
-| Release-config sketch parses after apply | Fresh patched checkout `/tmp/qubes-release-configs-current` parsed the resulting R4.3 community template YAML and confirmed `builder-guix`, `guix`, and `guix-minimal`. |
+| Builder v2 sketch has focused tests | Fresh patched checkout `/tmp/qubes-builderv2-current` at upstream `ff36320` passed distribution and template-plugin support tests for `vm-guix`. |
+| Release-config sketch parses after apply | Fresh patched checkout `/tmp/qubes-release-configs-current` at upstream `e7ad66d` parsed the resulting R4.3 community template YAML and confirmed `builder-guix`, `guix`, and `guix-minimal`. |
 | Submission drafts exist | `SUBMISSION_DRAFTS.md` provides editable `qubes-devel`, `[Contribution]`, Builder v2 PR, and release-config PR drafts with placeholder and validation warnings. |
 
 This still does not prove Qubes acceptance or runtime release quality.  The

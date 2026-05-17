@@ -95,7 +95,7 @@ loaded normal and minimal systems
 
 The focused Builder v2 distribution tests also passed after applying the
 Builder patch in a fresh shallow checkout.  The latest refresh used current
-upstream `qubes-builderv2` sources on May 16, 2026:
+upstream `qubes-builderv2` sources on May 17, 2026, at commit `ff36320`:
 
 ```sh
 rm -rf /tmp/qubes-builderv2-current
@@ -118,7 +118,7 @@ Result:
 
 The release-config sketch also passed an applied-config YAML validation in a
 fresh shallow checkout.  The latest refresh used current upstream
-`qubes-release-configs` sources on May 16, 2026:
+`qubes-release-configs` sources on May 17, 2026, at commit `e7ad66d`:
 
 ```sh
 rm -rf /tmp/qubes-release-configs-current
