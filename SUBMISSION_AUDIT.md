@@ -44,6 +44,7 @@ complete.
 | Clear commit history | `git log --oneline`, `PATCH_SERIES.md` | Clean review branch present; final public branch still needs maintainer signing |
 | Every non-obvious change explained | `REVIEW_NOTES.md`, `ADAPTATION_INVENTORY.md`, `MAINTENANCE.md` | Package phases, services, update model, and review-sensitive choices are documented |
 | Tests should exercise real contracts | `tests/builder-content-check.sh`, `tests/builder-rpm-contract-check.sh`, `tests/rpm-layout-check.sh`, `VALIDATION.md` | Default local checks execute Builder content hooks, feed generated images through the Builder RPM adapter, build/extract/reassemble RPM layouts, and validate RPM lifecycle metadata; missing RPM/image tooling is a hard failure, not a false pass |
+| No static/source-pattern test substitute | `CONTRIBUTING.md`, `README.md`, `ADAPTATION_INVENTORY.md`, `tests/` | Contributor policy rejects source-pattern or patch-shape checks as upstream evidence; current local tests build or inspect generated artifacts, and package-time test disabling is documented as a runtime-environment limitation rather than papered over with static checks |
 
 ## Current Completion Audit
 
@@ -65,6 +66,7 @@ Inspected evidence in the current tree:
 | --- | --- |
 | Clean public branch history | `git log --oneline --decorate --max-count=5` shows only scoped review commits on `master`. |
 | Tracked tests exercise build contracts | `make check` runs `tests/builder-content-check.sh`, `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`. |
+| Static-check harness is absent | `git ls-files tests` lists only the Builder content, Builder RPM contract, and RPM layout checks; contributor guidance rejects source-pattern checks as upstream evidence. |
 | Working tree clean | `git status --short` has no output. |
 | Qubes source pins are fresh | Current local `./scripts/check-qubes-pins.sh` passed for all pinned Qubes VM components. |
 | Prompt-to-artifact checklist exists | This file maps objective phrases to artifacts and marks incomplete external gates. |
