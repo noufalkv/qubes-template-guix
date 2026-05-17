@@ -31,21 +31,13 @@ Guix update tooling through an Internet update target still remain open.
 
 ## Current HEAD Contract Checks
 
-The current local tree passed the local contract checks after the May 17, 2026
-audit refresh:
+The current local tree passed the local artifact and system-contract checks
+after the May 17, 2026 audit refresh:
 
 ```sh
-git ls-files "*.sh" "scripts/*.sh" "tests/*.sh" "builder-v2-template/*.sh" \
-  | sort -u \
-  | while IFS= read -r file; do bash -n "$file"; done
-git diff --check
-git ls-files tests
 make check
 make guix-system-contract-check
 ```
-
-The `bash -n` pass is syntax hygiene for tracked shell entry points, not
-release evidence by itself.
 
 `make check` currently runs `tests/builder-hook-contract-check.sh`,
 `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`.
@@ -78,6 +70,17 @@ real Guix and asserts standard Qubes/Guix system contracts: `/dev/xvdc1` swap,
 the standard `user` account with Qubes group membership, unchanged Guix default
 privileged programs, passwordless `wheel` and `user` sudo, required Qubes
 services, and default `meminfo-writer` configuration.
+
+The following source-hygiene and inventory commands also passed, but they are
+not release evidence:
+
+```sh
+git ls-files "*.sh" "scripts/*.sh" "tests/*.sh" "builder-v2-template/*.sh" \
+  | sort -u \
+  | while IFS= read -r file; do bash -n "$file"; done
+git diff --check
+git ls-files tests
+```
 
 After aligning the updates-proxy wrapper with Qubes' current
 `--use-stdin-socket` command, the touched Scheme file was synced to the GCP

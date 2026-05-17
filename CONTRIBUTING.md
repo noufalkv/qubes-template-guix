@@ -14,21 +14,21 @@ should keep the review surface small, explicit, and reproducible.
   packaging/source pins, Shepherd services, image/RPM tooling, Builder/release
   integration, validation harnesses, and documentation.
 
-## Required Local Checks
+## Required Local Contract Checks
 
 Run before asking for review:
 
 ```sh
-git diff --check
 make check
-./scripts/check-qubes-pins.sh
 ```
 
 Do not add tests that only grep source text, compare patch shape, or inspect
 whether code "looks right" as upstream evidence.  A check that only inspects
 this repository's source or patch text is not release evidence.  Local tests
 should execute build hooks, create or inspect generated artifacts, or validate
-Qubes-visible template contracts.
+Qubes-visible template contracts.  Grep or comparison checks are acceptable
+only when they inspect generated artifacts from the code path under test, such
+as extracted RPM metadata or files read back from a generated root image.
 
 When Guix is available, also run:
 
@@ -45,6 +45,16 @@ Run the Builder v2 and release-config sketch checks directly in fresh upstream
 checkouts when changing files under `config/`.  Treat `make check`, rootfs
 activation, RPM lifecycle, and dom0/openQA runs as the evidence that the
 template behavior works.
+
+Run source hygiene and provenance checks separately:
+
+```sh
+git diff --check
+./scripts/check-qubes-pins.sh
+```
+
+These checks catch formatting mistakes and stale Qubes source pins, but they
+are not substitutes for artifact, Guix system-record, or runtime evidence.
 
 For the Builder v2 sketch:
 

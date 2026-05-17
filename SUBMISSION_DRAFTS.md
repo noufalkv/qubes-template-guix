@@ -53,7 +53,6 @@ Validation snapshot from the signed public branch:
   - <make check result>
   - <make guix-system-contract-check result>
   - <make check-qubes-pins result>
-  - <tracked shell syntax-hygiene result>
   - <guix time-machine -C config/channels.scm -- describe result>
   - <normal rootfs/RPM/openQA result>
   - <minimal rootfs/RPM/openQA result>
@@ -147,7 +146,6 @@ Attach current evidence from the signed public branch:
   - make check
   - make guix-system-contract-check
   - make check-qubes-pins
-  - tracked shell syntax-hygiene pass
   - guix time-machine -C config/channels.scm -- describe
   - normal and minimal rootfs builds
   - normal and minimal RPM builds

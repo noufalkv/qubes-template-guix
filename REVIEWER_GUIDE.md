@@ -49,7 +49,6 @@ not yet a publishable Qubes community template.
 ## Checks That Count As Local Evidence
 
 ```sh
-git diff --check
 make check
 make guix-system-contract-check
 ```
@@ -63,10 +62,11 @@ normal/minimal operating-system records to check Qubes-visible defaults such as
 default privileged programs, passwordless sudo, required Qubes services, and
 `meminfo-writer` defaults.
 
-The pin freshness check is useful provenance hygiene, but it is not runtime or
-release evidence:
+Source formatting and pin freshness checks are useful hygiene/provenance, but
+they are not runtime or release evidence:
 
 ```sh
+git diff --check
 ./scripts/check-qubes-pins.sh
 ```
 

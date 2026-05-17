@@ -67,7 +67,7 @@ Inspected evidence in the current tree:
 | --- | --- |
 | Clean public branch history | `git log --oneline --decorate --max-count=5` shows only scoped review commits on `master`; `PATCH_SERIES.md` maps the implementation and evidence commits to review purpose. |
 | Default tests exercise build contracts | `make check` runs `tests/builder-hook-contract-check.sh`, `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`. |
-| Test inventory is contract-backed | `git ls-files tests` lists Builder hook, Builder RPM contract, RPM layout, and Guix system contract checks; these tests execute code, build package artifacts, extract payloads, validate external template contracts, or instantiate real Guix system records. |
+| Test inventory is contract-backed | The tracked test suite is limited to Builder hook, Builder RPM contract, RPM layout, and Guix system contract checks; these tests execute code, build package artifacts, extract payloads, validate external template contracts, or instantiate real Guix system records. |
 | Working tree clean | `git status --short` has no output. |
 | Generated artifacts stay out of review | `.gitignore` covers root images, RPMs, tarballs, cache/dist output, and current test work directories; `git ls-files` does not list generated RPM/image artifacts. |
 | License/SPDX hygiene | `COPYING` is tracked; code and build entry points under `Makefile*`, `scripts/`, `tests/`, `native/`, `builder-v2-template/`, and `config/*.scm` carry SPDX headers, excluding data-only appmenu allowlists and `template.conf`. |
@@ -91,25 +91,29 @@ are removed.
 
 ## Latest Evidence
 
-Verification evidence includes the latest local pass, the refreshed local+GCP
-pin freshness check, plus earlier targeted Builder/release-config checks:
+Verification evidence includes the latest local contract pass, the refreshed
+local+GCP pin freshness check, plus earlier targeted Builder/release-config
+checks:
 
 ```sh
-git ls-files "*.sh" "scripts/*.sh" "tests/*.sh" "builder-v2-template/*.sh" \
-  | sort -u \
-  | while IFS= read -r file; do bash -n "$file"; done
 make check
 make guix-system-contract-check
-git diff --check
-git ls-files tests
-git status --short
 ./scripts/check-qubes-pins.sh
 PYTHONPATH=/tmp/qubes-builderv2-current python -m pytest /tmp/qubes-builderv2-current/tests/test_objects.py::test_dist /tmp/qubes-builderv2-current/tests/test_objects.py::test_dist_family /tmp/qubes-builderv2-current/tests/test_objects.py::test_template_plugin_supports_guix
 # release-config YAML validation in /tmp/qubes-release-configs-current; see VALIDATION.md
 ```
 
-The shell parser pass is hygiene for tracked shell entry points, not release
-evidence by itself.
+The following source hygiene and inventory commands also passed, but they are
+not substitutes for artifact, Guix system-record, or runtime evidence:
+
+```sh
+git ls-files "*.sh" "scripts/*.sh" "tests/*.sh" "builder-v2-template/*.sh" \
+  | sort -u \
+  | while IFS= read -r file; do bash -n "$file"; done
+git diff --check
+git ls-files tests
+git status --short
+```
 
 The review source tree was also copied to the GCP builder as
 `~/guix-review-current`.  There, `./scripts/check-qubes-pins.sh` passed against
