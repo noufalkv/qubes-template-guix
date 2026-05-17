@@ -117,7 +117,7 @@ PYTHONPATH=/tmp/qubes-builderv2-current \
 Result:
 
 ```text
-3 passed in 0.13s
+3 passed in 0.12s
 ```
 
 The release-config sketch also passed an applied-config YAML validation in a
