@@ -197,6 +197,19 @@ request or issue has been exhaustively reviewed.
   Local response: `config/`, `builder-v2-template/`,
   `scripts/package-native-template-rpm.sh`, and `tests/rpm-layout-check.sh`
   make the Guix builder inputs and resulting RPM contract inspectable.
+- Qubes Forum, "How to make a template":
+  `https://forum.qubes-os.org/t/how-to-make-a-template/34320`
+  Expectation: the right template-building path depends on the target OS and
+  which services the template needs to provide.  HVM templates, AppVM-capable
+  templates, and templates that provide inter-qube services have different
+  difficulty levels; current readers should also be careful with older
+  BuilderPlugins-era guidance now that Builder v2 is the documented path.
+  Local response: `REVIEW_NOTES.md`, `ADAPTATION_INVENTORY.md`, and
+  `SECURITY.md` keep the first Guix scope limited to TemplateVM/AppVM behavior,
+  qrexec, QubesDB, GUI/appmenus, private persistence, updates proxy, swap, and
+  memory ballooning.  `config/` and `builder-v2-template/` intentionally follow
+  the current Builder v2/release-config model rather than relying on the old
+  BuilderPlugins API.
 - Qubes Forum, "Building a TemplateVM for a new OS":
   `https://forum.qubes-os.org/t/building-a-templatevm-for-a-new-os/18972`
   Expectation: new OS templates should start from Builder scripts, adapt the

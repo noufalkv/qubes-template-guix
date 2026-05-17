@@ -53,6 +53,12 @@ or issue.
 - Builder v2 forum guidance reinforces that contributors should make the
   component/distribution/template inputs explicit and inspect the generated
   template RPM metadata and payload before install.
+- Current forum guidance for "how to make a template" says the right path
+  depends on the target OS and the services the template must provide.  It also
+  warns that older BuilderPlugins-era guidance may be stale under Builder v2.
+  The first Guix review scope therefore stays explicit about TemplateVM/AppVM
+  services and uses the current Builder v2/release-config path rather than
+  treating an older plugin API as precedent.
 - Qubes Forum guidance for a new OS TemplateVM: start from Qubes builder
   scripts for the OS, using Fedora, Debian, and Arch as models.
 - Gentoo community-template precedent: source-oriented community templates need
