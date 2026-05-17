@@ -70,9 +70,6 @@ GPG fingerprint, signing path, and Builder v2 integration are accepted.
   and payload.
 - `tests/rpm-layout-check.sh` builds and extracts normal and minimal template
   RPM layouts.
-- `tests/release-config-fragment-check.sh` parses the example R4.3 community
-  template YAML and validates the `builder-guix`, `guix`, and `guix-minimal`
-  entries.
 - `VALIDATION.md` records patch application against fresh Builder v2 and
   release-config checkouts, focused Builder v2 distribution tests, and
   release-config YAML validation.
