@@ -22,7 +22,7 @@ complete.
 | Contribution workflow | `CONTRIBUTING.md`, `PATCH_SERIES.md` | Signed-history, testing, placeholder, release evidence, and multi-repo flow rules documented |
 | Submission handoff | `SUBMISSION_DRAFTS.md`, `PATCH_SERIES.md` | Drafts present; placeholders and final evidence must be replaced before use |
 | Immutable Qubes source pins and hashes | `native/modules/qubes/packages/qubes-vm.scm` | Present |
-| Pin freshness check | `scripts/check-qubes-pins.sh`, `make check-qubes-pins` | Present; passed on GCP against live tags |
+| Pin freshness check | `scripts/check-qubes-pins.sh`, `make check-qubes-pins`, `VALIDATION.md` | Present; passed locally and in the synced GCP review checkout against live tags on May 17, 2026 |
 | Guix channel reproducibility | `config/channels.scm`, installed `/etc/guix/channels.scm`, `VALIDATION.md` | Present; `guix time-machine -- describe` passed on GCP |
 | Template RPM format | `scripts/package-native-template-rpm.sh`, `tests/rpm-layout-check.sh` | Locally tested for normal and minimal variants |
 | Executable build contracts | `tests/builder-content-check.sh`, `tests/builder-rpm-contract-check.sh`, `tests/rpm-layout-check.sh`, `make check` | Present; local run passes and exercises generated install content, Builder adapter RPM output, and real template RPM layout |
@@ -41,8 +41,8 @@ complete.
 | Conform to Qubes maintainer expectations | `UPSTREAMING.md`, `REVIEW_NOTES.md`, `COPYING`, `config/README.md` | Expected contribution process is mapped; acceptance still requires external review |
 | Inspect maintainer expectations online | `UPSTREAMING.md`, `REVIEW_NOTES.md` | Targeted review captured; exhaustive review of every Qubes issue/PR remains unclaimed |
 | Upstream process may span multiple repos | `config/qubes-builderv2-guix.example.patch`, `config/qubes-release-configs-guix.example.patch`, `config/README.md` | Builder v2 and release-config targets are separated and named |
-| Clear commit history | `git log --oneline`, `PATCH_SERIES.md` | Clean review branch present; final public branch still needs maintainer signing |
-| Every non-obvious change explained | `REVIEW_NOTES.md`, `ADAPTATION_INVENTORY.md`, `MAINTENANCE.md` | Package phases, services, update model, and review-sensitive choices are documented |
+| Clear commit history | `git log --oneline`, `PATCH_SERIES.md` | Clean review branch present with a current local history map; final public branch still needs maintainer signing |
+| Every non-obvious change explained | `REVIEW_NOTES.md`, `ADAPTATION_INVENTORY.md`, `MAINTENANCE.md` | Package phases, services, update model, no-op bootloader closure handling, normal/minimal appmenu split, and review-sensitive choices are documented |
 | Tests should exercise real contracts | `tests/builder-content-check.sh`, `tests/builder-rpm-contract-check.sh`, `tests/rpm-layout-check.sh`, `VALIDATION.md` | Default local checks execute Builder content hooks, feed generated images through the Builder RPM adapter, build/extract/reassemble RPM layouts, and validate RPM lifecycle metadata; missing RPM/image tooling is a hard failure, not a false pass |
 
 ## Current Completion Audit
@@ -63,21 +63,21 @@ Inspected evidence in the current tree:
 
 | Check | Evidence |
 | --- | --- |
-| Clean public branch history | `git log --oneline --decorate --max-count=5` shows only scoped review commits on `master`. |
+| Clean public branch history | `git log --oneline --decorate --max-count=5` shows only scoped review commits on `master`; `PATCH_SERIES.md` maps the implementation and evidence commits to review purpose. |
 | Tracked tests exercise build contracts | `make check` runs `tests/builder-content-check.sh`, `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`. |
 | Default test inventory is artifact-backed | `git ls-files tests` lists only the Builder content, Builder RPM contract, and RPM layout checks; these tests execute code, build package artifacts, extract payloads, and validate external template contracts. |
 | Working tree clean | `git status --short` has no output. |
-| Qubes source pins are fresh | Current local `./scripts/check-qubes-pins.sh` passed for all pinned Qubes VM components. |
+| Qubes source pins are fresh | Current local and synced GCP `./scripts/check-qubes-pins.sh` runs passed for all pinned Qubes VM components on May 17, 2026. |
 | Prompt-to-artifact checklist exists | This file maps objective phrases to artifacts and marks incomplete external gates. |
 | Online expectations are traceable | `UPSTREAMING.md` contains an online source crosswalk for Qubes docs, Builder v2, release-configs, forum precedent, and comparable NixOS issue/PRs. |
-| Non-obvious changes are explained | `REVIEW_NOTES.md`, `ADAPTATION_INVENTORY.md`, and `MAINTENANCE.md` explain package phases, Shepherd services, FHS compatibility paths, update model, swap, guest-side memory ballooning plumbing, and review-sensitive source edits. |
+| Non-obvious changes are explained | `REVIEW_NOTES.md`, `ADAPTATION_INVENTORY.md`, and `MAINTENANCE.md` explain package phases, Shepherd services, FHS compatibility paths, update model, swap, guest-side memory ballooning plumbing, no-op bootloader closure handling, normal/minimal appmenu differences, maintainer handoff, and review-sensitive source edits. |
 | Security-sensitive scope is explicit | `SECURITY.md` separates dom0 trust boundaries, guest privileged behavior, source integrity, and unproven runtime gates. |
 | Template-builder precedent is explicit | `TEMPLATE_PRECEDENTS.md` maps Guix hooks to the standard Qubes template hook responsibilities and release-config model. |
 | Contributor workflow is explicit | `CONTRIBUTING.md` lists required checks, release evidence, review rules, and multi-repo ordering. |
 | Local tests cover real contracts | `make check` runs `tests/builder-content-check.sh`, `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`; these execute Builder content hooks, package generated normal and minimal root images through the Builder adapter, build/extract/reassemble normal and minimal template RPM layouts, and validate the RPM metadata path through the dom0 lifecycle harness in metadata-only mode. |
 | Builder v2 sketch has focused tests | Fresh patched checkout `/tmp/qubes-builderv2-current` at upstream `ff36320` passed distribution and template-plugin support tests for `vm-guix`. |
 | Release-config sketch parses after apply | Fresh patched checkout `/tmp/qubes-release-configs-current` at upstream `e7ad66d` parsed the resulting R4.3 community template YAML and confirmed `builder-guix`, `guix`, and `guix-minimal`. |
-| Submission drafts exist | `SUBMISSION_DRAFTS.md` provides editable `qubes-devel`, `[Contribution]`, Builder v2 PR, and release-config PR drafts with placeholder and validation warnings. |
+| Submission drafts exist | `SUBMISSION_DRAFTS.md` provides editable `qubes-devel`, `[Contribution]`, Builder v2 PR, and release-config PR drafts with placeholder, maintainer handoff, controlled-vs-real proxy, and validation warnings. |
 
 This still does not prove Qubes acceptance or runtime release quality.  The
 status remains "reviewable prototype" until the blockers in "Do Not Claim Yet"
@@ -85,8 +85,8 @@ are removed.
 
 ## Latest Evidence
 
-Verification evidence includes the latest local pass plus earlier targeted
-Builder/release-config checks:
+Verification evidence includes the latest local pass, the refreshed local+GCP
+pin freshness check, plus earlier targeted Builder/release-config checks:
 
 ```sh
 bash -n scripts/test-native-guix-template-dom0.sh
