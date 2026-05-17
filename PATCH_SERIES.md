@@ -82,6 +82,59 @@ Before public submission, publish only the cleaned review branch.  Keep any
 local backup refs private, and do not ask Qubes reviewers to review generated
 artifacts or obsolete experimental history.
 
+## Suggested Public Review Series
+
+If the branch is rewritten before submission, prefer a small signed series that
+preserves the review boundaries below.  Each commit message should explain the
+user-visible purpose, the Qubes expectation it satisfies, the validation that
+covers it, and any remaining gate that must not be claimed yet.
+
+1. `Add native Guix TemplateVM systems and Qubes VM packages`
+   - Include `native/modules/qubes/packages/qubes-vm.scm`,
+     `native/modules/qubes/services/qubes-vm.scm`,
+     `native/modules/qubes/systems/guix-template.scm`,
+     `native/qubes-guix.scm`, and `native/qubes-guix-minimal.scm`.
+   - Explain the Guix-specific package phases, Shepherd service mapping,
+     Qubes compatibility paths, standard swap, `meminfo-writer`, privileged
+     helpers, and passwordless sudo behavior in the commit body.
+
+2. `Add Guix rootfs and qvm-template RPM tooling`
+   - Include root image build, inspection, activation, RPM packaging, and
+     Builder adapter scripts.
+   - State that the package output follows Qubes Template Manager layout and
+     that generated images/RPMs are not committed.
+
+3. `Add Builder-shaped template hooks for Guix`
+   - Include `builder-v2-template/`, `Makefile.builder`, and the local
+     Builder hook contract.
+   - Explain why Guix keeps no-op compatibility hooks where Guix computes the
+     system closure declaratively.
+
+4. `Add Qubes Builder v2 and release-config review sketches`
+   - Include `config/channels.scm`, `config/README.md`,
+     `config/qubes-builderv2-guix.example.patch`,
+     `config/qubes-os-r4.3-templates-community-guix.example.yml`, and
+     `config/qubes-release-configs-guix.example.patch`.
+   - Keep maintainer placeholders explicit and do not present the sketches as
+     accepted upstream changes.
+
+5. `Add local and nested-Qubes validation harnesses`
+   - Include artifact-backed tests, lifecycle scripts, update-proxy checks,
+     memory-balloon checks, and openQA assets.
+   - Keep source-text and patch-shape checks out of the default test gate.
+
+6. `Document review scope, adaptations, security, and maintenance`
+   - Include `REVIEWER_GUIDE.md`, `REVIEW_NOTES.md`,
+     `ADAPTATION_INVENTORY.md`, `SECURITY.md`, `TEMPLATE_PRECEDENTS.md`,
+     `MAINTENANCE.md`, and `CONTRIBUTING.md`.
+   - Keep non-goals and external blockers explicit.
+
+7. `Record validation evidence and submission handoff`
+   - Include `VALIDATION.md`, `SUBMISSION_AUDIT.md`, and
+     `SUBMISSION_DRAFTS.md`.
+   - Record only fresh evidence from the public branch, and keep failed or
+     incomplete gates visible.
+
 ## Current Local History Map
 
 The current `master` history through the implementation and evidence commits is
