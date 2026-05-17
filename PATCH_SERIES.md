@@ -192,6 +192,8 @@ separation of concerns:
 | `838fddc` | Adjust the security status wording so recorded openQA/default-update-target evidence is not mistaken for current final-release proof. |
 | `cefe65e` | Make pinned Guix channels mandatory by default for rootfs builds, leaving `GUIX_BRANCH` only as an explicit developer override. |
 | `26f4dc2` | Reword blocker sections so dated nested-dom0/update-proxy evidence is described as recorded evidence, not current final-gate proof. |
+| `59f3fd5` | Record the pinned-channel missing-file policy check so release builds no longer fall back to an unpinned Guix branch when the pinned channel file is absent. |
+| `437a7d3` | Remove source-only test-script wording from upstream-facing docs so the validation story remains limited to artifact and Qubes-visible contracts. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
