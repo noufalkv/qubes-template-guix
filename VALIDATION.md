@@ -147,7 +147,7 @@ load as the executable Guix system-record check for the current review branch.
 The focused Builder v2 distribution tests also passed after applying the
 Builder patch in a fresh shallow checkout.  The latest refresh used current
 upstream `qubes-builderv2` sources on May 17, 2026, at commit `ff36320`; the
-same upstream commit was rechecked after local commit `c64b789`:
+same upstream commit was rechecked after local commit `62a1150`:
 
 ```sh
 rm -rf /tmp/qubes-builderv2-current
@@ -165,13 +165,13 @@ PYTHONPATH=/tmp/qubes-builderv2-current \
 Result:
 
 ```text
-3 passed in 0.11s
+3 passed in 0.27s
 ```
 
 The release-config sketch also passed an applied-config YAML validation in a
 fresh shallow checkout.  The latest refresh used current upstream
 `qubes-release-configs` sources on May 17, 2026, at commit `e7ad66d`; the same
-upstream commit was rechecked after local commit `c64b789`:
+upstream commit was rechecked after local commit `62a1150`:
 
 ```sh
 rm -rf /tmp/qubes-release-configs-current
