@@ -90,7 +90,8 @@ test suite.  Formatting, parser-only, inventory, or patch-shape commands are
 manual maintainer chores, not release gates, and should not be submitted as
 substitutes for artifact, Guix system-record, dom0, or openQA evidence.
 
-After aligning the updates-proxy wrapper with Qubes' current
+Earlier targeted Scheme-load evidence is kept here for traceability.  After
+aligning the updates-proxy wrapper with Qubes' current
 `--use-stdin-socket` command, the touched Scheme file was synced to the GCP
 builder checkout and loaded with real Guix:
 
@@ -107,7 +108,7 @@ version:
 4.3.42
 ```
 
-After adding `qubes-guix-update-proxy-service-type`, the full current tree was
+After adding `qubes-guix-update-proxy-service-type`, the then-current tree was
 synced to the same GCP builder and both operating-system variants were
 constructed with real Guix:
 
@@ -132,6 +133,9 @@ Observed result:
 4.3.42
 loaded normal and minimal systems
 ```
+
+The newer `make guix-system-contract-check` gate above supersedes this REPL
+load as the executable Guix system-record check for the current review branch.
 
 ## Builder And Release Sketch Checks
 
