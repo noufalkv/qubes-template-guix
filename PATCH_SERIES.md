@@ -184,6 +184,7 @@ separation of concerns:
 | `122ebd2` | Make the test policy explicit: source-shape/static checks are not upstream tests, and the public suite should exercise generated artifacts, Guix records, dom0 behavior, or openQA. |
 | `b4689eb` | Document the smaller VM-side component package split so selected upstream subdirectories, Python binding installation, and guest-runtime-only outputs are visible to reviewers. |
 | `7a9f370` | Drop the unused qrexec fork-server Shepherd service and document the actual upstream XDG-autostart ownership path. |
+| `ed32328` | Record the local artifact check and GCP Guix system-contract rerun after the qrexec fork-server service cleanup. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
