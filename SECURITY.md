@@ -80,7 +80,7 @@ signed public branch has fresh evidence:
 
 - RPM-mode openQA reruns for both `guix` and `guix-minimal`.
 - default update-target proxy forwarding rerun from the signed branch.
-- runtime proof that the generated Guix daemon/client proxy configuration is
+- runtime evidence that the generated Guix daemon/client proxy configuration is
   active, plus real Guix update tooling consuming the Qubes update proxy.
 - Broader usability checks such as audio, time sync, keymap sync, DispVM, NetVM,
   and ProxyVM behavior.

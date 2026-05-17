@@ -15,7 +15,7 @@ complete.
 | Clear use case | `README.md`, `UPSTREAMING.md` | Present: native Guix System TemplateVM for Qubes R4.3 |
 | Open-source license | `COPYING`, SPDX markers in code files, `scripts/package-native-template-rpm.sh` | Present: GPLv3-or-later repository metadata |
 | Low review burden | `REVIEWER_GUIDE.md`, `REVIEW_NOTES.md` review order, review matrix, non-goals | Present, with remaining gates called out |
-| Security-review framing | `SECURITY.md`, `ADAPTATION_INVENTORY.md`, `REVIEW_NOTES.md` | Guest trust boundaries and review-sensitive adaptations are documented; nested-dom0 smoke, dynamic memory-pressure evidence, default update-target proxy evidence, RPM-mode openQA evidence, runtime proof of generated Guix proxy configuration, and controlled Guix client proxy-download evidence exist; real Internet update-target Guix proxy use and final signed-branch reruns remain |
+| Security-review framing | `SECURITY.md`, `ADAPTATION_INVENTORY.md`, `REVIEW_NOTES.md` | Guest trust boundaries and review-sensitive adaptations are documented; nested-dom0 smoke, dynamic memory-pressure evidence, default update-target proxy evidence, RPM-mode openQA evidence, runtime evidence of generated Guix proxy configuration, and controlled Guix client proxy-download evidence exist; real Internet update-target Guix proxy use and final signed-branch reruns remain |
 | GenAI-assisted contribution handling | `UPSTREAMING.md`, `REVIEW_NOTES.md` | Present as a disclosure requirement; human maintainer must own submission |
 | Non-obvious compatibility changes explained | `REVIEW_NOTES.md`, `ADAPTATION_INVENTORY.md` | Present |
 | Maintainer/update story | `MAINTENANCE.md`, `UPSTREAMING.md` | Present as a policy artifact, including handoff/removal policy for an unmaintained community template; actual maintainer identity still missing |
@@ -229,8 +229,8 @@ allowed/default `qubes.UpdatesProxy` target for a real Internet Guix download.
 OpenQA job 31 enabled `GUIX_RUN_PROXY_STUB_DOWNLOAD_TEST=1` for the same
 rebuilt minimal RPM.  It passed the earlier install, postinstall, smoke, and
 Guix proxy-configuration steps, then created a temporary `sys-net` stub target
-and passed a real `guix download` through the generated Guix wrapper and stock
-Qubes default-target updates-proxy policy:
+and passed a controlled `guix download` through the generated Guix wrapper and
+stock Qubes default-target updates-proxy policy:
 
 ```text
 job 31: BUILD=guix-minimal-rpm-r202605162304-stubdownload-fix-202605170229 TEST=guix_template result=passed
@@ -257,7 +257,7 @@ Do not claim that:
 - Final signed-branch or signed-tag release evidence has been rerun, including
   RPM-mode openQA.
 - End-to-end Guix update tooling is freshly green through a real Internet
-  update-proxy target.  The current evidence proves the default
+  update-proxy target.  The current evidence verifies the default
   `qubes.UpdatesProxy` HTTP forwarding path through stock Qubes policy, the
   generated Guix daemon/client proxy configuration, and a controlled `guix
   download` through a temporary `sys-net` stub target.  RPM-mode openQA job 29

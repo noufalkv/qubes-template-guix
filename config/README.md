@@ -73,7 +73,7 @@ the resulting R4.3 community template YAML was parsed to confirm the
 
 - Do not submit the release-config fragment or patch with `<OWNER>` or
   `<MAINTAINER_GPG_FINGERPRINT>` placeholders.
-- The Builder v2 patch is intentionally minimal.  It proves the expected shape,
+- The Builder v2 patch is intentionally minimal.  It documents the expected shape,
   but the final upstream choice may instead be a different Guix-aware template
   plugin path accepted by Qubes maintainers.
 - The release-config target should be `templates-community-testing` first, not a

@@ -202,7 +202,8 @@ The changes should be reviewed in this order:
   daemonizes itself and is part of GUI session readiness, not a simple
   long-running Shepherd child.
 - `qubes.PostInstall` feature reporting is adjusted for Shepherd: successful
-  execution through qrexec proves qrexec is active even without systemd.
+  execution through qrexec is treated as the qrexec-active signal when systemd
+  is absent.
 - The updates proxy is a Qubes RPC forwarder to `qubes.UpdatesProxy`; it does
   not implement a new Guix updater policy.  The local listener is a
   Shepherd-managed `socat` process.  `socat EXEC:` gives each connection handler
@@ -250,7 +251,7 @@ The changes should be reviewed in this order:
   guest-side `meminfo-writer` startup.
 - Default update-target proxying.
 - A passing real Guix update-tooling proxy run through an Internet update
-  target.  OpenQA job 31 proves a controlled `guix download` through the
+  target.  OpenQA job 31 verifies a controlled `guix download` through the
   generated wrapper and stock default-target policy using a temporary `sys-net`
   stub, but job 29 failed the real-network download gate with dom0 refusing
   `qubes.UpdatesProxy`.

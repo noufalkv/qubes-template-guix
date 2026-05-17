@@ -74,11 +74,11 @@ release evidence:
   are not present.
 - Final signed-branch RPM-mode openQA has not been rerun.
 - Real `guix pull` or substitute downloads through the Qubes update proxy are
-  not proven.  RPM-mode openQA job 27 proves the generated Guix client/daemon
+  not proven.  RPM-mode openQA job 27 verifies the generated Guix client/daemon
   proxy configuration and service state for the rebuilt minimal RPM, and job 31
-  proves a controlled `guix download` through stock Qubes default-target policy
-  using a temporary `sys-net` stub.  OpenQA job 29 reached the real-network
-  download verifier, but dom0 refused `qubes.UpdatesProxy`; there is still no
-  passing release evidence for real Guix update tooling through an Internet
-  update target.
+  verifies a controlled `guix download` through stock Qubes default-target
+  policy using a temporary `sys-net` stub.  OpenQA job 29 reached the
+  real-network download verifier, but dom0 refused `qubes.UpdatesProxy`; there
+  is still no passing release evidence for real Guix update tooling through an
+  Internet update target.
 - Qubes maintainers have not reviewed or accepted the template.

@@ -7,7 +7,7 @@ proof that Qubes has accepted or published the template.
 ## Evidence Scope
 
 The normal/minimal rootfs and RPM evidence below is a release-build snapshot
-from May 15, 2026.  It proves the build path has worked for this review effort,
+from May 15, 2026.  It shows the build path has worked for this review effort,
 but it is not a substitute for fresh release evidence from the final signed
 public branch.  Later commits may update review documentation,
 Builder/release-config sketches, or package metadata, so the final submission
@@ -701,8 +701,8 @@ The resulting image passed:
   --image /tmp/guix-builder-v2-content.kZpu7c/root.img
 ```
 
-This is not a full Builder v2 job.  It proves the Guix content scripts can
-install into Builder's mounted-root contract and produce an inspectable,
+This is not a full Builder v2 job.  It shows the Guix Builder hooks can install
+into Builder's mounted-root contract and produce an inspectable,
 activatable minimal root image.
 
 The matching Builder v2 patch sketch in
@@ -781,11 +781,11 @@ OK
 default updates-proxy target check passed: guix -> sys-net
 ```
 
-This proves that the native Guix TemplateVM's local `127.0.0.1:8082` listener
-can reach Qubes' default update target selection through qrexec policy and the
-target VM's `qubes.UpdatesProxy` service shape.  It does not prove real Guix
-substitute or channel update tooling is fully configured to consume that proxy;
-that remains a separate update workflow check.
+This verifies that the native Guix TemplateVM's local `127.0.0.1:8082`
+listener can reach Qubes' default update target selection through qrexec policy
+and the target VM's `qubes.UpdatesProxy` service shape.  It does not prove real
+Guix substitute or channel update tooling is fully configured to consume that
+proxy; that remains a separate update workflow check.
 
 ## RPM-Mode openQA Template Checks
 
@@ -903,15 +903,16 @@ result dir: /var/lib/openqa/testresults/00000/00000031-qubesos-4.3-guix-template
 
 This run passed the earlier RPM install, postinstall, TemplateVM/AppVM smoke,
 and Guix proxy configuration markers, then created a temporary `sys-net` stub
-target and ran a real `guix download` through the generated Guix client wrapper
-and Qubes `qubes.UpdatesProxy` path.  The archived serial log showed
+target and ran a controlled `guix download` through the generated Guix client
+wrapper and Qubes `qubes.UpdatesProxy` path.  The archived serial log showed
 `OPENQA_RC_000011_0` for proxy configuration, `downloaded 2 bytes`,
 `guix update proxy download check passed`, `guix update proxy stub download
 check passed: guix-minimal -> sys-net`, and `OPENQA_RC_000012_0` for the
-controlled stub-download gate.  This proves the Guix client wrapper can consume
-the local Qubes proxy through stock default-target policy in a deterministic
-nested openQA environment.  It still does not prove public Internet downloads,
-`guix pull`, or substitute downloads through a real update-proxy target.
+controlled stub-download gate.  This verifies that the Guix client wrapper can
+consume the local Qubes proxy through stock default-target policy in a
+deterministic nested openQA environment.  It still does not prove public
+Internet downloads, `guix pull`, or substitute downloads through a real
+update-proxy target.
 
 ## Not Yet Passed
 
