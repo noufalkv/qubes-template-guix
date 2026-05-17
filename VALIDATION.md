@@ -135,7 +135,8 @@ loaded normal and minimal systems
 
 The focused Builder v2 distribution tests also passed after applying the
 Builder patch in a fresh shallow checkout.  The latest refresh used current
-upstream `qubes-builderv2` sources on May 17, 2026, at commit `ff36320`:
+upstream `qubes-builderv2` sources on May 17, 2026, at commit `ff36320`; the
+same upstream commit was rechecked after local commit `c64b789`:
 
 ```sh
 rm -rf /tmp/qubes-builderv2-current
@@ -153,12 +154,13 @@ PYTHONPATH=/tmp/qubes-builderv2-current \
 Result:
 
 ```text
-3 passed in 0.10s
+3 passed in 0.11s
 ```
 
 The release-config sketch also passed an applied-config YAML validation in a
 fresh shallow checkout.  The latest refresh used current upstream
-`qubes-release-configs` sources on May 17, 2026, at commit `e7ad66d`:
+`qubes-release-configs` sources on May 17, 2026, at commit `e7ad66d`; the same
+upstream commit was rechecked after local commit `c64b789`:
 
 ```sh
 rm -rf /tmp/qubes-release-configs-current
@@ -187,12 +189,6 @@ Result:
 
 ```text
 release-config guix entries parsed
-```
-
-Result:
-
-```text
-release-config guix entries validated
 ```
 
 The review source tree was also copied to the GCP builder as
