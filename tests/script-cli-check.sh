@@ -37,8 +37,6 @@ check_missing_value scripts/import-native-rootfs-dom0.sh --image
 check_missing_value scripts/test-native-rootfs-activation.sh --image
 check_missing_value scripts/create-foreign-guix-template-dom0.sh --base
 check_missing_value scripts/run-openqa-template-rpm.sh --variant
-check_missing_value scripts/gcloud-create-nested-builder.sh --name
-check_missing_value scripts/gcloud-sync-and-setup-builder.sh --name
 check_missing_value scripts/setup-openqa-guix-template-test.sh --tests-source
 check_missing_value scripts/test-native-guix-template-dom0.sh --template
 
@@ -71,42 +69,5 @@ check_invalid_template_name package-template-name \
 check_invalid_template_name builder-template-name \
     env TEMPLATE_NAME=../bad \
     "$repo_root/scripts/builder-v2-template-adapter.sh" build-rootimg
-
-gcloud_sync_output="$(
-    "$repo_root/scripts/gcloud-sync-and-setup-builder.sh" \
-        --dry-run \
-        --name qubes-guix-test \
-        --zone test-zone \
-        --remote "remote path; touch /tmp/qubes-guix-bad" 2>&1
-)"
-
-printf '%s\n' "$gcloud_sync_output" |
-    grep -Fq "rm -rf -- 'remote path; touch /tmp/qubes-guix-bad'" || {
-        printf 'gcloud sync dry-run did not quote remote cleanup path:\n%s\n' \
-            "$gcloud_sync_output" >&2
-        exit 1
-    }
-
-printf '%s\n' "$gcloud_sync_output" |
-    grep -Fq "WORKDIR='remote path; touch /tmp/qubes-guix-bad'" || {
-        printf 'gcloud sync dry-run did not quote remote setup path:\n%s\n' \
-            "$gcloud_sync_output" >&2
-        exit 1
-    }
-
-gcloud_sync_home_output="$(
-    "$repo_root/scripts/gcloud-sync-and-setup-builder.sh" \
-        --dry-run \
-        --name qubes-guix-test \
-        --zone test-zone \
-        --remote "~/remote path; touch /tmp/qubes-guix-bad" 2>&1
-)"
-
-printf '%s\n' "$gcloud_sync_home_output" |
-    grep -Fq "rm -rf -- \$HOME/'remote path; touch /tmp/qubes-guix-bad'" || {
-        printf 'gcloud sync dry-run did not preserve safe ~/ expansion:\n%s\n' \
-            "$gcloud_sync_home_output" >&2
-        exit 1
-    }
 
 printf 'script CLI contract check passed\n'

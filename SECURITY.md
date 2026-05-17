@@ -22,12 +22,12 @@ assumptions to Guix System and Shepherd.
 
 ## Validation Infrastructure Scope
 
-Scripts for GCP builders, nested dom0, and openQA are development and release
-validation infrastructure.  They are not installed into the TemplateVM image,
-do not add a new dom0 service, and should not be treated as part of the runtime
-trusted computing base of a published Guix template.  They still need ordinary
-review before use on a build host because they create VMs, copy artifacts, and
-run dom0-side test commands.
+Nested-dom0 and openQA scripts are development and release validation
+infrastructure.  They are not installed into the TemplateVM image, do not add a
+new dom0 service, and should not be treated as part of the runtime trusted
+computing base of a published Guix template.  They still need ordinary review
+before use on a build host because they create VMs, copy artifacts, and run
+dom0-side test commands.
 
 `scripts/import-native-rootfs-dom0.sh` includes a file-pool truncate fallback
 for Qubes storage backends that reject root-volume shrinking through
