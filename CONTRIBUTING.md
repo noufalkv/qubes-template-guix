@@ -47,10 +47,11 @@ activation, RPM lifecycle, and dom0/openQA runs as the evidence that the
 template behavior works.
 
 Keep source-only checks out of the repository test suite and the upstream
-evidence path.  Formatting, parser-only, inventory, and patch-shape commands
-may be run manually by a maintainer before committing, but do not add them as
-test scripts, `make` targets, validation logs, or proof that the template
-works.
+evidence path.  Do not add static source-shape or patch-shape scripts to this
+repository as tests, `make` targets, validation logs, or proof that the
+template works.  Formatting and parser commands may still be run manually while
+preparing a branch, but upstream evidence must come from artifacts, Guix
+system records, dom0 behavior, or openQA.
 
 When changing pinned Qubes sources, run `./scripts/check-qubes-pins.sh`
 directly and document the result as source provenance only.  It is not a

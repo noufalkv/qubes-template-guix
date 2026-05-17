@@ -110,7 +110,9 @@ PYTHONPATH=/tmp/qubes-builderv2-current python -m pytest /tmp/qubes-builderv2-cu
 ```
 
 No source-only checker is present or counted here as validation evidence.
-Formatting, parser-only, inventory, patch-shape, and pin-freshness commands are
+Static source-shape and patch-shape scripts are intentionally excluded from the
+repository test suite, `make` targets, validation logs, and upstream patch
+series.  Formatting, parser-only, inventory, and pin-freshness commands are
 manual maintainer chores or provenance checks; they are not substitutes for
 artifact, Guix system-record, dom0, or openQA evidence and should not be
 submitted as upstream tests.

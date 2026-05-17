@@ -71,10 +71,10 @@ default privileged programs, passwordless sudo, required Qubes services, and
 
 No source-only checker is part of the repository test suite or reviewer
 evidence path.  Tests that grep source or compare patch shape should not be
-submitted as upstream patches.  Formatting, parser-only,
-inventory, patch-shape, and pin-freshness commands may help a maintainer
-prepare a branch manually, but they do not demonstrate that the template
-builds, installs, boots, or satisfies Qubes-visible contracts.
+submitted as upstream patches or kept as repository validation scripts.
+Formatting, parser-only, inventory, and pin-freshness commands may help a
+maintainer prepare a branch manually, but they do not demonstrate that the
+template builds, installs, boots, or satisfies Qubes-visible contracts.
 
 ## Do Not Claim Yet
 

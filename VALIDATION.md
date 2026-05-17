@@ -91,9 +91,11 @@ privileged programs, passwordless `wheel` and `user` sudo, required Qubes
 services, and default `meminfo-writer` configuration.
 
 No source-only checker is part of the validation evidence or the repository
-test suite.  Formatting, parser-only, inventory, or patch-shape commands are
-manual maintainer chores, not release gates, and should not be submitted as
-substitutes for artifact, Guix system-record, dom0, or openQA evidence.
+test suite.  Static source-shape and patch-shape scripts are not release gates
+and should not be submitted as repository tests or substitutes for artifact,
+Guix system-record, dom0, or openQA evidence.  Formatting, parser-only, and
+inventory commands may be useful local preparation chores, but they are not
+recorded here as proof that the template works.
 
 Earlier targeted Scheme-load evidence is kept here for traceability.  After
 aligning the updates-proxy wrapper with Qubes' current
