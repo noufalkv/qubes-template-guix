@@ -42,11 +42,12 @@ git diff --check
 make check
 ```
 
-`make check` currently runs `tests/builder-content-check.sh`,
+`make check` currently runs `tests/builder-hook-contract-check.sh`,
 `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`.  The
-builder-content check executes the Builder v2 content hooks against a temporary
-install tree.  The Builder RPM contract check feeds generated ext4 root images
-through `scripts/builder-v2-template-adapter.sh build-rpm`, validates the
+Builder hook contract check executes the Builder v2 content hooks against a
+temporary install tree.  The Builder RPM contract check feeds generated ext4
+root images through `scripts/builder-v2-template-adapter.sh build-rpm`,
+validates the
 resulting `qubes-template-*` metadata with
 `scripts/test-template-rpm-lifecycle-dom0.sh --metadata-only`, extracts the
 payload, and reads marker files back from the reassembled root images.  The RPM

@@ -14,7 +14,7 @@ cleanup() {
 trap cleanup EXIT
 
 make_tmpdir() {
-    mktemp -d "$repo_root/builder-content-check.XXXXXX"
+    mktemp -d "$repo_root/builder-hook-contract-check.XXXXXX"
 }
 
 expect_missing_builder_env_fails() {
@@ -77,4 +77,4 @@ expect_directory "$install_dir/usr/local"
 
 run_builder_hook builder-v2-template/09_cleanup.sh
 
-printf 'builder hook contract check passed\n'
+printf 'Builder hook contract check passed\n'

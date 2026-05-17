@@ -31,7 +31,7 @@ changes.
    - `config/README.md`
 
 5. Validation and lifecycle harnesses:
-   - `tests/builder-content-check.sh`
+   - `tests/builder-hook-contract-check.sh`
    - `tests/builder-rpm-contract-check.sh`
    - `tests/rpm-layout-check.sh`
    - `scripts/test-template-rpm-lifecycle-dom0.sh`
@@ -97,7 +97,7 @@ the same separation of concerns:
 | `eecd56f`, `4d62762`, `05ed2bf`, `7206de0` | Add and document the opt-in real Guix updates-proxy download gate, including the negative nested-openQA result where dom0 refused `qubes.UpdatesProxy`. |
 | `d5b003f`, `853980f`, `e9b0ec4`, `71e77e0`, `f69fc2d`, `e7c40aa`, `616a0c5`, `96b87b8` | Tighten review notes around package-test policy, GUI scope, Builder environment reproducibility, remaining service adaptations, and artifact-based test policy. |
 | `e072163`, `c2f2609` | Add the controlled `sys-net` stub proxy download gate and fix the harness by shutting down the source template before cloning the stub target. |
-| `7c2668b` | Remove static-check framing, record the controlled proxy evidence, and document that local tests must exercise artifacts and Qubes-visible contracts. |
+| `7c2668b` | Record the controlled proxy evidence and document that local tests must exercise artifacts and Qubes-visible contracts. |
 | `de41010` | Document the community-template maintainer trust path, handoff/removal policy, and remaining maintainer identity blocker. |
 | `b0c426a` | Tighten submission drafts so copied upstream text keeps proxy, memory-balloon, maintainer handoff, and final-release gates explicit. |
 | `7829b5a` | Clarify the non-obvious no-op bootloader closure behavior and the normal/minimal appmenu package split. |

@@ -58,7 +58,7 @@ GPG fingerprint, signing path, and Builder v2 integration are accepted.
 
 ## Validation Tied To This Mapping
 
-- `tests/builder-content-check.sh` executes the Guix Builder content hooks
+- `tests/builder-hook-contract-check.sh` executes the Guix Builder hooks
   against a temporary install tree.
 - `tests/builder-rpm-contract-check.sh` feeds generated root images through
   the Builder v2 RPM adapter and validates the resulting template RPM metadata

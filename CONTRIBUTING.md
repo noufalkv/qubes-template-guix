@@ -25,9 +25,10 @@ make check
 ```
 
 Do not add tests that only grep source text, compare patch shape, or inspect
-whether code "looks right" as upstream evidence.  Local tests should execute
-build hooks, create or inspect generated artifacts, or validate Qubes-visible
-template contracts.
+whether code "looks right" as upstream evidence.  A check that only inspects
+this repository's source or patch text is not release evidence.  Local tests
+should execute build hooks, create or inspect generated artifacts, or validate
+Qubes-visible template contracts.
 
 When fresh upstream checkouts are available, also run:
 
