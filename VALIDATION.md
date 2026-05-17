@@ -226,6 +226,17 @@ guix 520785e
   commit: 520785e315eddbe47199ac557e88e60eca3ae97c
 ```
 
+The rootfs builder's pinned-channel policy was also checked locally after
+commit `2b6f5c1`: a temporary repo copy without `config/channels.scm` and with a
+fake `guix` in `PATH` failed before mount/image work with:
+
+```text
+error: missing pinned Guix channels file: .../config/channels.scm; set GUIX_CHANNELS_FILE or explicit developer-only GUIX_BRANCH
+```
+
+This verifies that release builds no longer silently fall back to an unpinned
+Guix branch when the pinned channel file is absent.
+
 ## Latest GCP Minimal Release Build Snapshot
 
 - Date: 2026-05-15.

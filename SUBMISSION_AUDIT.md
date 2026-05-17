@@ -24,7 +24,7 @@ complete.
 | Generated artifact hygiene | `.gitignore`, `git ls-files`, `git status --short` | Generated images, RPMs, tarballs, caches, dist output, and current test work directories are ignored; no generated artifacts are tracked |
 | Immutable Qubes source pins and hashes | `native/modules/qubes/packages/qubes-vm.scm` | Present |
 | Pin freshness check | `scripts/check-qubes-pins.sh`, `make check-qubes-pins`, `VALIDATION.md` | Present; passed locally and in the synced GCP review checkout against live tags on May 17, 2026 |
-| Guix channel reproducibility | `config/channels.scm`, installed `/etc/guix/channels.scm`, `VALIDATION.md` | Present; `guix time-machine -- describe` passed on GCP |
+| Guix channel reproducibility | `config/channels.scm`, installed `/etc/guix/channels.scm`, `VALIDATION.md` | Present; `guix time-machine -- describe` passed on GCP, and the rootfs builder now fails instead of defaulting to an unpinned branch when no pinned channels file is available |
 | Template RPM format | `scripts/package-native-template-rpm.sh`, `tests/rpm-layout-check.sh` | Locally tested for normal and minimal variants |
 | Executable build contracts | `tests/builder-hook-contract-check.sh`, `tests/builder-rpm-contract-check.sh`, `tests/rpm-layout-check.sh`, `make check` | Present; local run passes and exercises Builder hook outputs, Builder adapter RPM output, and real template RPM layout |
 | Guix system record contracts | `tests/guix-system-contract-check.scm`, `make guix-system-contract-check`, `VALIDATION.md` | Present; GCP Guix run instantiates normal/minimal systems and verifies swap, the standard Qubes user account and groups, privileged-programs, passwordless sudo, Qubes services, and `meminfo-writer` defaults |
