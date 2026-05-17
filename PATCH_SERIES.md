@@ -200,6 +200,7 @@ separation of concerns:
 | `6745425` | Refresh the Builder v2 and release-config sketch evidence after the current local review head, keeping the upstream commits and focused results explicit. |
 | `d15a06a` | Ignore failed-run work directories from the native-rootfs policy check so generated validation artifacts stay out of review. |
 | `a3aa9a4` | Map auxiliary helper scripts and openQA glue as support tooling outside the native release artifact. |
+| `b4961f9` | Clarify that static source-shape and patch-shape scripts are excluded from repository tests, validation logs, and upstream patch series. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
