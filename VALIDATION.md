@@ -153,15 +153,13 @@ release-config guix entries validated
 ```
 
 The review source tree was also copied to the GCP builder as
-`~/guix-review-current`.  That exported tree passed the network-dependent Qubes
-pin freshness check on the GCP builder:
+`~/guix-review-current`.  On May 17, 2026, both the current local review tree
+and the synced GCP review checkout passed the network-dependent Qubes pin
+freshness check:
 
 ```sh
 ./scripts/check-qubes-pins.sh
 ```
-
-The current local review tree also passed the same network-dependent freshness
-check:
 
 ```text
 ok: qubes-core-vchan-xen v4.2.8 a1337c282ffefcfc13a570683c57bc04813038db
