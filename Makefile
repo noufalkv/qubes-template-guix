@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 SHELL := /usr/bin/env bash
 
-.PHONY: check builder-hook-contract-check builder-rpm-contract-check rpm-layout-check release-config-fragment-check check-qubes-pins prepare build-rootimg build-rpm foreign-template test-foreign-template native-rootfs inspect-native-rootfs import-native-rootfs package-native-template-rpm test-native-template nested-dom0-status setup-openqa-guix-template-test openqa-template-rpm-normal openqa-template-rpm-minimal openqa-template-rpm-system-tests
+.PHONY: check builder-hook-contract-check builder-rpm-contract-check rpm-layout-check check-qubes-pins prepare build-rootimg build-rpm foreign-template test-foreign-template native-rootfs inspect-native-rootfs import-native-rootfs package-native-template-rpm test-native-template nested-dom0-status setup-openqa-guix-template-test openqa-template-rpm-normal openqa-template-rpm-minimal openqa-template-rpm-system-tests
 
-check: builder-hook-contract-check builder-rpm-contract-check rpm-layout-check release-config-fragment-check
+check: builder-hook-contract-check builder-rpm-contract-check rpm-layout-check
 
 builder-hook-contract-check:
 	./tests/builder-hook-contract-check.sh
@@ -13,9 +13,6 @@ builder-rpm-contract-check:
 
 rpm-layout-check:
 	./tests/rpm-layout-check.sh
-
-release-config-fragment-check:
-	./tests/release-config-fragment-check.sh
 
 check-qubes-pins:
 	./scripts/check-qubes-pins.sh

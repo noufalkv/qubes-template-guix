@@ -34,7 +34,6 @@ changes.
    - `tests/builder-hook-contract-check.sh`
    - `tests/builder-rpm-contract-check.sh`
    - `tests/rpm-layout-check.sh`
-   - `tests/release-config-fragment-check.sh`
    - `scripts/test-template-rpm-lifecycle-dom0.sh`
    - `scripts/test-update-proxy-default-target-dom0.sh`
    - `scripts/test-guix-update-proxy-config-dom0.sh`
@@ -106,7 +105,7 @@ the same separation of concerns:
 | `1bc7aab`, `a66b2d5`, `51c0d69`, `411e482` | Refresh pin freshness, completion-audit, local contract-check, and upstream sketch evidence against the current review tree. |
 | `ba1010d`, `3899a26` | Remove stale test names and review wording so local checks are presented as Builder hook, Builder RPM, and template RPM contracts rather than source-only checks. |
 | `221a2cf`, `011e18f`, `d4055e2` | Anchor current template precedent sources, tighten the adaptation inventory against the actual Scheme implementation, and normalize upstream-facing hook terminology. |
-| `d017cab`, `aa3d497`, `13b7c85`, `d3c6c67` | Add the release-config fragment contract check, ignore current test work directories, document generated-artifact hygiene, and tone down validation proof language. |
+| `d017cab`, `aa3d497`, `13b7c85`, `d3c6c67`, `f4cfeb6`, `9e84426` | Rework review hygiene around placeholders, remove source-shape test gates, ignore current test work directories, document generated-artifact hygiene, and tone down validation proof language. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
