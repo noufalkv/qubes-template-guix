@@ -179,6 +179,7 @@ separation of concerns:
 | `261721f` | Document the generated `/sbin/init` entrypoint that bridges Qubes' dom0-kernel boot path to the Guix system boot program. |
 | `630d7d3` | Correct the Builder hook review map so `01_install_core.sh`, `02_install_groups.sh`, and `04_install_qubes.sh` match their actual responsibilities. |
 | `a32182e` | Document the safety boundary for the dom0 root-image import helper and keep it framed as test infrastructure, not the release path. |
+| `dd75cdf` | Document that the openQA setup script is for a dedicated review host because it rewrites local openQA tests, API credentials, worker configuration, and assets. |
 
 The public submission branch may squash or reorder these, but it should not lose
 the traceability between implementation, validation evidence, upstream process
