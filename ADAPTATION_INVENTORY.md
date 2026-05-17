@@ -25,6 +25,13 @@ where behavior intentionally diverges from stock Qubes VM agent packaging.
 | GUI FHS normalization | `qubes-vm-gui`, `install` phase | Move `/usr/bin`, `/usr/lib`, `/usr/share`, `/usr/include` into profile-visible output paths and repair Qubes RPC symlinks. | Qubes GUI agent installs into distribution FHS paths; Guix activation links `/usr` compatibility paths back to the system profile. | Rootfs inspection and nested-dom0/openQA appmenu smoke evidence exist; the final signed release branch still needs fresh validation. |
 | Xorg driver runpaths | `qubes-vm-gui`, phase `set-xorg-driver-runpath` | Add runtime library paths to built Xorg drivers. | Guix does not rely on a global dynamic linker path for package outputs. | Rootfs inspection and basic GUI smoke evidence exist; the final signed release branch still needs fresh validation. |
 
+## Image Build and Reconfiguration Adaptations
+
+| Area | Code location | Adaptation | Rationale | Current validation |
+| --- | --- | --- | --- | --- |
+| Default root image size | `scripts/build-native-rootfs.sh`, `scripts/run-native-guix-template-test-dom0.sh`, and openQA `GUIX_ROOT_SIZE` defaults | Use a 20G default root image, matching the current Qubes builder template root-size convention used by Fedora-style templates, instead of shrinking the release image default to the Guix closure size. | Keeps TemplateVM volume sizing aligned with Qubes template expectations and avoids making Guix a special small-root case that reviewers and users have to account for separately. | `VALIDATION.md` records normal and minimal 20G root image builds, Builder-shaped root image builds, and RPM-mode openQA evidence.  The local RPM contract tests intentionally use tiny generated images only for fast package-layout checks, not as release-size evidence. |
+| Installed reconfiguration inputs | `scripts/build-native-rootfs.sh`, `config/channels.scm`, installed `/etc/config.scm`, and installed `/etc/guix/channels.scm` | Install a self-contained Guix system configuration containing the local Qubes package/service modules and install the pinned channel file into the template. | `guix system reconfigure /etc/config.scm` should not depend on a builder checkout or site module path after installation, and release-quality updates should start from a recorded Guix channel rather than an implicit per-user `guix pull` profile. | Rootfs inspection and activation checks cover installed config materialization; GCP evidence records `guix time-machine -C config/channels.scm -- describe`; final update/reconfigure release evidence from a signed branch remains required. |
+
 ## System Definition Adaptations
 
 | Area | Code location | Adaptation | Rationale | Current validation |
