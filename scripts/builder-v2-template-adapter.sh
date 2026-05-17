@@ -27,6 +27,19 @@ die() {
     exit 1
 }
 
+validate_template_name() {
+    local value="$1"
+
+    [ -n "$value" ] || die "template name must not be empty"
+    case "$value" in
+        [0123456789_.-]*) die "template name cannot start with hyphen, underscore, dot or numbers" ;;
+        *[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-]*) die "template name contains illegal characters: $value" ;;
+        Domain-0) die "template name cannot be Domain-0" ;;
+        none|default) die "template name cannot be none or default" ;;
+        *-dm) die "template name cannot end with -dm" ;;
+    esac
+}
+
 variant_from_builder() {
     case "$template_flavor:$template_name" in
         minimal:*|*:*-minimal) printf '%s\n' minimal ;;
@@ -41,6 +54,7 @@ release_from_timestamp() {
 build_rootimg() {
     local variant root_dir root_img appmenus_dir template_conf
 
+    validate_template_name "$template_name"
     variant="$(variant_from_builder)"
     root_dir="$artifacts_dir/qubeized_images/$template_name"
     root_img="$root_dir/root.img"
@@ -68,6 +82,7 @@ EOF
 build_rpm() {
     local root_img rpm_dir release
 
+    validate_template_name "$template_name"
     root_img="$artifacts_dir/qubeized_images/$template_name/root.img"
     rpm_dir="$artifacts_dir/rpmbuild/RPMS/noarch"
     release="$(release_from_timestamp)"

@@ -42,6 +42,36 @@ check_missing_value scripts/gcloud-sync-and-setup-builder.sh --name
 check_missing_value scripts/setup-openqa-guix-template-test.sh --tests-source
 check_missing_value scripts/test-native-guix-template-dom0.sh --template
 
+check_invalid_template_name() {
+    local label="$1"
+    local output
+    local status
+    shift
+
+    set +e
+    output="$("$@" 2>&1)"
+    status=$?
+    set -e
+
+    [ "$status" -ne 0 ] || {
+        printf 'expected invalid template name to fail: %s\n' "$label" >&2
+        exit 1
+    }
+
+    printf '%s\n' "$output" | grep -Fq 'template name' || {
+        printf 'invalid template name did not produce a useful error for %s:\n%s\n' \
+            "$label" "$output" >&2
+        exit 1
+    }
+}
+
+check_invalid_template_name package-template-name \
+    "$repo_root/scripts/package-native-template-rpm.sh" \
+    --name 1bad --root-image /does/not/exist
+check_invalid_template_name builder-template-name \
+    env TEMPLATE_NAME=../bad \
+    "$repo_root/scripts/builder-v2-template-adapter.sh" build-rootimg
+
 gcloud_sync_output="$(
     "$repo_root/scripts/gcloud-sync-and-setup-builder.sh" \
         --dry-run \

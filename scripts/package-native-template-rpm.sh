@@ -75,6 +75,19 @@ validate_component() {
     esac
 }
 
+validate_template_name() {
+    local value="$1"
+
+    validate_component "$value" "template name"
+    case "$value" in
+        [0123456789_.-]*) die "template name cannot start with hyphen, underscore, dot or numbers" ;;
+        *[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-]*) die "template name contains illegal characters: $value" ;;
+        Domain-0) die "template name cannot be Domain-0" ;;
+        none|default) die "template name cannot be none or default" ;;
+        *-dm) die "template name cannot end with -dm" ;;
+    esac
+}
+
 validate_version_field() {
     local value="$1"
     local label="$2"
@@ -150,6 +163,23 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
+case "$gui_enabled" in
+    ""|0|1) ;;
+    *) die "--gui must be 0 or 1" ;;
+esac
+validate_template_name "$template_name"
+validate_version_field "$version" "version"
+validate_version_field "$release" "release"
+if [ "${#appmenu_entries[@]}" -eq 0 ] && [ "$appmenu_entries_set" -eq 0 ]; then
+    case "$template_name" in
+        *-minimal) appmenu_entries=(xterm.desktop) ;;
+        *) appmenu_entries=(xfce4-terminal.desktop) ;;
+    esac
+fi
+for appmenu_entry in "${appmenu_entries[@]}"; do
+    validate_component "$appmenu_entry" "appmenu entry"
+done
+
 need awk
 need cp
 need rpmbuild
@@ -163,22 +193,6 @@ if [ "$shrink_image" -eq 1 ]; then
 fi
 
 [ -r "$root_image" ] || die "root image not readable: $root_image"
-case "$gui_enabled" in
-    ""|0|1) ;;
-    *) die "--gui must be 0 or 1" ;;
-esac
-validate_component "$template_name" "template name"
-validate_version_field "$version" "version"
-validate_version_field "$release" "release"
-if [ "${#appmenu_entries[@]}" -eq 0 ] && [ "$appmenu_entries_set" -eq 0 ]; then
-    case "$template_name" in
-        *-minimal) appmenu_entries=(xterm.desktop) ;;
-        *) appmenu_entries=(xfce4-terminal.desktop) ;;
-    esac
-fi
-for appmenu_entry in "${appmenu_entries[@]}"; do
-    validate_component "$appmenu_entry" "appmenu entry"
-done
 
 summary="GNU Guix System Qubes template"
 description="Native GNU Guix System TemplateVM for Qubes OS with QubesDB, qrexec, and Qubes private-volume persistence support."
