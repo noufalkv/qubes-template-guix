@@ -67,7 +67,9 @@ evidence from the signed public branch for:
   private-volume persistence, `/dev/xvdc1` swap activation, and guest-side
   `meminfo-writer` startup.
 - Update proxy forwarding and generated Guix daemon/client proxy configuration.
-- A real Guix update or download command through the Qubes updates proxy.
+- A real Guix update or download command through the Qubes updates proxy, such
+  as `scripts/test-guix-update-proxy-download-dom0.sh` in a review environment
+  with a working update-proxy target.
 - Dynamic memory-balloon resize behavior under dom0 pressure.
 
 ## Review Rules

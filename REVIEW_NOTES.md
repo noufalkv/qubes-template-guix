@@ -77,7 +77,7 @@ or issue.
 | Template builder precedent | `TEMPLATE_PRECEDENTS.md`, `builder-v2-template/` | Hook mapping documented against Qubes template-builder model |
 | Qubes release-config wiring | `config/qubes-os-r4.3-templates-community-guix.example.yml`, `config/qubes-release-configs-guix.example.patch` | Reviewable sketch with placeholder maintainer identity |
 | Template Manager RPM format | `scripts/package-native-template-rpm.sh`, `tests/rpm-layout-check.sh` | Locally tested |
-| Runtime Qubes integration | `native/modules/qubes/services/qubes-vm.scm`, `native/modules/qubes/systems/guix-template.scm`, `scripts/test-native-rootfs-activation.sh`, `scripts/test-template-rpm-lifecycle-dom0.sh`, `scripts/test-update-proxy-default-target-dom0.sh`, `scripts/test-guix-update-proxy-config-dom0.sh`, `scripts/test-memory-balloon-dom0.sh`, `VALIDATION.md` | Partially tested; nested-dom0 `qvm-template` install/reinstall/remove/upgrade/downgrade plus TemplateVM/AppVM smoke passed, including `/dev/xvdc1` swap, `meminfo-writer` startup, dynamic memory growth under pressure, controlled update-proxy qrexec forwarding, default update-target HTTP forwarding through stock Qubes policy, RPM-mode openQA jobs 8/9, and rebuilt minimal openQA job 27 with generated Guix daemon/client proxy verification.  Real Guix update-tooling proxy use and final signed-branch reruns remain unpassed gates. |
+| Runtime Qubes integration | `native/modules/qubes/services/qubes-vm.scm`, `native/modules/qubes/systems/guix-template.scm`, `scripts/test-native-rootfs-activation.sh`, `scripts/test-template-rpm-lifecycle-dom0.sh`, `scripts/test-update-proxy-default-target-dom0.sh`, `scripts/test-guix-update-proxy-config-dom0.sh`, `scripts/test-guix-update-proxy-download-dom0.sh`, `scripts/test-memory-balloon-dom0.sh`, `VALIDATION.md` | Partially tested; nested-dom0 `qvm-template` install/reinstall/remove/upgrade/downgrade plus TemplateVM/AppVM smoke passed, including `/dev/xvdc1` swap, `meminfo-writer` startup, dynamic memory growth under pressure, controlled update-proxy qrexec forwarding, default update-target HTTP forwarding through stock Qubes policy, RPM-mode openQA jobs 8/9, and rebuilt minimal openQA job 27 with generated Guix daemon/client proxy verification.  The real-download proxy verifier exists but has no passing run yet; real Guix update-tooling proxy use and final signed-branch reruns remain unpassed gates. |
 | Maintainer/update story | `MAINTENANCE.md` | Policy documented; actual maintainer identity and signed release process still missing |
 | Security-review framing | `SECURITY.md`, `ADAPTATION_INVENTORY.md` | Trust boundaries and sensitive adaptations documented; nested-dom0 smoke, dynamic memory pressure, default update-target HTTP forwarding, RPM-mode openQA jobs 8/9, and rebuilt minimal openQA job 27 with generated Guix proxy configuration verification are green; real Guix update-tooling proxy use and final signed-branch reruns remain |
 | Human review burden | `REVIEW_NOTES.md`, `UPSTREAMING.md`, `VALIDATION.md` | Explained, but maintainer identity/signatures are still missing |
@@ -143,7 +143,8 @@ The changes should be reviewed in this order:
    `tests/builder-content-check.sh`, `tests/builder-rpm-contract-check.sh`,
    `tests/rpm-layout-check.sh`,
    `scripts/test-update-proxy-default-target-dom0.sh`,
-   `scripts/test-guix-update-proxy-config-dom0.sh`, and
+   `scripts/test-guix-update-proxy-config-dom0.sh`,
+   `scripts/test-guix-update-proxy-download-dom0.sh`, and
    `scripts/test-memory-balloon-dom0.sh`.
 5. Pin freshness check:
    `scripts/check-qubes-pins.sh` compares pinned Qubes component versions

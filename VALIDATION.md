@@ -33,6 +33,7 @@ The current local tree has passed the local contract checks:
 
 ```sh
 bash -n scripts/test-memory-balloon-dom0.sh
+bash -n scripts/test-guix-update-proxy-download-dom0.sh
 git diff --check
 make check
 ```
@@ -861,7 +862,10 @@ snapshot:
   untested.  The default-target HTTP forwarding gate is now covered by the
   2026051602 nested-dom0 run above, and RPM-mode openQA job 27 passed
   `scripts/test-guix-update-proxy-config-dom0.sh` for the generated
-  daemon/client proxy configuration.  This snapshot does not yet prove that
+  daemon/client proxy configuration.  The tree now includes
+  `scripts/test-guix-update-proxy-download-dom0.sh` and an opt-in openQA
+  `GUIX_RUN_PROXY_DOWNLOAD_TEST=1` gate for a real `guix download`, but this
+  snapshot does not yet contain a passing run of that gate or prove that
   `guix pull`, substitute downloads, or channel updates consume the proxy as
   intended.
 - Final signed-branch or signed-tag reruns of the rootfs build, image

@@ -321,7 +321,18 @@ configuration separately:
 
 That check confirms the Qubes service flag, generated `guix` wrapper, and
 `guix-daemon` proxy environment.  A release candidate should still run a real
-Guix update or download command through the Qubes proxy before submission.
+Guix update or download command through the Qubes proxy before submission:
+
+```sh
+./scripts/test-guix-update-proxy-download-dom0.sh \
+  --template guix \
+  --download-url https://guix.gnu.org/
+```
+
+The download check depends on an update-proxy target with working Internet
+access.  The openQA harness stages the same script and runs it only when
+`GUIX_RUN_PROXY_DOWNLOAD_TEST=1` is set, so ordinary local RPM smoke does not
+silently depend on public network availability.
 
 ## Local Checks
 

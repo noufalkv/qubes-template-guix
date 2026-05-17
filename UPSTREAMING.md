@@ -190,7 +190,10 @@ request or issue has been exhaustively reviewed.
   RPM-mode openQA, update-proxy, and dynamic memory-pressure evidence from
   final signed-branch reruns.  The RPM-mode openQA path now has a passing
   rebuilt minimal job for the Guix-specific daemon/client proxy verifier, but
-  real Guix update-tooling proxy use is still an open gate.
+  real Guix update-tooling proxy use is still an open gate.  An opt-in
+  `scripts/test-guix-update-proxy-download-dom0.sh` gate now exists for a real
+  `guix download` through Qubes updates proxy when the review environment has
+  working Internet access.
 - Qubes Forum, Gentoo template maintenance infrastructure:
   `https://forum.qubes-os.org/t/new-gentoo-templates-and-maintenance-infrastructure/961`
   Expectation: source-style community templates need maintainer-owned build
@@ -349,8 +352,9 @@ issue.  The current partial evidence snapshot is in `VALIDATION.md`.
   the signed public branch.
 - Real Guix update/download behavior through the Qubes update proxy.  Current
   evidence verifies Qubes forwarding, generated Guix proxy configuration, and
-  service state; final evidence still needs actual `guix pull` or substitute
-  downloads through the proxy from the signed public branch.
+  service state; final evidence still needs a passing
+  `scripts/test-guix-update-proxy-download-dom0.sh` run and actual `guix pull`
+  or substitute downloads through the proxy from the signed public branch.
 - Optional Qubes dom0 integration results for `qubes.tests.integ.qrexec` and
   `qubes.tests.integ.vm_qrexec_gui`, with any nested-virtualization host limits
   called out separately.
