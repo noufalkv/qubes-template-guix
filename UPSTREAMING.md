@@ -137,6 +137,16 @@ request or issue has been exhaustively reviewed.
   Local response: `Makefile`, `Makefile.builder`, `builder-v2-template/`, and
   `scripts/builder-v2-template-adapter.sh` expose reviewable `prepare`,
   `build-rootimg`, and `build-rpm` entry points.
+- Qubes issue `QubesOS/qubes-issues#8774`, Builder environment distribution:
+  `https://github.com/QubesOS/qubes-issues/issues/8774`
+  Expectation: Builder setup and version alignment are themselves review and
+  reproducibility concerns; a template contribution should not depend on an
+  undocumented local builder state.
+  Local response: `config/channels.scm`, `config/README.md`,
+  `builder-v2-template/`, `Makefile.builder`, and `VALIDATION.md` record the
+  current known-good build inputs, GCP builder path, and Builder/release-config
+  sketch checks.  Final submission still needs maintainer-owned Builder
+  reproduction from the signed public branch.
 - Qubes Builder v2 template plugin:
   `https://github.com/QubesOS/qubes-builderv2/blob/main/qubesbuilder/plugins/template/__init__.py`
   Expectation: the template plugin has explicit `prep`, `build`, `sign`,
@@ -417,6 +427,8 @@ with local validation, not as a publishable Qubes community template.
   `https://raw.githubusercontent.com/QubesOS/qubes-builderv2/main/qubesbuilder/plugins/template/__init__.py`
 - Qubes Builder v2 distribution model:
   `https://raw.githubusercontent.com/QubesOS/qubes-builderv2/main/qubesbuilder/distribution.py`
+- Qubes issue for Builder environment reproducibility:
+  `https://github.com/QubesOS/qubes-issues/issues/8774`
 - Qubes R4.3 community template release config:
   `https://raw.githubusercontent.com/QubesOS/qubes-release-configs/main/R4.3/qubes-os-r4.3-templates-community.yml`
 - Qubes Forum, "Building a TemplateVM for a new OS":
