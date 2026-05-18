@@ -83,7 +83,8 @@ The highest-risk rows for security review are:
 - QubesDB foreground supervision.
 - core-agent post-install and feature reporting changes without systemd.
 - updates proxy forwarding.
-- GUI startup and Xorg wrapper changes.
+- GUI startup and Xorg wrapper changes, especially the temporary `-ac`
+  compatibility path for the root-owned Xorg/default-user session split.
 - FHS compatibility links under `/usr`, `/etc/qubes-rpc`, `/run`, and
   `/var/run`.
 
@@ -92,11 +93,12 @@ native mechanism that removes the Guix-specific need.
 
 ## What Is Not Yet Proven
 
-The following must not be presented as final release proof until a current
-signed public branch has fresh evidence:
+The following must not be presented as final release proof until the publication
+branch or release object has fresh evidence:
 
 - RPM-mode openQA reruns for both `guix` and `guix-minimal`.
-- default update-target proxy forwarding rerun from the signed branch.
+- default update-target proxy forwarding rerun from the publication branch or
+  release object.
 - runtime evidence that the generated Guix daemon/client proxy configuration is
   active, plus real Guix update tooling consuming the Qubes update proxy.
 - Broader usability checks such as audio, time sync, keymap sync, DispVM, NetVM,

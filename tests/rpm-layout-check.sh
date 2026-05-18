@@ -16,6 +16,7 @@ required_commands=(
     rpmbuild
     sha256sum
     split
+    stat
     tar
     truncate
 )
@@ -109,6 +110,7 @@ check_template_rpm() {
     cat "$template_dir"/root.img.part.* > "$combined_tar"
     mkdir -p "$extracted_image_dir"
     tar -C "$extracted_image_dir" -xf "$combined_tar"
+    [ "$(stat -c '%s' "$extracted_image")" = "$(stat -c '%s' "$image")" ]
     test_marker="$(debugfs -R 'cat /etc/guix-template-test' "$extracted_image" 2>/dev/null)"
     [ "$test_marker" = 'guix rpm layout test' ]
 

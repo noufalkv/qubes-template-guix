@@ -9,31 +9,34 @@ complete.
 
 | Requirement | Evidence | Status |
 | --- | --- | --- |
-| Human-reviewable patch set | `git log --oneline`, `REVIEWER_GUIDE.md`, `PATCH_SERIES.md`, `REVIEW_NOTES.md`, this file | Mostly present; signed public history still missing |
+| Human-reviewable patch set | `git log --oneline`, `REVIEWER_GUIDE.md`, `PATCH_SERIES.md`, `REVIEW_NOTES.md`, this file | Mostly present; the review branch is one signed commit over `master`, the public branch is updated, and release-owner signing is deferred to publication |
 | Qubes contribution expectations | `UPSTREAMING.md`, `REVIEW_NOTES.md`, `COPYING` | Mapped to source-backed expectations |
-| Online PR/issue/forum review | `UPSTREAMING.md`, `REVIEW_NOTES.md` | Targeted to authoritative docs, current Builder/release-config code, current R4.3 Builder v2 forum guidance, new-template forum precedent, Gentoo template precedent, and comparable NixOS issue/PRs; exhaustive review of every Qubes PR/issue is not claimed |
+| Online PR/issue/forum review | `UPSTREAMING.md`, `REVIEW_NOTES.md` | Targeted to authoritative docs, current Builder/release-config code, current R4.3 Builder v2 forum guidance, new-template forum precedent, unofficial-package/template repository precedent, Gentoo template precedent, comparable NixOS issue/PRs, the Alpine `vmupdate` PR, the Flatpak update-proxy PR, and update-proxy issue threads covering UpdateVM support, target service state, global update-proxy defaults, target startup, and user-visible UpdateVM settings; spot-refreshed against those comparable issue/PR paths, the Builder environment issue, the new packages/templates forum thread, and the three open Guix RFC PR threads on May 18, 2026; exhaustive review of every Qubes PR/issue is not claimed |
 | Clear use case | `README.md`, `UPSTREAMING.md` | Present: native Guix System TemplateVM for Qubes R4.3 |
 | Open-source license | `COPYING`, SPDX markers in code files, `scripts/package-native-template-rpm.sh` | Present: GPLv3-or-later repository metadata |
 | Low review burden | `REVIEWER_GUIDE.md`, `REVIEW_NOTES.md` review order, review matrix, non-goals | Present, with remaining gates called out |
-| Security-review framing | `SECURITY.md`, `ADAPTATION_INVENTORY.md`, `REVIEW_NOTES.md` | Guest trust boundaries and review-sensitive adaptations are documented; nested-dom0 smoke, dynamic memory-pressure evidence, default update-target proxy evidence, RPM-mode openQA evidence, runtime evidence of generated Guix proxy configuration, and controlled Guix client proxy-download evidence exist; real Internet update-target Guix proxy use and final signed-branch reruns remain |
-| GenAI-assisted contribution handling | `UPSTREAMING.md`, `REVIEW_NOTES.md` | Present as a disclosure requirement; human maintainer must own submission |
+| Security-review framing | `SECURITY.md`, `ADAPTATION_INVENTORY.md`, `REVIEW_NOTES.md` | Guest trust boundaries and review-sensitive adaptations are documented; nested-dom0 smoke, dynamic memory-pressure evidence, default update-target proxy evidence, RPM-mode openQA evidence, runtime evidence of generated Guix proxy configuration, and controlled Guix client proxy-download evidence exist; real Internet update-target Guix proxy use and final publication reruns remain |
+| GenAI-assisted contribution handling | `UPSTREAMING.md`, `REVIEW_NOTES.md` | Present as a disclosure requirement; release ownership must be settled before publication |
+| GNU Guix System alignment | `UPSTREAMING.md`, `ADAPTATION_INVENTORY.md`, `native/modules/qubes/` | Guix package definitions, operating-system records, Shepherd service types, pinned channels, immutable source hashes, and named phases are used; mutable state is limited to Qubes runtime compatibility needs |
 | Non-obvious compatibility changes explained | `REVIEW_NOTES.md`, `ADAPTATION_INVENTORY.md` | Present |
-| Maintainer/update story | `MAINTENANCE.md`, `UPSTREAMING.md` | Present as a policy artifact, including handoff/removal policy for an unmaintained community template; actual maintainer identity still missing |
-| Contribution workflow | `CONTRIBUTING.md`, `PATCH_SERIES.md` | Signed-history, testing, placeholder, release evidence, and multi-repo flow rules documented |
+| Maintainer/update story | `MAINTENANCE.md`, `UPSTREAMING.md` | Present as a policy artifact, including handoff/removal policy for an unmaintained community template; release-owner identity is deferred |
+| Contribution workflow | `CONTRIBUTING.md`, `PATCH_SERIES.md` | Review hygiene, publication signing preflight, testing, placeholder, release evidence, and multi-repo flow rules documented |
 | Submission handoff | `SUBMISSION_DRAFTS.md`, `PATCH_SERIES.md` | Drafts present; placeholders and final evidence must be replaced before use |
 | Generated artifact hygiene | `.gitignore`, `git ls-files`, `git status --short` | Generated images, RPMs, tarballs, caches, dist output, and current test work directories are ignored; no generated artifacts are tracked |
+| Tracked-file publication hygiene | `git grep`, `git ls-files` | A tracked-file scan on May 18, 2026 found no GitHub credential, cloud-provider setup, provider instance or zone, generated RPM/image/dist/work artifact, or host-local path.  Remaining intentional hits are the hygiene-command example in `CONTRIBUTING.md` and standard Qubes in-guest user-home diagnostic log paths. |
 | Immutable Qubes source pins and hashes | `native/modules/qubes/packages/qubes-vm.scm` | Present |
-| Pin freshness check | `scripts/check-qubes-pins.sh`, `make check-qubes-pins`, `VALIDATION.md` | Present; passed locally and in the synced remote review checkout against live tags on May 17, 2026 |
+| Pin freshness check | `scripts/check-qubes-pins.sh`, `make check-qubes-pins`, `VALIDATION.md` | Present; passed locally again on May 19, 2026 after the centralized update proof hardening; current output includes `qubes-core-agent-linux v4.3.43` and all pinned Qubes VM component tags matched |
 | Guix channel reproducibility | `config/channels.scm`, installed `/etc/guix/channels.scm`, `VALIDATION.md` | Present; `guix time-machine -- describe` passed on a remote Guix builder, and the rootfs builder now fails instead of defaulting to an unpinned branch when no pinned channels file is available |
 | Template RPM format | `scripts/package-native-template-rpm.sh`, `tests/rpm-layout-check.sh` | Locally tested for normal and minimal variants |
-| Executable build contracts | `tests/script-cli-check.sh`, `tests/build-native-rootfs-policy-check.sh`, `tests/builder-hook-contract-check.sh`, `tests/builder-adapter-contract-check.sh`, `tests/builder-rpm-contract-check.sh`, `tests/rpm-layout-check.sh`, `make check` | Present; local run passes and exercises public script missing-value handling, the pinned-channel rootfs-builder policy, Builder hook outputs, Builder adapter root-image metadata, Builder adapter RPM output, and real template RPM layout |
-| Guix system record contracts | `tests/guix-system-contract-check.scm`, `make guix-system-contract-check`, `VALIDATION.md` | Present; remote Guix run instantiates normal/minimal systems and verifies swap, the standard Qubes user account and groups, privileged-programs, passwordless sudo, Qubes services, and `meminfo-writer` defaults |
+| Executable build contracts | `tests/script-cli-check.sh`, `tests/build-native-rootfs-policy-check.sh`, `tests/builder-hook-contract-check.sh`, `tests/builder-adapter-contract-check.sh`, `tests/builder-rpm-contract-check.sh`, `tests/central-vmupdate-harness-check.sh`, `tests/rpm-layout-check.sh`, `make check` | Present; local run passes and exercises public script missing-value handling, the pinned-channel rootfs-builder policy, Builder hook outputs, Builder adapter root-image metadata, Builder adapter RPM output, central vmupdate harness behavior, and real template RPM layout |
+| Guix system record contracts | `tests/guix-system-contract-check.scm`, `make guix-system-contract-check`, `VALIDATION.md` | Present; remote Guix run instantiates normal/minimal systems and verifies swap, the standard Qubes user account and groups, privileged-programs, passwordless sudo, Qubes services including the updates-proxy forwarder, and `meminfo-writer` defaults |
 | Builder v2 content-script shape | `builder-v2-template/`, `scripts/build-native-rootfs.sh --install-dir` | Present as a reviewable component shape |
 | Existing template precedent mapping | `TEMPLATE_PRECEDENTS.md`, `builder-v2-template/` | Guix hook mapping is documented against the Qubes template-builder model |
-| Builder v2 multi-repo change | `config/README.md`, `config/qubes-builderv2-guix.example.patch` | Patch sketch only; not accepted upstream |
-| Release-config multi-repo change | `config/README.md`, `config/qubes-release-configs-guix.example.patch` | Patch sketch only; maintainer identity placeholders remain |
-| Runtime validation snapshot | `VALIDATION.md` | Partial; dated normal/minimal rootfs/RPM plus nested-dom0 qvm-template lifecycle, upgrade/downgrade, TemplateVM/AppVM smoke, dynamic memory-pressure, default update-target proxy, and RPM-mode openQA evidence present, including swap activation, `meminfo-writer` startup, memory growth under pressure, `127.0.0.1:8082` forwarding through stock Qubes policy, openQA jobs 8/9, rebuilt minimal openQA job 27 with generated Guix daemon/client proxy verification, and job 31 with controlled `guix download` through a temporary `sys-net` stub; openQA job 29 reached the opt-in real-network download gate but failed on dom0 `qubes.UpdatesProxy` refusal, so real Internet update-target Guix proxy use and final signed-branch reruns remain open |
-| openQA and qvm-template lifecycle evidence | `openqa/`, `scripts/run-openqa-template-rpm.sh`, `scripts/test-template-rpm-lifecycle-dom0.sh`, `scripts/test-guix-update-proxy-config-dom0.sh`, `scripts/test-guix-update-proxy-download-dom0.sh`, `scripts/test-guix-update-proxy-stub-download-dom0.sh`, `VALIDATION.md` | qvm-template install/reinstall/remove/upgrade/downgrade and smoke passed for both variants in nested dom0; RPM-mode openQA jobs 8 and 9 passed for normal and minimal 2026051602 RPMs; rebuilt minimal RPM-mode openQA job 27 passed generated Guix daemon/client proxy verification; openQA job 31 passed a controlled `guix download` through stock default-target policy and a temporary `sys-net` stub; openQA job 29 proved the real-network download gate is wired and strict, but it failed on dom0 updates-proxy policy/default-target refusal and is not a passing Internet-target download run |
+| Builder v2 multi-repo change | `config/README.md`, `config/qubes-builderv2-guix.example.patch`, QubesOS/qubes-builderv2#245 | Draft RFC PR opened; the branch is resquashed into one signed review commit at `f9ec921`, Qubes code-signing is green, the four focused Guix distribution/template-plugin tests pass locally, and upstream GitLab CI is green at the May 19 check; the change is not accepted upstream |
+| Release-config multi-repo change | `config/README.md`, `config/qubes-release-configs-guix.example.patch`, QubesOS/qubes-release-configs#19 | Draft RFC PR opened; Qubes code-signing is green; release metadata remains a publication gate, not a blocker for review |
+| Central updater multi-repo change | `config/README.md`, `config/qubes-core-admin-linux-guix-vmupdate.example.patch`, QubesOS/qubes-core-admin-linux#211 | Draft RFC PR opened; public head `182199c` has Qubes code-signing and GitLab CI success with `maintainer-tag` pending at the May 19 check; vmupdate tests pass in that branch, including the Guix proxy environment, shared no-progress contract, time-machine refresh/reconfigure commands, realtime streaming for those commands, sanitized manifest parsing, vmupdate-scoped temporary time-machine state, and per-output system profile metadata for the dom0 package summary; the dom0 harness raw-probes the Qubes proxy to the Guix channel host, logs `qubes.UpdatesProxy` policy and `sys-net` target context, rejects direct-route TemplateVM proof, forces both refresh and upgrade, and checks for Guix refresh/reconfigure log markers before accepting central-updater evidence; not accepted upstream; RPM-mode openQA job 129 passed the central update path through a standard Debian `sys-net` target with agent exit status 0, while job 133 reached the same path and failed on an upstream Git HTTP 504 during Guix refresh |
+| Runtime validation snapshot | `VALIDATION.md` | Partial; dated normal/minimal rootfs/RPM plus nested-dom0 qvm-template lifecycle, upgrade/downgrade, TemplateVM/AppVM smoke, dynamic memory-pressure, default update-target proxy, and RPM-mode openQA evidence present, including swap activation, `meminfo-writer` startup, memory growth under pressure, `127.0.0.1:8082` forwarding through stock Qubes policy, openQA jobs 8/9, rebuilt minimal openQA job 27 with generated Guix daemon/client proxy verification, job 31 with controlled `guix download` through a temporary `sys-net` stub, job 38 with the rebuilt minimal RPM passing the same controlled download gate, job 41 repeating that controlled gate after adding the no-direct-default-route proof guard, job 44 repeating that controlled gate from commit `d508939`, and job 129 passing standard update-target bootstrap, raw proxy probing, `guix time-machine --branch=master`, system reconfigure, package metadata reporting, and agent exit status 0; final publication reruns remain open |
+| openQA and qvm-template lifecycle evidence | `openqa/`, `scripts/run-openqa-template-rpm.sh`, `scripts/test-template-rpm-lifecycle-dom0.sh`, `scripts/test-guix-update-proxy-config-dom0.sh`, `scripts/test-guix-update-proxy-download-dom0.sh`, `scripts/test-guix-update-proxy-stub-download-dom0.sh`, `scripts/test-guix-central-vmupdate-dom0.sh`, `VALIDATION.md` | qvm-template install/reinstall/remove/upgrade/downgrade and smoke passed for both variants in nested dom0; RPM-mode openQA jobs 8 and 9 passed for normal and minimal 2026051602 RPMs; rebuilt minimal openQA job 27 passed generated Guix daemon/client proxy verification; openQA jobs 38, 41, and 44 passed RPM install, postinstall diagnostics, TemplateVM/AppVM smoke, generated proxy configuration, raw proxy probing, and a controlled `guix download` through stock default-target policy and a temporary `sys-net` stub; jobs 41 and 44 additionally verified the source TemplateVM had no direct default route before counting the run as proxy evidence; job 129 passed the central update path through a standard Debian `sys-net` target; job 133 reran the corrected central harness and reached Guix through the same proxy path before an upstream Git HTTP 504 |
 
 ## Prompt-To-Artifact Checklist
 
@@ -41,11 +44,12 @@ complete.
 | --- | --- | --- |
 | Easily reviewable by humans | `README.md`, `REVIEWER_GUIDE.md`, `REVIEW_NOTES.md`, `ADAPTATION_INVENTORY.md`, this audit | Review path, scope, non-goals, and adaptation rationale are documented |
 | Conform to Qubes maintainer expectations | `UPSTREAMING.md`, `REVIEW_NOTES.md`, `COPYING`, `config/README.md` | Expected contribution process is mapped; acceptance still requires external review |
-| Inspect maintainer expectations online | `UPSTREAMING.md`, `REVIEW_NOTES.md` | Targeted review captured; exhaustive review of every Qubes issue/PR remains unclaimed |
-| Upstream process may span multiple repos | `config/qubes-builderv2-guix.example.patch`, `config/qubes-release-configs-guix.example.patch`, `config/README.md` | Builder v2 and release-config targets are separated and named |
-| Clear commit history | `git log --oneline`, `PATCH_SERIES.md` | Clean review branch present with a current local history map; final public branch still needs maintainer signing |
-| Every non-obvious change explained | `REVIEW_NOTES.md`, `ADAPTATION_INVENTORY.md`, `MAINTENANCE.md` | Package phases, VM-side component package splits, services, update model, 20G root image sizing, installed reconfiguration inputs, generated `/sbin/init` entrypoint, dom0 root-image import helper safety boundary, openQA host setup scope, no-op bootloader closure handling, normal/minimal appmenu split, and review-sensitive choices are documented |
-| Tests should exercise real contracts | `tests/script-cli-check.sh`, `tests/build-native-rootfs-policy-check.sh`, `tests/builder-hook-contract-check.sh`, `tests/builder-adapter-contract-check.sh`, `tests/builder-rpm-contract-check.sh`, `tests/rpm-layout-check.sh`, `tests/guix-system-contract-check.scm`, `VALIDATION.md` | Default local checks execute public script missing-value behavior, the native rootfs builder's pinned-channel failure path, Builder environment/layout hooks that do not require a Guix system build, Builder adapter appmenu/template metadata, generated images through the Builder RPM adapter, RPM layout extraction/reassembly, and RPM lifecycle metadata; the Guix-only gate instantiates real system records and checks Qubes-visible defaults; missing RPM/image/Guix tooling is a hard failure for the relevant gate, not a false pass |
+| Preserve GNU Guix System principles | `UPSTREAMING.md`, `native/modules/qubes/`, `config/channels.scm` | Native implementation is declarative Guix package/service/system code with pinned channels and source hashes; mutable state is scoped to Qubes compatibility |
+| Inspect maintainer expectations online | `UPSTREAMING.md`, `REVIEW_NOTES.md` | Targeted review captured and spot-refreshed against comparable NixOS, Alpine `vmupdate`, Flatpak update-proxy, UpdateVM/update-proxy setting and service-state issues, and Builder-environment issue/PR material; exhaustive review of every Qubes issue/PR remains unclaimed |
+| Upstream process may span multiple repos | `config/qubes-builderv2-guix.example.patch`, `config/qubes-release-configs-guix.example.patch`, `config/qubes-core-admin-linux-guix-vmupdate.example.patch`, `config/README.md` | Builder v2, release-config, and central updater targets are separated and named |
+| Clear commit history | `git log --oneline`, `PATCH_SERIES.md` | Clean review branch present; `PATCH_SERIES.md` now has a one-to-one subject map against `git log --reverse`; publication signing is deferred |
+| Every non-obvious change explained | `REVIEW_NOTES.md`, `ADAPTATION_INVENTORY.md`, `MAINTENANCE.md` | Package phases, VM-side component package splits, services, update model, 20G root image sizing, installed reconfiguration inputs, generated `/sbin/init` entrypoint, dom0 root-image import helper safety boundary, openQA host setup scope, nested-dom0 system-test default-NetVM compatibility hook, no-op bootloader closure handling, normal/minimal appmenu split, the root-owned Xorg/default-user `-ac` access-control caveat, and review-sensitive choices are documented |
+| Tests should exercise real contracts | `tests/script-cli-check.sh`, `tests/build-native-rootfs-policy-check.sh`, `tests/builder-hook-contract-check.sh`, `tests/builder-adapter-contract-check.sh`, `tests/builder-rpm-contract-check.sh`, `tests/central-vmupdate-harness-check.sh`, `tests/rpm-layout-check.sh`, `tests/guix-system-contract-check.scm`, `VALIDATION.md` | Default local checks execute public script missing-value behavior, the native rootfs builder's pinned-channel failure path, Builder environment/layout hooks that do not require a Guix system build, Builder adapter appmenu/template metadata, generated images through the Builder RPM adapter, central vmupdate harness flag/log-marker behavior, RPM layout extraction/reassembly, and RPM lifecycle metadata; the Guix-only gate instantiates real system records and checks Qubes-visible defaults; missing RPM/image/Guix tooling is a hard failure for the relevant gate, not a false pass |
 
 ## Current Completion Audit
 
@@ -65,26 +69,36 @@ Inspected evidence in the current tree:
 
 | Check | Evidence |
 | --- | --- |
-| Clean public branch history | `git log --oneline --decorate --max-count=5` shows only scoped review commits on `master`; `PATCH_SERIES.md` maps the implementation and evidence commits to review purpose. |
-| Default tests exercise build contracts | `make check` runs `tests/script-cli-check.sh`, `tests/build-native-rootfs-policy-check.sh`, `tests/builder-hook-contract-check.sh`, `tests/builder-adapter-contract-check.sh`, `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`. |
-| Test inventory is contract-backed | The tracked test suite is limited to public script CLI behavior, native rootfs policy, Builder hook, Builder RPM contract, RPM layout, and Guix system contract checks; these tests execute code, build package artifacts, extract payloads, validate external template contracts, or instantiate real Guix system records. |
-| Working tree clean | `git status --short` has no output. |
+| Clean review branch history | `git log --oneline --decorate --max-count=5` shows one scoped local review commit on `upstream-review`; `PATCH_SERIES.md` maps that commit to review purpose. |
+| Signing/release ownership state | `CONTRIBUTING.md` now separates RFC review from publication signing.  The template branch is signed with the one-shot contribution key, the release-config RFC head was amended to remove maintainer metadata from the review sketch, and the latest checked Qubes code-signing status was green on the three RFC PR heads.  Release ownership, maintainer review, and publication approval remain unresolved gates. |
+| Default tests exercise build contracts | `make check` runs `tests/script-cli-check.sh`, `tests/build-native-rootfs-policy-check.sh`, `tests/builder-hook-contract-check.sh`, `tests/builder-adapter-contract-check.sh`, `tests/builder-rpm-contract-check.sh`, `tests/central-vmupdate-harness-check.sh`, and `tests/rpm-layout-check.sh`. |
+| Test inventory is contract-backed | The tracked test suite is limited to public script CLI behavior, native rootfs policy, Builder hook, Builder RPM contract, central vmupdate harness behavior, RPM layout, and Guix system contract checks; these tests execute code, build package artifacts, extract payloads, validate external template contracts, or instantiate real Guix system records. |
+| Working tree clean | The review branches contain only tracked review commits; local untracked artifacts such as `czf` and `.coverage` are intentionally left untracked and are not part of the review branches. |
 | Generated artifacts stay out of review | `.gitignore` covers root images, RPMs, tarballs, cache/dist output, and current test work directories; `git ls-files` does not list generated RPM/image artifacts. |
 | License/SPDX hygiene | `COPYING` is tracked; code and build entry points under `Makefile*`, `scripts/`, `tests/`, `native/`, `builder-v2-template/`, and `config/*.scm` carry SPDX headers, excluding data-only appmenu allowlists and `template.conf`. |
 | Placeholder hygiene | `rg '<[A-Z][A-Z0-9_]*>'` finds placeholders only in draft/config/review-process files: `config/`, `SUBMISSION_DRAFTS.md`, `MAINTENANCE.md`, `UPSTREAMING.md`, and `CONTRIBUTING.md`. |
-| Qubes source pins are fresh | Current local and synced remote `./scripts/check-qubes-pins.sh` runs passed for all pinned Qubes VM components on May 17, 2026. |
+| Qubes source pins are fresh | Current local `./scripts/check-qubes-pins.sh` run passed for all pinned Qubes VM components on May 19, 2026. |
 | Prompt-to-artifact checklist exists | This file maps objective phrases to artifacts and marks incomplete external gates. |
 | Online expectations are traceable | `UPSTREAMING.md` contains an online source crosswalk for Qubes docs, Builder v2, release-configs, forum precedent, and comparable NixOS issue/PRs. |
-| Non-obvious changes are explained | `REVIEW_NOTES.md`, `ADAPTATION_INVENTORY.md`, and `MAINTENANCE.md` explain package phases, VM-side component package splits, omitted Guix base services, Shepherd services, FHS compatibility paths, update model, 20G root image sizing, installed reconfiguration inputs, generated `/sbin/init` entrypoint, dom0 root-image import helper safety boundary, openQA host setup scope, Template Manager RPM payload shape, swap, guest-side memory ballooning plumbing, no-op bootloader closure handling, normal/minimal appmenu differences, maintainer handoff, and review-sensitive source edits. |
+| Non-obvious changes are explained | `REVIEW_NOTES.md`, `ADAPTATION_INVENTORY.md`, and `MAINTENANCE.md` explain package phases, VM-side component package splits, omitted Guix base services, Shepherd services, FHS compatibility paths, update model, 20G root image sizing, installed reconfiguration inputs, generated `/sbin/init` entrypoint, dom0 root-image import helper safety boundary, openQA host setup scope, nested-dom0 system-test default-NetVM compatibility hook, Template Manager RPM payload shape, swap, guest-side memory ballooning plumbing, no-op bootloader closure handling, normal/minimal appmenu differences, root-owned Xorg/default-user `-ac` access-control compatibility, maintainer handoff, and review-sensitive source edits. |
 | Security-sensitive scope is explicit | `SECURITY.md` separates dom0 trust boundaries, guest privileged behavior, source integrity, and unproven runtime gates. |
 | Template-builder precedent is explicit | `TEMPLATE_PRECEDENTS.md` maps Guix hooks to the standard Qubes template hook responsibilities and release-config model. |
+| Guix System alignment is explicit | `UPSTREAMING.md` explains how the implementation stays in Guix package definitions, operating-system records, Shepherd services, pinned channels, immutable source hashes, and named phases while limiting mutable runtime state to Qubes compatibility requirements. |
 | Contributor workflow is explicit | `CONTRIBUTING.md` lists required checks, release evidence, review rules, and multi-repo ordering. |
 | Auxiliary helpers are mapped | `REVIEW_NOTES.md` names the openQA loader glue, dom0 postinstall diagnostic helper, and foreign-template installer as support tools outside the native release artifact. |
-| Local tests cover real contracts | `make check` runs `tests/script-cli-check.sh`, `tests/build-native-rootfs-policy-check.sh`, `tests/builder-hook-contract-check.sh`, `tests/builder-adapter-contract-check.sh`, `tests/builder-rpm-contract-check.sh`, and `tests/rpm-layout-check.sh`; these execute missing-value handling in public scripts, execute the rootfs builder pinned-channel failure path before image/mount work, execute Builder environment/layout hooks that do not require a Guix system build, validate Builder adapter root-image appmenu/template artifacts, package generated normal and minimal root images through the Builder adapter, build/extract/reassemble normal and minimal template RPM layouts, and validate the RPM metadata path through the dom0 lifecycle harness in metadata-only mode. |
-| Guix system contracts are executable | `make guix-system-contract-check` passed on the remote Guix builder; it instantiates both variants and checks `/dev/xvdc1` swap, the standard Qubes user account and groups, default privileged programs, passwordless sudo, required Qubes services, and `meminfo-writer` defaults. |
-| Builder v2 sketch has focused tests | Fresh patched checkout at upstream `ff36320` passed distribution and template-plugin support tests for `vm-guix` after local commit `62a1150`. |
-| Release-config sketch parses after apply | Fresh patched checkout at upstream `e7ad66d` parsed the resulting R4.3 community template YAML and confirmed `builder-guix`, `guix`, and `guix-minimal` after local commit `62a1150`. |
+| Local tests cover real contracts | `make check` passed locally on May 19, 2026 after the centralized update proof hardening.  An earlier clean remote clone passed at review head `d106c27`; that remote Guix-only evidence is retained as prior evidence, not claimed as a current-head rerun.  The local suite runs `tests/script-cli-check.sh`, `tests/build-native-rootfs-policy-check.sh`, `tests/builder-hook-contract-check.sh`, `tests/builder-adapter-contract-check.sh`, `tests/builder-rpm-contract-check.sh`, `tests/central-vmupdate-harness-check.sh`, and `tests/rpm-layout-check.sh`.  These execute missing-value handling in public scripts, the rootfs builder pinned-channel failure path before image/mount work, Builder environment/layout hooks that do not require a Guix system build, Builder adapter root-image appmenu/template artifacts, generated normal and minimal root images through the Builder adapter, central vmupdate harness flags, probe-URL propagation, and log-marker rejection with fake dom0 commands, and normal plus minimal template RPM layout extraction/reassembly. |
+| Guix system contracts are executable | `make guix-system-contract-check` passed on the remote Guix builder; it instantiates both variants and checks `/dev/xvdc1` swap, the standard Qubes user account and groups, default privileged programs, passwordless sudo, required Qubes services including the updates-proxy forwarder, and `meminfo-writer` defaults. |
+| Builder v2 sketch has focused tests | A clean recheck clone with the checked-in `config/qubes-builderv2-guix.example.patch` applied passed the four Guix distribution/template-plugin tests: `4 passed`.  The checked-in neutral-header example patch also passed `git diff --check HEAD`. |
+| Release-config sketch parses after apply | A clean recheck clone with the checked-in `config/qubes-release-configs-guix.example.patch` applied parsed the resulting R4.3 community template YAML and confirmed `builder-guix`, `guix`, and `guix-minimal`.  The checked-in neutral-header example patch also passed `git diff --check HEAD`. |
+| Central updater sketch has focused tests | The active `qubes-core-admin-linux` PR branch passed `./run-tests.sh` with `PYTHONPATH` pointing at a matching `qubes-core-admin-client` checkout: `52 passed, 1 warning`, including the Guix vmupdate backend tests, proxy-environment coverage, time-machine refresh/reconfigure commands, realtime streaming for those commands, Guix manifest-column preservation before Qubes output sanitization, vmupdate-scoped temporary time-machine state, per-output system profile package metadata, dom0-visible package summary output, shared `PROGRESS_REPORTING` contract, and parser fallback edge cases added after Codecov flagged missing patch coverage. |
 | Submission drafts exist | `SUBMISSION_DRAFTS.md` provides editable `qubes-devel`, `[Contribution]`, Builder v2 PR, and release-config PR drafts with placeholder, maintainer handoff, controlled-vs-real proxy, and validation warnings. |
+| Multi-repo PR staging is separated | Temporary clean recheck clones outside this repository applied the checked-in Builder v2, release-configs, and core-admin-linux patch sketches on May 18, 2026 against upstream heads `8059f1d`, `e7ad66d`, and `32a14bb`; all three patches still apply, and RFC PRs are open as QubesOS/qubes-builderv2#245, QubesOS/qubes-core-admin-linux#211, and QubesOS/qubes-release-configs#19.  Those temporary paths are not material to commit into this repository. |
+| Provider-specific test setup is excluded | A May 17, 2026 scan of the PR staging folders found no provider instance, zone, or local provider setup strings in the contribution material; matches were limited to generic nested-dom0 helper defaults and upstream project data such as mailing-list addresses and test keys. |
+| Tracked repository hygiene is explicit | A May 18, 2026 tracked-file scan found no GitHub credential, cloud-provider setup, provider instance or zone, generated RPM/image/dist/work artifact, or host-local path.  The only remaining matches were the intentional example hygiene command in `CONTRIBUTING.md` and standard Qubes in-guest user-home log paths used by the dom0 smoke diagnostics. |
+| Live PR text hygiene is explicit | GitHub API scans on May 17-18, 2026 | The bodies and issue comments for QubesOS/qubes-builderv2#245, QubesOS/qubes-core-admin-linux#211, and QubesOS/qubes-release-configs#19 had no `/home/`, `/tmp/`, cloud-provider, instance/zone, GitHub PAT, or token-pattern hits after replacing local validation commands with generic checkout-relative forms.  On May 18, the core-admin Linux PR text and commit message were refreshed to the then-current system-only semantics and test summary; the Builder v2 and release-config comments were edited in place to describe current signed single-commit heads without tag claims. |
+| Current remote central update evidence | OpenQA job 129 passed RPM import, TemplateVM/AppVM smoke, generated Guix proxy configuration, standard Debian `sys-net` update-target bootstrap, raw `qubes.UpdatesProxy` probing, `guix time-machine --branch=master`, `/etc/config.scm` reconfigure, package metadata reporting, and agent exit status 0.  Job 133 reran the corrected central log harness with a longer openQA limit and reached Guix through the same Qubes update-proxy path, then failed on an upstream Git HTTP 504 during refresh.  This proves the current review artifact's central path, but final publication-branch or release-tag reruns remain required and public network availability remains an external release variable. |
+| Live upstream PR policy state | GitHub issue/PR API and CI status checks on May 19, 2026 | QubesOS/qubes-builderv2#245, QubesOS/qubes-core-admin-linux#211, and QubesOS/qubes-release-configs#19 are open draft RFC PRs with no submitted reviews.  Builder v2 public head `f9ec921` passes Qubes code-signing and GitLab CI, core-admin Linux public head `182199c` passes Qubes code-signing and GitLab CI with `maintainer-tag` pending, and release-config public head `fb356bd` passes Qubes code-signing.  The only maintainer comment present asked for a template build log on the Builder v2 RFC; a fresh `guix-minimal` build log from template source head `2f209a4403652937678c1fd76bc9b71919e05236` was posted in response.  Later template-branch amendments changed Qubes pins, no-shrink RPM packaging, and central-update openQA harness behavior, so that build log is retained as prior evidence rather than current-head release evidence.  The release-config PR body and current head omit maintainer fingerprint metadata from the RFC sketch. |
+| External PR commit signatures verify locally | `git verify-commit` on the Builder v2, core-admin-linux, and release-config PR branch commits | Every commit on the three external RFC PR branches verified locally with the one-shot contribution key at the latest check.  This is signature evidence only; it does not replace maintainer ownership or publication signing. |
 
 This still does not prove Qubes acceptance or runtime release quality.  The
 status remains "reviewable prototype" until the blockers in "Do Not Claim Yet"
@@ -92,22 +106,70 @@ are removed.
 
 ## Latest Evidence
 
-Verification evidence includes a local artifact-contract pass at `42b8b11`,
-the remote Guix system-contract pass at commit `e475c2b` after the
-qrexec fork-server service cleanup, and the current targeted
-Builder/release-config checks.  Later commits after `e475c2b` do not change the
-Scheme system records covered by that remote builder run.  The post-`e475c2b` native
-rootfs-builder change is the pinned Guix channel policy; it is covered by the
-local `tests/build-native-rootfs-policy-check.sh` gate and the recorded
-missing-file policy check in `VALIDATION.md`:
+Verification evidence includes the local artifact-contract suite, the remote
+Guix system-contract check, and the targeted Builder/release-config sketch
+checks.  The pinned-channel rootfs-builder policy is covered by the local
+`tests/build-native-rootfs-policy-check.sh` gate and the recorded missing-file
+policy check in `VALIDATION.md`:
 
 ```sh
 make check
+make check-qubes-pins
 # on the Guix-capable remote review builder
 make guix-system-contract-check
-PYTHONPATH=/tmp/qubes-builderv2-current python -m pytest /tmp/qubes-builderv2-current/tests/test_objects.py::test_dist /tmp/qubes-builderv2-current/tests/test_objects.py::test_dist_family /tmp/qubes-builderv2-current/tests/test_objects.py::test_template_plugin_supports_guix
-# release-config YAML validation in /tmp/qubes-release-configs-current; see VALIDATION.md
+PYTHONPATH=<qubes-builderv2 checkout> python -m pytest <qubes-builderv2 checkout>/tests/test_objects.py::test_dist_non_default_arch <qubes-builderv2 checkout>/tests/test_objects.py::test_dist_family <qubes-builderv2 checkout>/tests/test_objects.py::test_template_plugin_supports_guix <qubes-builderv2 checkout>/tests/test_objects.py::test_template_plugin_guix_parameters
+# release-config YAML validation in a clean qubes-release-configs checkout; see VALIDATION.md
+PYTHONPATH=../qubes-core-admin-client:. ./run-tests.sh
+# in the active PR branch; 52 passed, 1 warning
 ```
+
+Most recent review-state refresh on May 19, 2026:
+
+- The template review branch is kept as one signed local commit on
+  `upstream-review`; stale template `signed_tag_for_*` refs were removed.
+- `make check`, `make check-qubes-pins`, and `git diff --check` passed after
+  the centralized update harness, no-shrink RPM packaging, openQA timeout, and
+  Qubes VM component pin refresh.
+- The core-admin review branch is one signed commit at
+  `182199ca9e91535c5386f13a26ea8b6cf0e57610`; its checked-in example patch was
+  regenerated from that branch after the system-only update amend and the public
+  PR head now matches.
+- The core-admin review branch passed
+  `PYTHONPATH=<qubes-core-admin-client checkout>:. ./run-tests.sh vmupdate/tests/test_agent_guix.py`
+  with
+  `52 passed, 1 warning`.
+- QubesOS/qubes-builderv2#245, QubesOS/qubes-core-admin-linux#211, and
+  QubesOS/qubes-release-configs#19 are open draft RFC PRs with no submitted
+  reviews at the May 19 check.  Builder v2 public head `f9ec921` passes Qubes
+  code-signing and GitLab CI; core-admin Linux public head `182199c` passes
+  Qubes code-signing and GitLab CI with the expected `maintainer-tag` policy
+  status pending; release-config public head `fb356bd` passes Qubes
+  code-signing.
+- Public PR comments were edited in place to describe current signed
+  single-commit heads without stale tag claims.  The Builder v2 build-log
+  comment records the exact build source head; later template branch amends
+  changed Qubes pins, no-shrink RPM packaging, and central-update openQA harness
+  behavior, so the build log is prior evidence rather than current-head release
+  evidence.
+- A public-text scan across the three RFC PR comments found no PAT,
+  token-pattern, local-home path, cloud-specific setup, instance, or zone hits
+  in author-controlled comments.  The only personal-repository URL hit is a
+  maintainer comment pointing readers to the current review repository.
+- A tracked-file scan of the template branch found no GitHub credential,
+  cloud-provider setup, provider instance or zone, generated RPM/image/dist/work
+  artifact, or host-local path.  The intentional remaining hit is the hygiene
+  command example in `CONTRIBUTING.md`.
+- The split `qubes-builder-guix` review component remains one signed commit at
+  `d864b22` and previously passed `make check`.
+- A clean remote clone at review head `d106c27` passed `make check` and
+  `make guix-system-contract-check`; the local shell used for the latest audit
+  did not have `guix` in `PATH`, so that Guix-only contract check was not
+  refreshed locally after the latest documentation and openQA harness
+  amendments.
+
+These current-head checks are local review evidence only.  They do not replace
+the recorded Guix system-record run, nested-dom0/openQA runtime evidence, or
+the still-missing publication reruns.
 
 No source-only checker is present or counted here as validation evidence.
 Static source-shape and patch-shape scripts are intentionally excluded from the
@@ -124,12 +186,14 @@ the live Qubes GitHub tags, and the pinned Guix channel resolved with
 
 An earlier synced review tree also loaded both `normal` and `minimal`
 operating-system variants with real Guix on the remote Guix builder and printed the
-expected `qubes-vm-core` package version, `4.3.42`.  The newer
+expected `qubes-vm-core` package version, `4.3.42`.  That was the then-pinned
+component version; the current pin is `4.3.43`.  The newer
 `make guix-system-contract-check` gate is the current executable Scheme service
 graph check.  A later rebuilt-image boot test in RPM-mode openQA job 27 also
 verified the generated Guix client wrapper, updates-proxy forwarder, and
-`guix-daemon` service state for `guix-minimal`.  That still does not prove real
-`guix pull` or substitute downloads using the Qubes proxy.
+`guix-daemon` service state for `guix-minimal`.  Later job 129 proved the
+central `guix time-machine` and system reconfigure path through the Qubes proxy
+for the current review artifact.
 
 The same remote source tree also produced a fresh `guix-minimal` 20G root image,
 passed image inspection and activation, and built:
@@ -215,7 +279,7 @@ job 9:  BUILD=guix-minimal-rpm-2026051602-inline-marker  TEST=guix_template   re
 Those jobs exercised the RPM asset path, `qvm-template --yes install
 --nogpgcheck`, postinstall failure checks, and the dom0 TemplateVM/AppVM smoke
 harness.  They are review evidence for this prototype, not a replacement for
-final reruns from the signed public branch.
+final reruns from the publication branch or release object.
 
 After the Guix update-proxy service change, RPM-mode openQA job 27 passed for a
 rebuilt `guix-minimal` RPM:
@@ -228,8 +292,8 @@ That job covered `qvm-template` install, postinstall diagnostics, log scanning,
 TemplateVM/AppVM smoke, standard `/dev/xvdc1` swap, guest-side
 `meminfo-writer`, qrexec, `qubes.WaitForSession`, the generated Guix
 updates-proxy forwarder, and `guix-daemon` service-state checks.  It is still
-review evidence from the current remote/openQA tree, not final signed-branch
-release evidence.
+review evidence from the current remote/openQA tree, not final publication
+evidence.
 
 OpenQA job 29 then enabled `GUIX_RUN_PROXY_DOWNLOAD_TEST=1` for the same
 rebuilt minimal RPM.  It passed the earlier install, postinstall, smoke, and
@@ -253,30 +317,94 @@ The archived serial log showed `downloaded 2 bytes`, `guix update proxy
 download check passed`, `guix update proxy stub download check passed:
 guix-minimal -> sys-net`, and `OPENQA_RC_000012_0`.  This is deterministic
 proxy-path evidence; it is not evidence of public Internet substitute downloads
-or `guix pull`.
+or `guix time-machine`.
+
+OpenQA job 38 repeated the controlled stub-download path with the then-current
+rebuilt `guix-minimal` RPM after the openQA console-readiness fixes:
+
+```text
+job 38: BUILD=guix-minimal-rpm-r202605171259-updatepath-stub-consolefix2-202605171431 TEST=guix_template result=passed
+```
+
+Its serial log showed RPM install, postinstall diagnostics, TemplateVM/AppVM
+smoke, generated Guix proxy configuration, raw proxy probing, and controlled
+`guix download` markers.  The meaningful update-path markers were
+`raw proxy probe passed: HTTP/1.1 200 OK`, `downloaded 2 bytes`,
+`guix update proxy download check passed`, and
+`guix update proxy stub download check passed: guix-minimal -> sys-net`.
+
+OpenQA job 41 repeated that controlled path after the verifier started
+rejecting source TemplateVMs with direct IPv4 or IPv6 default routes:
+
+```text
+job 41: BUILD=guix-minimal-rpm-r202605171259-stub-nodirect-e7566e7-202605171704 TEST=guix_template result=passed
+```
+
+Its update-path markers included `checking source TemplateVM has no direct
+default route`, `raw proxy probe passed: HTTP/1.1 200 OK`, `downloaded 2
+bytes`, `guix update proxy download check passed`, and
+`guix update proxy stub download check passed: guix-minimal -> sys-net`.  This
+is controlled update-target proof for the rebuilt minimal artifact, later
+repeated by job 44.  It still does not prove public Internet downloads,
+substitutes, `guix time-machine --branch=master`, or refresh-enabled central
+`qubes-vm-update`.
+
+OpenQA job 44 repeated the controlled path from then-current commit `d508939`
+after the runtime path setup cleanup:
+
+```text
+job 44: BUILD=guix-minimal-rpm-current-d508939stub-24g TEST=guix_template result=passed
+```
+
+Its update-path markers included `checking source TemplateVM has no direct
+default route`, `raw proxy probe passed: HTTP/1.1 200 OK`, `downloaded 2
+bytes`, `guix update proxy download check passed`, and
+`guix update proxy stub download check passed: guix-minimal -> sys-net`.
+That RPM SHA256 was
+`7e092e73681286e4111779282657e7fe6b0d370c1e66b5ea7561cb8d04afc52a`, and a
+targeted archived-log scan found no `ln: failed` markers from runtime path
+setup.
+
+OpenQA job 40 then reran the rebuilt minimal RPM with
+`GUIX_RUN_PROXY_DOWNLOAD_TEST=1` and a lower openQA RAM setting so the current
+worker could start QEMU:
+
+```text
+job 40: BUILD=guix-minimal-rpm-r202605171259-realproxy-24g-202605171610 TEST=guix_template result=failed
+```
+
+It passed RPM install, postinstall diagnostics, log scanning, TemplateVM/AppVM
+smoke, and generated Guix proxy configuration.  The failing marker was
+`OPENQA_RC_000012_1`; the download script reported `raw proxy probe did not
+return HTTP success`, `Request refused`, and that dom0 refused
+`qubes.UpdatesProxy`.  This reconfirms that the real-network verifier is wired
+into openQA and reaches the Qubes proxy boundary, but the current nested remote
+still does not provide a valid Internet-capable updates-proxy target.
 
 ## Do Not Claim Yet
 
 Do not claim that:
 
-- A public maintainer repository exists.
-- A maintainer name and GPG fingerprint are known.
-- Commits or release tags are signed.
+- Publication-owner signing metadata or a signed release branch/tag exists.
+  The current public review branch intentionally does not satisfy that
+  publication gate.
 - Qubes Builder v2 accepts `dist: guix`.
 - `qubes-release-configs` accepts the Guix community-template entries.
+- The opened upstream PRs are reviewed or accepted.  They are draft RFCs with
+  no maintainer reviews yet, and core-admin Linux still has the maintainer-tag
+  policy status pending at the latest checked policy snapshot.
 - Exhaustive review of every Qubes pull request or issue has been performed.
   The current online review is intentionally targeted to sources most relevant
   to template contribution expectations.
-- Final signed-branch or signed-tag release evidence has been rerun, including
+- Final publication-branch or release-tag evidence has been rerun, including
   RPM-mode openQA.
-- End-to-end Guix update tooling is freshly green through a real Internet
-  update-proxy target.  The recorded evidence verifies the default
-  `qubes.UpdatesProxy` HTTP forwarding path through stock Qubes policy, the
-  generated Guix daemon/client proxy configuration, and a controlled `guix
-  download` through a temporary `sys-net` stub target.  RPM-mode openQA job 29
-  reached the real-network download verifier, but it failed on dom0
-  updates-proxy refusal.  The tree still does not prove `guix pull`, substitute
-  downloads, or public Internet `guix download` using a real update target.
+- End-to-end Guix update tooling is release-green from a publication branch or
+  tag.  Job 129 proves the current review artifact can run the central Guix
+  update path through a standard Qubes update target, and job 133 proves the
+  corrected harness reaches the same path and reports external Git HTTP
+  failures distinctly.  A publication-object rerun is still required, and the
+  standalone public-network `guix download` gate remains separate release
+  evidence.
 - Qubes maintainers have reviewed or accepted the template.
 
 Until those items are complete, the correct upstream status is: reviewable

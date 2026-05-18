@@ -112,7 +112,7 @@ print_log_payload() {
     while IFS= read -r line || [ -n "$line" ]; do
         if [ "${transfer_block_active[$key]:-0}" = "1" ]; then
             case "$line" in
-                *OPENQA_EOF*)
+                *OPENQA_EOF*|*oqeof*)
                     transfer_block_active["$key"]=0
                     ;;
             esac
@@ -120,7 +120,7 @@ print_log_payload() {
         fi
 
         case "$line" in
-            *".b64"*"<<'OPENQA_EOF'"*|*".b64"*'<<"OPENQA_EOF"'*)
+            *".b64"*"<<'OPENQA_EOF'"*|*".b64"*'<<"OPENQA_EOF"'*|*".b64"*"<<'oqeof'"*|*".b64"*'<<"oqeof"'*)
                 print_transfer_notice "$key"
                 transfer_block_active["$key"]=1
                 continue
@@ -152,7 +152,8 @@ show_initial_tail() {
         if [ "$suppress_transfer_blocks" = "1" ] &&
             [ "$(basename "$path")" = "virtio_console.log" ]; then
             tail -n "$initial_tail_lines" "$path" |
-                sed '/\.b64.*OPENQA_EOF/,/OPENQA_EOF/d' || true
+                sed -e '/\.b64.*OPENQA_EOF/,/OPENQA_EOF/d' \
+                    -e '/\.b64.*oqeof/,/oqeof/d' || true
         else
             tail -n "$initial_tail_lines" "$path" || true
         fi

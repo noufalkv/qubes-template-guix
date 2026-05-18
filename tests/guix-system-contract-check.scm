@@ -98,7 +98,8 @@
                         "~a missing required Qubes service: ~a"
                         variant name))
               '(qubes-db qubes-meminfo-writer qubes-qrexec-agent
-                qubes-gui-agent qubes-guix-update-proxy))
+                qubes-gui-agent qubes-updates-proxy-forwarder
+                qubes-guix-update-proxy))
     (check-sudoers variant os)
     (check-user-account variant os)
     (check-meminfo-writer variant os)))

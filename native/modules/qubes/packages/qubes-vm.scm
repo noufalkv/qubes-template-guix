@@ -57,9 +57,9 @@
     ("qubes-core-qrexec" "v4.3.12"
      "cc801b8f630a65dfb2855b829bfc070f6e82f26a"
      "1lbz435sjs3d7pc9ymnwxqi14sc83xdnny5pzwp8c580rraysvd4")
-    ("qubes-core-agent-linux" "v4.3.42"
-     "37dd9cd76aa74669b80b849a650f35b982d922ec"
-     "13xsvgrdq3ihr0ryf4js03cyb4hns9i496m5bhbrfiwqcxyv3g41")
+    ("qubes-core-agent-linux" "v4.3.43"
+     "0f20e0b74cfca0fcf42c3658099a1cedd26bde60"
+     "0dlf2rxvi2yjzv59a1pjy98d4cm8ad7cg08g9d8392ly5l0sw5gn")
     ("qubes-gui-common" "v4.3.1"
      "66b879e36d6cd2a01271fc8d4c2c0f3be85d0029"
      "1ilr2wximl82y05f9dha69pjwhks2c73cfh08yxpnbdg5yspcc24")
@@ -240,7 +240,6 @@ vchan and qrexec components, without Xen hypervisor tools, QEMU, or firmware.")
                       (string-append "LIBDIR=" #$output "/lib")
                       (string-append "INCLUDEDIR=" #$output "/include")))))))
     (native-inputs (list pkg-config xen))
-    ;; Guix package name may need adjustment depending on the Guix channel.
     (inputs (list xen-vchan-libs))
     (home-page "https://www.qubes-os.org/")
     (synopsis "Qubes Xen vchan library")
@@ -880,7 +879,11 @@ exec /usr/bin/qubes-session
               ;; xinitrc.d, not the profile hook above, so run qubes-session
               ;; directly.  The upstream XDG autostart launcher remains the
               ;; owner of qrexec-fork-server; qubes.WaitForSession waits for
-              ;; that server's socket.
+              ;; that server's socket.  The -ac flag is a review-sensitive
+              ;; compatibility choice for this root-owned Xorg/user-session
+              ;; split: the first-review image does not yet provide a distro
+              ;; logind/xauth handoff that would otherwise authorize the
+              ;; default user's Qubes session client.
               (substitute* (string-append #$output "/usr/bin/qubes-run-xorg")
                 (("qubes-xorg-wrapper \\$DISPLAY_XORG -nolisten")
                  "qubes-xorg-wrapper $DISPLAY_XORG -modulepath /run/current-system/profile/lib/xorg/modules -nolisten")

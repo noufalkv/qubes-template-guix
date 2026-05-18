@@ -1,0 +1,1001 @@
+From 182199ca9e91535c5386f13a26ea8b6cf0e57610 Mon Sep 17 00:00:00 2001
+From: Autonomous AI contribution <autonomous-ai@localhost>
+Date: Mon, 18 May 2026 11:37:39 +0200
+Subject: [PATCH] Add Guix vmupdate backend
+
+Add a Guix source backend for qvm-template update handling.  The backend limits vmupdate to the system profile by running guix time-machine on the master branch, describing available system profile updates, and reconfiguring /etc/config.scm through guix system reconfigure.
+
+Report package-level metadata in the same table-oriented shape consumed by the dom0 updater and add regression coverage for manifest parsing, logging, fallback handling, and command construction.
+---
+ vmupdate/agent/entrypoint.py           |   6 +-
+ vmupdate/agent/source/guix/__init__.py |  20 +
+ vmupdate/agent/source/guix/guix_cli.py | 318 ++++++++++++++
+ vmupdate/agent/source/utils.py         |   5 +-
+ vmupdate/tests/test_agent_guix.py      | 581 +++++++++++++++++++++++++
+ 5 files changed, 928 insertions(+), 2 deletions(-)
+ create mode 100644 vmupdate/agent/source/guix/__init__.py
+ create mode 100644 vmupdate/agent/source/guix/guix_cli.py
+ create mode 100644 vmupdate/tests/test_agent_guix.py
+
+diff --git a/vmupdate/agent/entrypoint.py b/vmupdate/agent/entrypoint.py
+index 157e887..431387d 100755
+--- a/vmupdate/agent/entrypoint.py
++++ b/vmupdate/agent/entrypoint.py
+@@ -90,12 +90,16 @@ def get_package_manager(
+     elif os_data["os_family"] == "ArchLinux":
+         from source.pacman.pacman_cli import PACMANCLI as PackageManager
+
++        print("Progress reporting not supported.", flush=True)
++    elif os_data["os_family"] == "Guix":
++        from source.guix.guix_cli import GUIXCLI as PackageManager
++
+         print("Progress reporting not supported.", flush=True)
+     elif os_data["os_family"] == "Qubes":
+         PackageManager = import_dom0_package_manager(os_data, log, no_progress)
+     else:
+         raise NotImplementedError(
+-            "Only Debian, RedHat and ArchLinux based OS is supported."
++            "Only Debian, RedHat, ArchLinux, Qubes and Guix based OS is supported."
+         )
+
+     pkg_mng = PackageManager(log_handler, log_level, agent_type)
+diff --git a/vmupdate/agent/source/guix/__init__.py b/vmupdate/agent/source/guix/__init__.py
+new file mode 100644
+index 0000000..d4ad59b
+--- /dev/null
++++ b/vmupdate/agent/source/guix/__init__.py
+@@ -0,0 +1,20 @@
++# coding=utf-8
++#
++# The Qubes OS Project, https://www.qubes-os.org
++#
++# Copyright (C) 2026  The Qubes OS Project
++#
++# This program is free software; you can redistribute it and/or
++# modify it under the terms of the GNU General Public License
++# as published by the Free Software Foundation; either version 2
++# of the License, or (at your option) any later version.
++#
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++# GNU General Public License for more details.
++#
++# You should have received a copy of the GNU General Public License
++# along with this program; if not, write to the Free Software
++# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
++# USA.
+diff --git a/vmupdate/agent/source/guix/guix_cli.py b/vmupdate/agent/source/guix/guix_cli.py
+new file mode 100644
+index 0000000..69e9021
+--- /dev/null
++++ b/vmupdate/agent/source/guix/guix_cli.py
+@@ -0,0 +1,318 @@
++# coding=utf-8
++#
++# The Qubes OS Project, https://www.qubes-os.org
++#
++# Copyright (C) 2026  The Qubes OS Project
++#
++# This program is free software; you can redistribute it and/or
++# modify it under the terms of the GNU General Public License
++# as published by the Free Software Foundation; either version 2
++# of the License, or (at your option) any later version.
++#
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++# GNU General Public License for more details.
++#
++# You should have received a copy of the GNU General Public License
++# along with this program; if not, write to the Free Software
++# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
++# USA.
++
++import os
++import shlex
++import shutil
++import subprocess
++import sys
++from typing import Dict, List, Optional
++
++from source.common.package_manager import AgentType, PackageManager
++from source.common.process_result import ProcessResult
++from source.common.exit_codes import EXIT
++
++
++class GUIXCLI(PackageManager):
++    PROGRESS_REPORTING = False
++
++    TIME_MACHINE_BRANCH = "master"
++    SYSTEM_CONFIG = "/etc/config.scm"
++    SYSTEM_PROFILE = "/run/current-system/profile"
++    SERVICE_DIR = "/run/qubes-service"
++    TIME_MACHINE_ENVIRONMENT = (
++        "HOME=/tmp",
++        "XDG_CONFIG_HOME=/tmp/qubes-vm-update-guix-config",
++        "XDG_CACHE_HOME=/tmp/qubes-vm-update-guix-cache",
++    )
++    MANIFEST_SEPARATOR = "|"
++    STATE_PATHS = {
++        "guix-system": "/run/current-system",
++    }
++    GUIX_CANDIDATES = (
++        "/run/qubes/bin/guix",
++        "/root/.config/guix/current/bin/guix",
++        "/var/guix/profiles/per-user/root/current-guix/bin/guix",
++        "/run/current-system/profile/bin/guix",
++    )
++
++    def __init__(
++        self, log_handler, log_level, agent_type: AgentType
++    ):
++        super().__init__(log_handler, log_level, agent_type)
++        self.package_manager = self._find_guix(self.GUIX_CANDIDATES)
++
++    def _find_guix(self, candidates) -> str:
++        for path in candidates:
++            if os.access(path, os.X_OK):
++                return path
++
++        path = shutil.which("guix")
++        if path is not None:
++            return path
++
++        raise RuntimeError("Package manager not found!")
++
++    def _uses_qubes_update_proxy(self) -> bool:
++        # updates-proxy-setup marks update clients.  A VM with
++        # qubes-updates-proxy provides the proxy and must not route its own
++        # Guix traffic back through the local forwarder.
++        return (
++            os.path.exists(os.path.join(self.SERVICE_DIR,
++                                       "updates-proxy-setup"))
++            and not os.path.exists(os.path.join(self.SERVICE_DIR,
++                                                "qubes-updates-proxy"))
++        )
++
++    def _with_time_machine_environment(
++            self, command: List[str]
++    ) -> List[str]:
++        env = list(self.TIME_MACHINE_ENVIRONMENT)
++
++        if self._uses_qubes_update_proxy():
++            proxy = "http://127.0.0.1:8082/"
++            no_proxy = "127.0.0.1,localhost"
++            env.extend([
++                f"http_proxy={proxy}",
++                f"https_proxy={proxy}",
++                f"HTTP_PROXY={proxy}",
++                f"HTTPS_PROXY={proxy}",
++                f"all_proxy={proxy}",
++                f"ALL_PROXY={proxy}",
++                f"no_proxy={no_proxy}",
++                f"NO_PROXY={no_proxy}",
++            ])
++
++        return ["env", *env, *command]
++
++    def _run_guix(self, command: List[str]) -> ProcessResult:
++        result = self.run_cmd(self._with_time_machine_environment(command))
++        if result and not (result.out.strip() or result.err.strip()):
++            result.err = (
++                f"Guix command failed with exit code {result.code}: "
++                f"{shlex.join(command)}"
++            )
++            result.posted = False
++        return result
++
++    def refresh(self, hard_fail: bool) -> ProcessResult:
++        """
++        Refresh Guix channel metadata for system reconfiguration.
++
++        Use guix time-machine so Qubes vmupdate does not mutate root's Guix
++        checkout as package-manager state.  The update target is the Guix
++        System generation produced by the later reconfigure step.
++        """
++        cmd = [
++            self.package_manager,
++            "time-machine",
++            f"--branch={self.TIME_MACHINE_BRANCH}",
++            "--",
++            "describe",
++        ]
++        print(
++            f"Refreshing Guix channel metadata from "
++            f"{self.TIME_MACHINE_BRANCH}.",
++            flush=True,
++        )
++        return self._run_guix(cmd)
++
++    def get_packages(self) -> Dict[str, List[str]]:
++        """
++        Report Guix System profile entries as update state.
++
++        The shared updater summary compares package/version dictionaries.
++        Guix profiles expose manifest entries as name, version, output, and
++        store path, so report each system profile output plus the current
++        system generation symlink.
++        """
++        packages: Dict[str, List[str]] = {}
++        for name, path in self.STATE_PATHS.items():
++            if os.path.exists(path):
++                packages[name] = [os.path.realpath(path)]
++
++        result = self._list_installed_packages()
++        if result:
++            self.log.warning(
++                "Unable to list Guix system profile packages: %s",
++                result.err or result.out,
++            )
++            return packages
++
++        for line in result.out.splitlines():
++            if not line.strip():
++                continue
++            entry = self._parse_manifest_entry(line)
++            if entry is None:
++                self.log.warning(
++                    "Ignoring unexpected Guix package entry: %s", line
++                )
++                continue
++            name, version, output, store_path = entry
++            package = f"{name}:{output}"
++            packages.setdefault(package, []).append(
++                f"{version} {store_path}"
++            )
++        return packages
++
++    def _list_installed_packages(self) -> ProcessResult:
++        command = [
++            self.package_manager,
++            "package",
++            f"--profile={self.SYSTEM_PROFILE}",
++            "--list-installed",
++        ]
++        self.log.debug("run command: %s", " ".join(command))
++        with subprocess.Popen(
++            command,
++            stdin=subprocess.PIPE,
++            stdout=subprocess.PIPE,
++            stderr=subprocess.PIPE,
++        ) as proc:
++            out, err = proc.communicate()
++        out = out.replace(b"\t", self.MANIFEST_SEPARATOR.encode())
++        result = ProcessResult.from_untrusted_out_err(out, err)
++        result.code = proc.returncode
++        self.log.debug("command exit code: %i", result.code)
++        return result
++
++    @staticmethod
++    def _parse_manifest_entry(line):
++        if GUIXCLI.MANIFEST_SEPARATOR in line:
++            cols = [
++                col.strip()
++                for col in line.split(GUIXCLI.MANIFEST_SEPARATOR, 3)
++            ]
++            if len(cols) == 4 and all(cols):
++                return tuple(cols)
++
++        store_marker = "/gnu/store/"
++        store_start = line.find(store_marker)
++        if store_start != -1:
++            store_path = line[store_start:].strip()
++            fields = line[:store_start].strip().split()
++            if len(fields) >= 3:
++                name, version, output = fields[:3]
++                return name, version, output, store_path
++            entry = GUIXCLI._parse_sanitized_manifest_entry(
++                fields, store_path
++            )
++            if entry is not None:
++                return entry
++
++        cols = line.split(None, 3)
++        if len(cols) == 4:
++            return tuple(cols)
++
++        return None
++
++    @staticmethod
++    def _parse_sanitized_manifest_entry(fields, store_path):
++        """
++        Recover fields after ProcessResult stripped tabs from Guix output.
++
++        Guix separates name, version, output, and store path with tabs.
++        ProcessResult removes tabs from untrusted output before callers parse
++        it.  When a column is wider than Guix's padding, adjacent fields can be
++        glued together; the store item basename keeps the name-version boundary.
++        """
++        store_item = os.path.basename(store_path)
++        try:
++            _store_hash, store_name_version = store_item.split("-", 1)
++        except ValueError:
++            return None
++
++        if len(fields) == 2:
++            first, second = fields
++            if store_name_version.startswith(f"{first}-"):
++                version = store_name_version[len(first) + 1:]
++                if second.startswith(version):
++                    output = second[len(version):]
++                    if output:
++                        return first, version, output, store_path
++
++            for index in range(1, len(first)):
++                name = first[:index]
++                version = first[index:]
++                if f"{name}-{version}" == store_name_version:
++                    return name, version, second, store_path
++
++        return None
++
++    def get_action(self, remove_obsolete) -> List[str]:
++        """
++        Kept for the PackageManager interface; upgrade_internal runs the
++        reconfiguration through guix time-machine.
++        """
++        return [
++            "time-machine",
++            f"--branch={self.TIME_MACHINE_BRANCH}",
++            "--",
++            "system",
++            "reconfigure",
++            "--no-bootloader",
++            self.SYSTEM_CONFIG,
++        ]
++
++    def upgrade_internal(self, remove_obsolete: bool) -> ProcessResult:
++        if not os.path.exists(self.SYSTEM_CONFIG):
++            return ProcessResult(
++                EXIT.ERR_VM_UPDATE,
++                err=f"missing Guix system configuration: {self.SYSTEM_CONFIG}")
++
++        cmd = [self.package_manager, *self.get_action(remove_obsolete)]
++        print(
++            f"Reconfiguring Guix System from {self.SYSTEM_CONFIG} "
++            f"using {self.TIME_MACHINE_BRANCH}.",
++            flush=True,
++        )
++        result = self._run_guix(cmd)
++        if not result:
++            print("Reconfigured Guix System.", flush=True)
++        else:
++            print(
++                "Guix System reconfiguration failed.",
++                file=sys.stderr,
++                flush=True,
++            )
++        return result
++
++    def install_requirements(
++            self,
++            requirements: Optional[Dict[str, str]],
++            curr_pkg: Dict[str, List[str]]
++    ) -> ProcessResult:
++        """
++        Qubes vmupdate plugins do not currently declare Guix requirements.
++        Avoid installing ad hoc root profile packages as hidden update policy.
++        """
++        if requirements:
++            packages = ", ".join(sorted(requirements))
++            return ProcessResult(
++                EXIT.ERR_VM_PRE,
++                err=f"Guix vmupdate requirements are unsupported: {packages}")
++        return ProcessResult()
++
++    def clean(self) -> int:
++        """
++        Keep Guix generations for rollback; do not collect garbage implicitly.
++        """
++        return EXIT.OK
+diff --git a/vmupdate/agent/source/utils.py b/vmupdate/agent/source/utils.py
+index e64f3e8..86d7830 100644
+--- a/vmupdate/agent/source/utils.py
++++ b/vmupdate/agent/source/utils.py
+@@ -33,7 +33,7 @@ def get_os_data(logger: Optional = None) -> Dict[str, Any]:
+     name: "Linux" or a string identifying the operating system,
+     codename (optional): an operating system release code name,
+     release (optional): version string,
+-    os_family: "Unknown", "RedHat", "Debian", "ArchLinux".
++    os_family: "Unknown", "RedHat", "Debian", "ArchLinux", "Guix".
+     """
+     data = {}
+
+@@ -69,6 +69,9 @@ def get_os_data(logger: Optional = None) -> Dict[str, Any]:
+     if "arch" in family:
+         data["os_family"] = "ArchLinux"
+
++    if "guix" in family:
++        data["os_family"] = "Guix"
++
+     return data
+
+
+diff --git a/vmupdate/tests/test_agent_guix.py b/vmupdate/tests/test_agent_guix.py
+new file mode 100644
+index 0000000..793a94c
+--- /dev/null
++++ b/vmupdate/tests/test_agent_guix.py
+@@ -0,0 +1,581 @@
++# coding=utf-8
++#
++# The Qubes OS Project, https://www.qubes-os.org
++#
++# Copyright (C) 2026  The Qubes OS Project
++#
++# This program is free software; you can redistribute it and/or
++# modify it under the terms of the GNU General Public License
++# as published by the Free Software Foundation; either version 2
++# of the License, or (at your option) any later version.
++#
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++# GNU General Public License for more details.
++#
++# You should have received a copy of the GNU General Public License
++# along with this program; if not, write to the Free Software
++# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
++# USA.
++
++import logging
++import shutil
++import sys
++from pathlib import Path
++
++import pytest
++
++
++AGENT_DIR = Path(__file__).resolve().parents[1] / "agent"
++if str(AGENT_DIR) not in sys.path:
++    sys.path.insert(0, str(AGENT_DIR))
++
++from source.common.exit_codes import EXIT
++from source.common.package_manager import AgentType
++from source.common.process_result import ProcessResult
++from source.guix.guix_cli import GUIXCLI
++from source import utils
++import entrypoint
++
++
++def make_executable(path):
++    path.parent.mkdir(parents=True, exist_ok=True)
++    path.write_text("#!/bin/sh\nexit 0\n", encoding="ascii")
++    path.chmod(0o755)
++    return str(path)
++
++
++def make_manager(tmp_path, monkeypatch):
++    guix = make_executable(tmp_path / "guix")
++    service_dir = tmp_path / "qubes-service"
++
++    monkeypatch.setattr(GUIXCLI, "GUIX_CANDIDATES", (guix,))
++    monkeypatch.setattr(GUIXCLI, "SERVICE_DIR", str(service_dir))
++    monkeypatch.setattr(GUIXCLI, "SYSTEM_CONFIG",
++                        str(tmp_path / "config.scm"))
++    monkeypatch.setattr(GUIXCLI, "SYSTEM_PROFILE",
++                        str(tmp_path / "run" / "current-system" / "profile"))
++    monkeypatch.setattr(GUIXCLI, "STATE_PATHS", {
++        "guix-system": str(tmp_path / "run" / "current-system"),
++    })
++
++    manager = GUIXCLI(logging.NullHandler(), logging.DEBUG, AgentType.VM)
++    return manager, guix, service_dir
++
++
++def collect_commands(manager, monkeypatch):
++    commands = []
++
++    def run_cmd(command, realtime=True):
++        commands.append(command)
++        return ProcessResult()
++
++    monkeypatch.setattr(manager, "run_cmd", run_cmd)
++    return commands
++
++
++def collect_commands_and_realtime(manager, monkeypatch):
++    calls = []
++
++    def run_cmd(command, realtime=True):
++        calls.append((command, realtime))
++        return ProcessResult()
++
++    monkeypatch.setattr(manager, "run_cmd", run_cmd)
++    return calls
++
++
++def test_os_release_guix_selects_guix_family(monkeypatch):
++    monkeypatch.setattr(
++        utils,
++        "_load_os_release",
++        lambda *args, logger=None: {"ID": "guix", "NAME": "Guix System"},
++    )
++
++    assert utils.get_os_data()["os_family"] == "Guix"
++
++
++def test_entrypoint_selects_guix_backend(tmp_path, monkeypatch):
++    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    monkeypatch.setattr(GUIXCLI, "GUIX_CANDIDATES",
++                        (manager.package_manager,))
++
++    selected = entrypoint.get_package_manager(
++        {"id": "guix", "name": "Guix System", "os_family": "Guix"},
++        logging.getLogger("test"),
++        logging.NullHandler(),
++        logging.DEBUG,
++        AgentType.VM,
++        no_progress=False,
++    )
++
++    assert isinstance(selected, GUIXCLI)
++    assert selected.PROGRESS_REPORTING is False
++
++
++def test_entrypoint_archlinux_still_reports_no_progress(capsys, monkeypatch):
++    monkeypatch.setattr(entrypoint.plugins, "entrypoints", [])
++
++    selected = entrypoint.get_package_manager(
++        {"id": "arch", "name": "Arch Linux", "os_family": "ArchLinux"},
++        logging.getLogger("test"),
++        logging.NullHandler(),
++        logging.DEBUG,
++        AgentType.VM,
++        no_progress=False,
++    )
++
++    assert selected.PROGRESS_REPORTING is False
++    assert "Progress reporting not supported." in capsys.readouterr().out
++
++
++def test_entrypoint_unknown_family_error_mentions_guix(monkeypatch):
++    monkeypatch.setattr(entrypoint.plugins, "entrypoints", [])
++
++    with pytest.raises(NotImplementedError) as exc_info:
++        entrypoint.get_package_manager(
++            {"id": "custom", "name": "Custom", "os_family": "Unknown"},
++            logging.getLogger("test"),
++            logging.NullHandler(),
++            logging.DEBUG,
++            AgentType.VM,
++            no_progress=False,
++        )
++
++    assert "Guix" in str(exc_info.value)
++
++
++def test_find_guix_uses_path_fallback(tmp_path, monkeypatch):
++    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    fallback = make_executable(tmp_path / "path" / "guix")
++    monkeypatch.setattr(shutil, "which", lambda name: fallback)
++
++    assert manager._find_guix(()) == fallback
++
++
++def test_find_guix_fails_without_candidates_or_path(tmp_path, monkeypatch):
++    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    monkeypatch.setattr(shutil, "which", lambda name: None)
++
++    with pytest.raises(RuntimeError) as exc_info:
++        manager._find_guix(())
++
++    assert "Package manager not found" in str(exc_info.value)
++
++
++def test_refresh_runs_time_machine_describe_with_proxy(
++        tmp_path, monkeypatch, capsys):
++    manager, guix, service_dir = make_manager(tmp_path, monkeypatch)
++    service_dir.mkdir()
++    (service_dir / "updates-proxy-setup").write_text("", encoding="ascii")
++    commands = collect_commands(manager, monkeypatch)
++
++    assert not manager.refresh(hard_fail=True)
++
++    assert commands == [[
++        "env",
++        *GUIXCLI.TIME_MACHINE_ENVIRONMENT,
++        "http_proxy=http://127.0.0.1:8082/",
++        "https_proxy=http://127.0.0.1:8082/",
++        "HTTP_PROXY=http://127.0.0.1:8082/",
++        "HTTPS_PROXY=http://127.0.0.1:8082/",
++        "all_proxy=http://127.0.0.1:8082/",
++        "ALL_PROXY=http://127.0.0.1:8082/",
++        "no_proxy=127.0.0.1,localhost",
++        "NO_PROXY=127.0.0.1,localhost",
++        guix,
++        "time-machine",
++        f"--branch={GUIXCLI.TIME_MACHINE_BRANCH}",
++        "--",
++        "describe",
++    ]]
++    assert "Refreshing Guix channel metadata from master." in (
++        capsys.readouterr().out
++    )
++
++
++def test_refresh_streams_time_machine_output(tmp_path, monkeypatch):
++    manager, guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    calls = collect_commands_and_realtime(manager, monkeypatch)
++
++    assert not manager.refresh(hard_fail=True)
++
++    assert calls == [([
++        "env",
++        *GUIXCLI.TIME_MACHINE_ENVIRONMENT,
++        guix,
++        "time-machine",
++        f"--branch={GUIXCLI.TIME_MACHINE_BRANCH}",
++        "--",
++        "describe",
++    ], True)]
++
++
++def test_refresh_reports_silent_guix_failure(tmp_path, monkeypatch):
++    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
++
++    def run_cmd(command, realtime=True):
++        result = ProcessResult(EXIT.ERR)
++        result.posted = True
++        return result
++
++    monkeypatch.setattr(manager, "run_cmd", run_cmd)
++
++    result = manager.refresh(hard_fail=True)
++
++    assert result.code == EXIT.ERR
++    assert "Guix command failed with exit code 1:" in result.err
++    assert "time-machine --branch=master -- describe" in result.err
++    assert result.posted is False
++
++
++def test_update_proxy_vm_does_not_proxy_its_own_guix(tmp_path, monkeypatch):
++    manager, guix, service_dir = make_manager(tmp_path, monkeypatch)
++    service_dir.mkdir()
++    (service_dir / "updates-proxy-setup").write_text("", encoding="ascii")
++    (service_dir / "qubes-updates-proxy").write_text("", encoding="ascii")
++    commands = collect_commands(manager, monkeypatch)
++
++    assert not manager.refresh(hard_fail=True)
++
++    assert commands == [[
++        "env",
++        *GUIXCLI.TIME_MACHINE_ENVIRONMENT,
++        guix,
++        "time-machine",
++        f"--branch={GUIXCLI.TIME_MACHINE_BRANCH}",
++        "--",
++        "describe",
++    ]]
++
++
++def test_upgrade_reconfigures_existing_system_config(
++        tmp_path, monkeypatch, capsys):
++    manager, guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    Path(GUIXCLI.SYSTEM_CONFIG).write_text("(operating-system)\n",
++                                           encoding="ascii")
++    commands = collect_commands(manager, monkeypatch)
++
++    assert not manager.upgrade_internal(remove_obsolete=True)
++
++    assert commands == [[
++        "env",
++        *GUIXCLI.TIME_MACHINE_ENVIRONMENT,
++        guix,
++        "time-machine",
++        f"--branch={GUIXCLI.TIME_MACHINE_BRANCH}",
++        "--",
++        "system",
++        "reconfigure",
++        "--no-bootloader",
++        GUIXCLI.SYSTEM_CONFIG,
++    ]]
++    out = capsys.readouterr().out
++    assert "Reconfiguring Guix System" in out
++    assert "Reconfigured Guix System." in out
++
++
++def test_upgrade_streams_reconfigure_output(tmp_path, monkeypatch):
++    manager, guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    Path(GUIXCLI.SYSTEM_CONFIG).write_text("(operating-system)\n",
++                                           encoding="ascii")
++    calls = collect_commands_and_realtime(manager, monkeypatch)
++
++    assert not manager.upgrade_internal(remove_obsolete=True)
++
++    assert calls == [([
++        "env",
++        *GUIXCLI.TIME_MACHINE_ENVIRONMENT,
++        guix,
++        "time-machine",
++        f"--branch={GUIXCLI.TIME_MACHINE_BRANCH}",
++        "--",
++        "system",
++        "reconfigure",
++        "--no-bootloader",
++        GUIXCLI.SYSTEM_CONFIG,
++    ], True)]
++
++
++def test_upgrade_reports_silent_guix_failure(tmp_path, monkeypatch):
++    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    Path(GUIXCLI.SYSTEM_CONFIG).write_text("(operating-system)\n",
++                                           encoding="ascii")
++
++    def run_cmd(command, realtime=True):
++        return ProcessResult(EXIT.ERR)
++
++    monkeypatch.setattr(manager, "run_cmd", run_cmd)
++
++    result = manager.upgrade_internal(remove_obsolete=False)
++
++    assert result.code == EXIT.ERR
++    assert "Guix command failed with exit code 1:" in result.err
++    assert "system reconfigure --no-bootloader" in result.err
++
++
++def test_upgrade_uses_qubes_update_proxy(tmp_path, monkeypatch):
++    manager, guix, service_dir = make_manager(tmp_path, monkeypatch)
++    Path(GUIXCLI.SYSTEM_CONFIG).write_text("(operating-system)\n",
++                                           encoding="ascii")
++    service_dir.mkdir()
++    (service_dir / "updates-proxy-setup").write_text("", encoding="ascii")
++    commands = collect_commands(manager, monkeypatch)
++
++    assert not manager.upgrade_internal(remove_obsolete=False)
++
++    assert commands == [[
++        "env",
++        *GUIXCLI.TIME_MACHINE_ENVIRONMENT,
++        "http_proxy=http://127.0.0.1:8082/",
++        "https_proxy=http://127.0.0.1:8082/",
++        "HTTP_PROXY=http://127.0.0.1:8082/",
++        "HTTPS_PROXY=http://127.0.0.1:8082/",
++        "all_proxy=http://127.0.0.1:8082/",
++        "ALL_PROXY=http://127.0.0.1:8082/",
++        "no_proxy=127.0.0.1,localhost",
++        "NO_PROXY=127.0.0.1,localhost",
++        guix,
++        "time-machine",
++        f"--branch={GUIXCLI.TIME_MACHINE_BRANCH}",
++        "--",
++        "system",
++        "reconfigure",
++        "--no-bootloader",
++        GUIXCLI.SYSTEM_CONFIG,
++    ]]
++
++
++def test_upgrade_fails_without_system_config(tmp_path, monkeypatch):
++    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
++
++    result = manager.upgrade_internal(remove_obsolete=False)
++
++    assert result.code == EXIT.ERR_VM_UPDATE
++    assert "missing Guix system configuration" in result.err
++
++
++def test_upgrade_logs_reconfiguration_failure(
++        tmp_path, monkeypatch, capsys):
++    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    Path(GUIXCLI.SYSTEM_CONFIG).write_text("(operating-system)\n",
++                                           encoding="ascii")
++
++    def run_cmd(command, realtime=True):
++        return ProcessResult(EXIT.ERR_VM_UPDATE, err="failed")
++
++    monkeypatch.setattr(manager, "run_cmd", run_cmd)
++
++    result = manager.upgrade_internal(remove_obsolete=False)
++
++    assert result.code == EXIT.ERR_VM_UPDATE
++    captured = capsys.readouterr()
++    assert "Reconfiguring Guix System" in captured.out
++    assert "Guix System reconfiguration failed." in captured.err
++
++
++def test_get_action_reports_reconfigure_command(tmp_path, monkeypatch):
++    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
++
++    assert manager.get_action(remove_obsolete=True) == [
++        "time-machine",
++        f"--branch={GUIXCLI.TIME_MACHINE_BRANCH}",
++        "--",
++        "system",
++        "reconfigure",
++        "--no-bootloader",
++        GUIXCLI.SYSTEM_CONFIG,
++    ]
++
++
++def test_get_packages_reports_system_profile_metadata(tmp_path, monkeypatch):
++    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    system_target = tmp_path / "store" / "system"
++    system_target.mkdir(parents=True)
++    Path(GUIXCLI.STATE_PATHS["guix-system"]).parent.mkdir(parents=True)
++    Path(GUIXCLI.STATE_PATHS["guix-system"]).symlink_to(system_target)
++    manifest = "\n".join([
++        "bash               5.2.15         out/gnu/store/hash-bash-5.2.15",
++        "guix               1.5.0-1.deedd48out/gnu/store/hash-guix-1.5.0-1.deedd48",
++        "glibc 2.39 debug /gnu/store/hash-glibc-debug-2.39",
++        "glibc 2.39 out /gnu/store/hash-glibc-2.39",
++        "qubes-vm-gui-common4.3.1          out/gnu/store/hash-qubes-vm-gui-common-4.3.1",
++    ]) + "\n"
++    monkeypatch.setattr(
++        manager,
++        "_list_installed_packages",
++        lambda: ProcessResult(out=manifest),
++    )
++
++    assert manager.get_packages() == {
++        "guix-system": [str(system_target)],
++        "bash:out": ["5.2.15 /gnu/store/hash-bash-5.2.15"],
++        "guix:out": [
++            "1.5.0-1.deedd48 /gnu/store/hash-guix-1.5.0-1.deedd48"
++        ],
++        "glibc:debug": ["2.39 /gnu/store/hash-glibc-debug-2.39"],
++        "glibc:out": ["2.39 /gnu/store/hash-glibc-2.39"],
++        "qubes-vm-gui-common:out": [
++            "4.3.1 /gnu/store/hash-qubes-vm-gui-common-4.3.1"
++        ],
++    }
++
++
++def test_get_packages_reports_tab_separated_manifest_metadata(
++        tmp_path, monkeypatch):
++    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    manifest = "\n".join([
++        "bash|5.2.15|out|/gnu/store/hash-bash-5.2.15",
++        "glibc|2.39|debug|/gnu/store/hash-glibc-debug-2.39",
++        "qubes-vm-gui-common|4.3.1|out|"
++        "/gnu/store/hash-qubes-vm-gui-common-4.3.1",
++    ]) + "\n"
++    monkeypatch.setattr(
++        manager,
++        "_list_installed_packages",
++        lambda: ProcessResult(out=manifest),
++    )
++
++    assert manager.get_packages() == {
++        "bash:out": ["5.2.15 /gnu/store/hash-bash-5.2.15"],
++        "glibc:debug": ["2.39 /gnu/store/hash-glibc-debug-2.39"],
++        "qubes-vm-gui-common:out": [
++            "4.3.1 /gnu/store/hash-qubes-vm-gui-common-4.3.1"
++        ],
++    }
++
++
++def test_get_packages_ignores_empty_and_malformed_manifest_lines(
++        tmp_path, monkeypatch):
++    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    monkeypatch.setattr(
++        manager,
++        "_list_installed_packages",
++        lambda: ProcessResult(out="\nnot-enough-fields\n"),
++    )
++
++    assert manager.get_packages() == {}
++
++
++def test_manifest_parser_accepts_generic_four_column_output():
++    assert GUIXCLI._parse_manifest_entry(
++        "hello 2.12 out store-path"
++    ) == ("hello", "2.12", "out", "store-path")
++
++
++def test_manifest_parser_rejects_unrecoverable_sanitized_output():
++    assert GUIXCLI._parse_manifest_entry(
++        "hello 2.12out /gnu/store/hashonly"
++    ) is None
++    assert GUIXCLI._parse_sanitized_manifest_entry(
++        ["hello"], "/gnu/store/hash-hello-2.12"
++    ) is None
++
++
++def test_list_installed_packages_preserves_manifest_columns(
++        tmp_path, monkeypatch):
++    guix = tmp_path / "guix"
++    guix.write_text(
++        "#!/bin/sh\n"
++        "printf 'bash\\t5.2.15\\tout\\t/gnu/store/hash-bash-5.2.15\\n'\n",
++        encoding="ascii",
++    )
++    guix.chmod(0o755)
++    monkeypatch.setattr(GUIXCLI, "GUIX_CANDIDATES", (str(guix),))
++
++    manager = GUIXCLI(logging.NullHandler(), logging.DEBUG, AgentType.VM)
++    result = manager._list_installed_packages()
++
++    assert result.out == "bash|5.2.15|out|/gnu/store/hash-bash-5.2.15\n"
++
++
++def test_get_packages_falls_back_to_system_generation_on_manifest_error(
++        tmp_path, monkeypatch):
++    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    system_target = tmp_path / "store" / "system"
++    system_target.mkdir(parents=True)
++    Path(GUIXCLI.STATE_PATHS["guix-system"]).parent.mkdir(parents=True)
++    Path(GUIXCLI.STATE_PATHS["guix-system"]).symlink_to(system_target)
++    monkeypatch.setattr(
++        manager,
++        "_list_installed_packages",
++        lambda: ProcessResult(EXIT.ERR, err="profile missing"),
++    )
++
++    assert manager.get_packages() == {
++        "guix-system": [str(system_target)],
++    }
++
++
++def test_upgrade_prints_per_package_change_summary(
++        tmp_path, monkeypatch, capsys):
++    manager, guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    Path(GUIXCLI.SYSTEM_CONFIG).write_text("(operating-system)\n",
++                                           encoding="ascii")
++    package_states = iter([
++        {
++            "guix-system": ["/gnu/store/old-system"],
++            "bash:out": ["5.2.15 /gnu/store/old-bash"],
++        },
++        {
++            "guix-system": ["/gnu/store/new-system"],
++            "bash:out": ["5.2.21 /gnu/store/new-bash"],
++            "hello:out": ["2.12 /gnu/store/hello"],
++        },
++    ])
++
++    monkeypatch.setattr(manager, "get_packages", lambda: next(package_states))
++    commands = collect_commands(manager, monkeypatch)
++
++    code = manager.upgrade(
++        refresh=False,
++        hard_fail=True,
++        remove_obsolete=True,
++        print_streams=True,
++    )
++
++    assert code == EXIT.OK
++    assert commands == [[
++        "env",
++        *GUIXCLI.TIME_MACHINE_ENVIRONMENT,
++        guix,
++        "time-machine",
++        f"--branch={GUIXCLI.TIME_MACHINE_BRANCH}",
++        "--",
++        "system",
++        "reconfigure",
++        "--no-bootloader",
++        GUIXCLI.SYSTEM_CONFIG,
++    ]]
++    out = capsys.readouterr().out
++    assert "Installed packages:" in out
++    assert "hello:out ['2.12 /gnu/store/hello']" in out
++    assert "Updated packages:" in out
++    assert (
++        "bash:out 5.2.15 /gnu/store/old-bash -> "
++        "5.2.21 /gnu/store/new-bash"
++    ) in out
++    assert "guix-system /gnu/store/old-system -> /gnu/store/new-system" in out
++
++
++def test_clean_keeps_guix_generations(tmp_path, monkeypatch):
++    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
++
++    assert manager.clean() == EXIT.OK
++
++
++def test_requirements_are_not_installed_into_root_profile(
++        tmp_path, monkeypatch):
++    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
++
++    result = manager.install_requirements({"foo": "1"}, {})
++
++    assert result.code == EXIT.ERR_VM_PRE
++    assert "unsupported" in result.err
++
++
++def test_empty_requirements_are_accepted(tmp_path, monkeypatch):
++    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
++
++    assert not manager.install_requirements({}, {})

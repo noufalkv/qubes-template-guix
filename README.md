@@ -122,10 +122,10 @@ The package payload follows Qubes Template Manager layout under
 `template.conf`, appmenu allowlists, app directories, and Qubes template image
 ghosts.  Packages advertise `qrexec=1`, `gui=1`, and `virt-mode=pvh`.  The
 normal package defaults to `xfce4-terminal.desktop` in the appmenu allowlists;
-the minimal package defaults to `xterm.desktop`.  The packager runs an ext4
-shrink pass before splitting `root.img`, so the RPM contains the minimum
-filesystem size for the built template instead of the larger staging image
-size.  Use `--no-shrink` only when inspecting an exact staging image.
+the minimal package defaults to `xterm.desktop`.  The packager preserves the
+root image size by default so `qvm-template` installs the same Builder-sized
+root volume.  Use `--shrink` only for local artifact-size experiments where the
+installed root volume size is not part of the result.
 The package source payload is world-readable because `qvm-template-postprocess`
 executes `qvm-appmenus` as the dom0 user while reading the extracted appmenu
 allowlists from a temporary directory.
@@ -282,7 +282,7 @@ make openqa-template-rpm-normal
 make openqa-template-rpm-minimal
 ```
 
-Those smoke gates are the default package validation path in nested cloud
+Those smoke gates are the default package validation path in nested test
 infrastructure: they build the real rootfs, exercise the activation script and
 PAM stacks on a writable root image, install the RPM through Qubes Template
 Manager in nested dom0, create a TemplateVM and AppVM, and verify QubesDB,
@@ -295,7 +295,7 @@ runtime smoke path.
 The optional Qubes system-test modules can be run with `--run-system-tests` or
 `make openqa-template-rpm-system-tests VARIANT=normal`.  They use the same
 official `nose2 --plugin nose2.plugins.loader.loadtests` runner and module
-names described above, but they create additional test qubes.  On cloud hosts
+names described above, but they create additional test qubes.  On nested hosts
 where Qubes dom0 is already nested under KVM, those additional inner-Xen VM
 starts can fail with `libxenlight failed to create new domain`; treat that as a
 host-capability result unless the preceding RPM smoke gate also fails.
@@ -330,7 +330,9 @@ default update-target policy by creating a temporary `sys-net` stub:
 
 That controlled stub check exercises the generated Guix client wrapper and
 Qubes `qubes.UpdatesProxy` forwarding without depending on public network
-availability.  A release candidate should still run a real Guix update or
+availability; RPM-mode openQA job 41 passed this gate for a rebuilt
+`guix-minimal` RPM and verified that the source TemplateVM had no direct
+default route.  A release candidate should still run a real Guix update or
 download command through the Qubes proxy before submission:
 
 ```sh
@@ -339,13 +341,29 @@ download command through the Qubes proxy before submission:
   --download-url https://guix.gnu.org/
 ```
 
-The download check depends on dom0 allowing `qubes.UpdatesProxy` from the
+The download check first sends a raw HTTP or HTTPS CONNECT request through the
+local Qubes proxy at `127.0.0.1:8082`, then runs `guix download` through the
+generated wrapper.  It depends on dom0 allowing `qubes.UpdatesProxy` from the
 TemplateVM to an update-proxy target with working Internet access.  On standard
-Qubes policy this normally means the default `sys-net` update target must
-exist and be usable.  The openQA harness stages the real-network script only
-when `GUIX_RUN_PROXY_DOWNLOAD_TEST=1` is set, so ordinary local RPM smoke does
-not silently depend on public network availability.  The controlled stub gate is
+Qubes policy this normally means the default `sys-net` update target must exist
+and be usable.  The openQA harness stages the real-network script only when
+`GUIX_RUN_PROXY_DOWNLOAD_TEST=1` is set, so ordinary local RPM smoke does not
+silently depend on public network availability.  The controlled stub gate is
 separate and opt-in through `GUIX_RUN_PROXY_STUB_DOWNLOAD_TEST=1`.
+
+If dom0 has the matching `qubes-core-admin-linux` Guix vmupdate backend
+installed, test Qubes' centralized updater path separately:
+
+```sh
+./scripts/test-guix-central-vmupdate-dom0.sh --template guix
+```
+
+That check runs `qubes-vm-update --targets guix --force-update` and fails if
+dom0's updater still rejects Guix as an unsupported distribution.  In openQA it
+is opt-in through `GUIX_RUN_CENTRAL_VMUPDATE_TEST=1` because it requires the
+dom0 updater patch and a working update-proxy target.  Set
+`GUIX_CENTRAL_VMUPDATE_PROXY_PROBE_URL` to override the raw proxy probe URL;
+the default is the public Guix Git endpoint.
 
 ## Local Checks
 

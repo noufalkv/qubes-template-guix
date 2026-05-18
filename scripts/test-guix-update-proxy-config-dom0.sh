@@ -89,8 +89,10 @@ diagnose_proxy_config() {
     if [ -n "$pid" ]; then
         echo "== guix-daemon environment pid=$pid =="
         tr '\0' '\n' <"/proc/$pid/environ" |
-            grep -E '^(http|https)_proxy=' || true
+            grep -E '^(http|https|all|no)_proxy=|^(HTTP|HTTPS|ALL|NO)_PROXY=' || true
     fi
+    echo '== wrapper xtrace stderr =='
+    cat /tmp/qubes-guix-wrapper-xtrace.err 2>/dev/null || true
     echo '== guix gc stderr =='
     cat /tmp/qubes-guix-gc-roots.err 2>/dev/null || true
     echo '== proxy service logs =='
@@ -116,8 +118,22 @@ test -x "$wrapper"
 test -r "$profile"
 grep -Fq 'http_proxy="${http_proxy:-$proxy}"' "$wrapper"
 grep -Fq 'https_proxy="${https_proxy:-$proxy}"' "$wrapper"
+grep -Fq 'all_proxy="${all_proxy:-$proxy}"' "$wrapper"
 grep -Fq 'export PATH=/run/qubes/bin:$PATH' "$profile"
 "$wrapper" --version >/dev/null
+
+echo 'checking generated Guix wrapper proxy environment'
+/run/current-system/profile/bin/env \
+    -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY \
+    -u all_proxy -u ALL_PROXY -u no_proxy -u NO_PROXY \
+    /run/current-system/profile/bin/sh -x "$wrapper" --version \
+    >/tmp/qubes-guix-wrapper-version.out \
+    2>/tmp/qubes-guix-wrapper-xtrace.err
+grep -F "http_proxy=$proxy" /tmp/qubes-guix-wrapper-xtrace.err >/dev/null
+grep -F "https_proxy=$proxy" /tmp/qubes-guix-wrapper-xtrace.err >/dev/null
+grep -F "all_proxy=$proxy" /tmp/qubes-guix-wrapper-xtrace.err >/dev/null
+grep -F 'no_proxy=127.0.0.1,localhost' \
+    /tmp/qubes-guix-wrapper-xtrace.err >/dev/null
 
 # Force a daemon interaction so socket activation starts the declaratively
 # configured guix-daemon service.
@@ -138,7 +154,7 @@ pid=$(find_guix_daemon_pid || true)
 if [ -n "$pid" ]; then
     echo "observed guix-daemon environment pid=$pid"
     tr '\0' '\n' <"/proc/$pid/environ" |
-        grep -E '^(http|https)_proxy=' || true
+        grep -E '^(http|https|all|no)_proxy=|^(HTTP|HTTPS|ALL|NO)_PROXY=' || true
 fi
 
 printf 'guix update proxy config check passed\n'

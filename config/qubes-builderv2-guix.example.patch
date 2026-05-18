@@ -1,3 +1,31 @@
+Patch intent: Add Guix template distribution support
+
+Qubes Builder v2 dispatches template builds by distribution family.  Add
+Guix as a rolling VM distribution and allow the template plugin to fetch a
+builder-guix component for Guix template content.
+
+The template environment mirrors existing Arch and Gentoo template
+builders: TEMPLATE_CONTENT_DIR points at the fetched builder component,
+CACHE_DIR is the builder cache, and KEYS_DIR points at the
+component-provided keys directory.
+
+This only wires Builder v2 to a future builder-guix component.  It does
+not implement Guix rootfs generation inside Builder v2.
+
+Tests:
+PYTHONPATH=$PWD python -m pytest -q \
+  tests/test_objects.py::test_dist_non_default_arch \
+  tests/test_objects.py::test_dist_family \
+  tests/test_objects.py::test_template_plugin_supports_guix \
+  tests/test_objects.py::test_template_plugin_guix_parameters
+
+Result: 4 passed.
+---
+ qubesbuilder/distribution.py              |  9 ++++
+ qubesbuilder/plugins/template/__init__.py | 27 ++++++++++++
+ tests/test_objects.py                     | 71 ++++++++++++++++++++++++++++++-
+ 3 files changed, 106 insertions(+), 1 deletion(-)
+
 diff --git a/qubesbuilder/distribution.py b/qubesbuilder/distribution.py
 index 571bc62..2574975 100644
 --- a/qubesbuilder/distribution.py
@@ -25,8 +53,7 @@ index 571bc62..2574975 100644
 @@ -155,6 +161,9 @@ class QubesDistribution:
      def is_gentoo(self) -> bool:
          return self.name == "gentoo"
--
-+
+
 +    def is_guix(self) -> bool:
 +        return self.name == "guix"
 +
@@ -79,21 +106,23 @@ index e2d97ba..7c16659 100644
              raise TemplateError("Unsupported template.")
          template_flavor_dir += [
 diff --git a/tests/test_objects.py b/tests/test_objects.py
-index 688d39a..69b9b5a 100644
+index 688d39a..e57c1fd 100644
 --- a/tests/test_objects.py
 +++ b/tests/test_objects.py
-@@ -13,4 +13,5 @@ from qubesbuilder.exc import ComponentError, DistributionError, ConfigError
+@@ -12,7 +12,8 @@ from qubesbuilder.distribution import QubesDistribution
+ from qubesbuilder.exc import ComponentError, DistributionError, ConfigError
  from qubesbuilder.executors.container import ContainerExecutor
  from qubesbuilder.pluginmanager import PluginManager
- from qubesbuilder.plugins import DistributionComponentPlugin
+-from qubesbuilder.plugins import DistributionComponentPlugin
++from qubesbuilder.plugins import DistributionComponentPlugin, JobDependency
 +from qubesbuilder.plugins.template import TemplateBuilderPlugin
  from qubesbuilder.template import QubesTemplate, TemplateError
-@@ -289,7 +290,18 @@ def test_dist_non_default_arch():
+
+
+@@ -289,6 +290,17 @@ def test_dist_non_default_arch():
      assert str(dist) == "vm-debian-13.ppc64el"
      assert repr(dist) == repr_str
--
--
-+
+
 +    dist = QubesDistribution("vm-guix")
 +    assert dist.version == "rolling"
 +    assert dist.fullname == "guix"
@@ -105,23 +134,71 @@ index 688d39a..69b9b5a 100644
 +    assert dist.to_str() == "vm-guix-rolling.x86_64"
 +    assert str(dist) == "vm-guix-rolling.x86_64"
 +    assert repr(dist) == repr_str
-+
+
  def test_dist_unknown_package_set():
      with pytest.raises(DistributionError) as e:
-         QubesDistribution("notset-fc42")
-@@ -308,9 +321,15 @@ def test_dist_unknown():
+@@ -308,9 +320,66 @@ def test_dist_unknown():
  def test_dist_family():
      assert QubesDistribution("vm-fc42").is_rpm()
      assert QubesDistribution("host-bookworm").is_deb()
 +    assert QubesDistribution("vm-guix").is_guix()
      assert not QubesDistribution("host-centos-stream9").is_deb()
--
--
-+
-+
+
+
 +def test_template_plugin_supports_guix():
 +    template = QubesTemplate({"guix": {"dist": "guix"}})
 +    assert TemplateBuilderPlugin.supported_template(template)
++
++
++def test_template_plugin_guix_parameters(temp_config_dir):
++    config_file = temp_config_dir / "guix-template.yml"
++    config_file.write_text(
++        f"""
++qubes-release: r4.3
++artifacts-dir: {temp_config_dir / "artifacts"}
++components:
++  - builder-guix:
++      packages: false
++templates:
++  - guix-minimal:
++      dist: guix
++      flavor: minimal
++executor:
++  type: local
++""",
++        encoding="ascii",
++    )
++    config = Config(config_file)
++    template = config.get_templates(["guix-minimal"])[0]
++
++    plugin = TemplateBuilderPlugin(
++        template=template, config=config, stage="prep"
++    )
++
++    sources_dir = plugin.executor.get_sources_dir()
++    assert plugin.environment["TEMPLATE_CONTENT_DIR"] == str(
++        sources_dir / "builder-guix/builder-v2-template"
++    )
++    assert plugin.environment["KEYS_DIR"] == str(
++        sources_dir / "builder-guix/keys"
++    )
++    assert plugin.environment["CACHE_DIR"] == str(
++        plugin.executor.get_cache_dir()
++    )
++    assert plugin.environment["TEMPLATE_FLAVOR_DIR"] == (
++        f"+minimal:{sources_dir}/builder-guix/builder-v2-template/minimal"
++    )
++
++    fetch_dependencies = [
++        dep.reference
++        for dep in plugin.dependencies
++        if isinstance(dep, JobDependency)
++        and dep.reference.component is not None
++    ]
++    assert len(fetch_dependencies) == 1
++    assert fetch_dependencies[0].component.name == "builder-guix"
++    assert fetch_dependencies[0].stage == "fetch"
++    assert fetch_dependencies[0].build == "source"
 +
 +
  #

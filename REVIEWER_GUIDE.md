@@ -34,6 +34,8 @@ not yet a publishable Qubes community template.
   `builder-v2-template/`, `Makefile.builder`, `config/README.md`,
   `config/qubes-builderv2-guix.example.patch`, and
   `config/qubes-release-configs-guix.example.patch`.
+- Central Qubes updater sketch:
+  `config/qubes-core-admin-linux-guix-vmupdate.example.patch`.
 - Runtime and release harnesses:
   `scripts/test-template-rpm-lifecycle-dom0.sh`,
   `scripts/test-native-guix-template-dom0.sh`,
@@ -41,6 +43,7 @@ not yet a publishable Qubes community template.
   `scripts/test-guix-update-proxy-config-dom0.sh`,
   `scripts/test-guix-update-proxy-download-dom0.sh`,
   `scripts/test-guix-update-proxy-stub-download-dom0.sh`,
+  `scripts/test-guix-central-vmupdate-dom0.sh`,
   `scripts/diagnose-update-proxy-dom0.sh`,
   `scripts/test-memory-balloon-dom0.sh`, and `openqa/qubesos/`.
 
@@ -80,15 +83,22 @@ template builds, installs, boots, or satisfies Qubes-visible contracts.
 
 - Qubes Builder v2 has not accepted `dist: guix`.
 - `qubes-release-configs` has not accepted `guix` or `guix-minimal`.
-- Maintainer identity, GPG fingerprint, signed commits, and signed release tags
-  are not present.
-- Final signed-branch RPM-mode openQA has not been rerun.
-- Real `guix pull` or substitute downloads through the Qubes update proxy are
-  not proven.  RPM-mode openQA job 27 verifies the generated Guix client/daemon
-  proxy configuration and service state for the rebuilt minimal RPM, and job 31
-  verifies a controlled `guix download` through stock Qubes default-target
-  policy using a temporary `sys-net` stub.  OpenQA job 29 reached the
-  real-network download verifier, but dom0 refused `qubes.UpdatesProxy`; there
-  is still no passing release evidence for real Guix update tooling through an
-  Internet update target.
+- Release-owner metadata and release-owner signed tags are not present.  The
+  current review commits are signed with the one-shot contribution key only;
+  that does not replace maintainer ownership or publication signing.
+- Final publication-branch or release-tag RPM-mode openQA has not been rerun.
+- Final publication-branch or release-tag central update evidence is still
+  needed.  RPM-mode openQA job 129 proved the current review artifact can run
+  `guix time-machine --branch=master` and `guix system reconfigure` through a
+  standard Debian `sys-net` update target with agent exit status 0.  Job 133
+  reached the same Qubes update-proxy path and then failed on an upstream Git
+  HTTP 504 during Guix refresh, so public network availability remains an
+  external release variable.
+- The `qubes-core-admin-linux` Guix vmupdate backend patch is tested in a clean
+  patched checkout.  A temporary nested-dom0 backport of the current backend
+  reached central `qubes-vm-update` dispatch, parsed system-profile metadata
+  into `name:output` records with version and store path values, used the Qubes
+  proxy environment, and logged Guix stderr.  It has not been accepted
+  upstream, and the passing job 129 evidence still needs a publication-object
+  rerun before it can be treated as release evidence.
 - Qubes maintainers have not reviewed or accepted the template.

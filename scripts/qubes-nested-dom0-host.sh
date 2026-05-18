@@ -481,6 +481,7 @@ serial_put_file() {
 
     python3 - "$serial_socket" "$dom0_user" "$dom0_password" "$source" "$destination" <<'PY'
 import base64
+import hashlib
 import os
 import re
 import select
@@ -492,9 +493,11 @@ import uuid
 
 sock_path, user, password, source, destination = sys.argv[1:6]
 with open(source, "rb") as source_file:
-    payload = base64.encodebytes(source_file.read())
+    source_bytes = source_file.read()
+payload = base64.encodebytes(source_bytes)
 if not payload.endswith(b"\n"):
     payload += b"\n"
+source_hash = hashlib.sha256(source_bytes).hexdigest()
 
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 deadline = time.time() + 300
@@ -560,34 +563,58 @@ elif index == 1:
         raise SystemExit("timed out waiting for shell prompt after password")
 
 sentinel = "__P{}__".format(uuid.uuid4().hex[:8])
+script_marker = "__QUBES_PUT_SCRIPT_{}__".format(uuid.uuid4().hex)
+payload_marker = "__QUBES_PUT_PAYLOAD_{}__".format(uuid.uuid4().hex)
 payload_path = "/tmp/{}.{}.b64".format(os.path.basename(destination), os.getpid())
 payload_path_q = shlex.quote(payload_path)
 destination_q = shlex.quote(destination)
-inner = (
-    "cat > {payload}; rc=$?; "
-    "if [ \"$rc\" -eq 0 ]; then "
-    "base64 -d {payload} > {destination} && chmod +x {destination}; rc=$?; "
-    "fi; "
-    "rm -f {payload}; "
-    "stty echo >/dev/null 2>&1 || true; "
-    "printf '\\n{sentinel}:%s\\n' \"$rc\""
+source_hash_q = shlex.quote(source_hash)
+
+buffer = b""
+# Serial TTY input is more reliable with explicit heredoc delimiters than with
+# a pasted stream terminated by a control-D byte.  Decode leniently, then verify
+# the decoded file hash so transport corruption is still rejected.
+send("sudo -n bash <<'{}'".format(script_marker))
+header = (
+    "set +e\n"
+    "payload={payload}\n"
+    "destination={destination}\n"
+    "source_hash={source_hash}\n"
+    "cat > \"$payload\" <<'{payload_marker}'\n"
 ).format(
     payload=payload_path_q,
     destination=destination_q,
-    sentinel=sentinel,
+    source_hash=source_hash_q,
+    payload_marker=payload_marker,
 )
-
-buffer = b""
-send("stty -echo")
-index, _match = read_until([rb"[$#]\s*$"], timeout=30, echo=False)
-if index is None:
-    raise SystemExit("timed out disabling serial echo")
-
-send("sudo -n bash -c {}".format(shlex.quote(inner)))
+sock.sendall(header.encode("utf-8"))
 for payload_line in payload.splitlines(keepends=True):
     sock.sendall(payload_line)
     time.sleep(0.05)
-sock.sendall(b"\x04")
+footer = (
+    "{payload_marker}\n"
+    "rc=0\n"
+    "base64 --ignore-garbage -d \"$payload\" > \"$destination\" || rc=$?\n"
+    "if [ \"$rc\" -eq 0 ]; then\n"
+    "    actual=$(sha256sum \"$destination\")\n"
+    "    actual=${actual%% *}\n"
+    "    if [ \"$actual\" = \"$source_hash\" ]; then\n"
+    "        chmod +x \"$destination\" || rc=$?\n"
+    "    else\n"
+    "        echo \"sha256 mismatch for $destination\" >&2\n"
+    "        rc=1\n"
+    "    fi\n"
+    "fi\n"
+    "rm -f \"$payload\"\n"
+    "printf '\\n{sentinel}:%s\\n' \"$rc\"\n"
+    "exit \"$rc\"\n"
+    "{script_marker}\n"
+).format(
+    payload_marker=payload_marker,
+    sentinel=sentinel,
+    script_marker=script_marker,
+)
+sock.sendall(footer.encode("utf-8"))
 _index, match = read_until(
     [re.escape(sentinel).encode("ascii") + rb":([0-9]+)"],
     timeout=600,

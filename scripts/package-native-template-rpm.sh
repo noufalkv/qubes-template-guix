@@ -10,7 +10,7 @@ release="1"
 output_dir="$repo_root/dist"
 split_size="1900M"
 gui_enabled="1"
-shrink_image=1
+shrink_image=0
 appmenu_entries=()
 appmenu_entries_set=0
 workdir=""
@@ -35,7 +35,8 @@ Options:
   --appmenu-entry ID  Add a desktop-file ID to Qubes appmenu allowlists.
                       Defaults to xfce4-terminal.desktop for normal names and
                       xterm.desktop for names ending in -minimal.
-  --no-shrink         Do not minimize the ext4 root image before packaging.
+  --shrink            Minimize the ext4 root image before packaging.
+  --no-shrink         Preserve the ext4 root image size. This is the default.
   -h, --help          Show this help.
 
 The generated package follows the Qubes qvm-template package layout:
@@ -148,6 +149,10 @@ while [ "$#" -gt 0 ]; do
             appmenu_entries+=("$2")
             appmenu_entries_set=1
             shift 2
+            ;;
+        --shrink)
+            shrink_image=1
+            shift
             ;;
         --no-shrink)
             shrink_image=0

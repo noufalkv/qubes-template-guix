@@ -2,8 +2,7 @@
 
 This file documents the intended maintenance model for a native GNU Guix System
 Qubes TemplateVM.  It is part of the review surface for Qubes maintainers; it
-does not replace the need for a named human maintainer, a public repository, and
-signed releases.
+does not make the current RFC branches a publishable release.
 
 Community template maintenance is part of the user trust path.  Qubes
 documentation says community templates are not updated by the Qubes Project in
@@ -12,20 +11,19 @@ maintainer.  Recent Gentoo template availability discussion shows the practical
 failure mode: if the template is no longer maintained, users may need to build it
 themselves or use an unofficial source instead of finding it in Template Manager.
 
-## Maintainer Ownership
+## Release Ownership
 
-The template should be submitted as a community-maintained template first, not
-as an official Qubes template.  A submission needs:
+The template should be proposed as a community-maintained template first, not as
+an official Qubes template.  Before stable publication, a release owner should
+supply:
 
 - a public repository URL;
-- a named human maintainer;
-- the maintainer OpenPGP fingerprint used for signed commits or signed release
-  tags;
+- whatever signing metadata Qubes accepts for that release request;
 - fresh build and runtime evidence for both `guix` and `guix-minimal`;
 - a clear handoff plan if the maintainer stops publishing updates.
 
-The placeholder `<MAINTAINER_GPG_FINGERPRINT>` in `config/` must not be
-submitted unchanged.
+The current RFC/review PRs intentionally skip release-owner identity and
+fingerprint metadata.
 
 ## Maintainer Handoff
 
@@ -37,13 +35,13 @@ If the maintainer can no longer publish timely updates, the expected handoff is:
    maintainer is identified;
 3. transfer the public repository or publish a final signed tag that documents
    the last known-good release evidence;
-4. submit a release-config update with the replacement maintainer fingerprint,
+4. submit a release-config update with the replacement release-owner metadata,
    or ask Qubes maintainers to remove or hide the template if no replacement is
    available;
 5. keep the previous signing key documented so users can distinguish an
    intentional maintainer change from an unexpected release source change.
 
-The release-config maintainer fingerprint is part of the trust path.  It should
+The release-config release-owner metadata is part of the trust path.  It should
 not be changed silently.
 
 This handoff policy is a publication gate.  If no replacement maintainer exists,
@@ -106,13 +104,26 @@ Guix network traffic should use the Qubes updates proxy path, not a separate
 network policy.  The implementation provides a Guix-facing forwarder to
 `qubes.UpdatesProxy`, configures `guix-daemon` declaratively through
 `guix-configuration`, and generates a `/run/qubes/bin/guix` wrapper for
-client-side Guix commands when `updates-proxy-setup` is enabled.  RPM-mode
-openQA job 27 validated the generated Guix proxy wrapper, updates-proxy
+client-side Guix commands when `updates-proxy-setup` is enabled.  The
+`qubes-core-admin-linux` RFC backend keeps central updates system-only:
+refresh uses `guix time-machine --branch=master -- describe`, and upgrade uses
+`guix time-machine --branch=master -- system reconfigure /etc/config.scm`
+instead of updating root or user Guix profiles as package-manager state.  The
+backend reports the current Guix System generation and per-output
+`/run/current-system/profile` manifest entries to the normal Qubes updater
+package summary, preserving Guix manifest columns before Qubes output
+sanitization, using vmupdate-scoped temporary time-machine state, and streaming
+Guix refresh/reconfigure output through the normal vmupdate log path.
+RPM-mode openQA job 27 validated the generated Guix proxy wrapper, updates-proxy
 forwarder, and `guix-daemon` service state in a rebuilt `guix-minimal`
-TemplateVM.  OpenQA job 29 reached the real-download verifier, but dom0
-refused `qubes.UpdatesProxy` in the nested test environment.  A passing real
-Guix update/download command through the proxy remains a release gate before
-submission.
+TemplateVM.  OpenQA jobs 38, 41, and 44 repeated that path on rebuilt minimal
+RPMs and passed a controlled `guix download` through stock Qubes default-target
+policy with a temporary update-target stub; jobs 41 and 44 also verified that
+the source TemplateVM had no direct default route before counting the run as
+proxy evidence.  OpenQA jobs 29 and 40 reached the real-download verifier, but
+dom0 refused `qubes.UpdatesProxy` in the nested test environment.  A passing
+real Guix update/download command through an Internet-capable update-proxy
+target remains a release gate before submission.
 
 ## Rollback
 

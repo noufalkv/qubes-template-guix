@@ -9,11 +9,8 @@ export PATH
 required_commands=(
     cpio
     debugfs
-    du
-    e2fsck
     find
     mke2fs
-    resize2fs
     rpm
     rpm2cpio
     rpmbuild
@@ -103,6 +100,7 @@ check_adapter_rpm() {
     cat "$template_dir"/root.img.part.* > "$combined_tar"
     mkdir -p "$extracted_image_dir"
     tar -C "$extracted_image_dir" -xf "$combined_tar"
+    [ "$(stat -c '%s' "$extracted_image")" = "$(stat -c '%s' "$root_image")" ]
     test_marker="$(debugfs -R 'cat /etc/guix-builder-adapter-test' \
         "$extracted_image" 2>/dev/null)"
     [ "$test_marker" = "$marker" ]

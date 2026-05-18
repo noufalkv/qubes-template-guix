@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 SHELL := /usr/bin/env bash
 
-.PHONY: check script-cli-check build-native-rootfs-policy-check builder-hook-contract-check builder-adapter-contract-check builder-rpm-contract-check rpm-layout-check guix-system-contract-check check-qubes-pins prepare build-rootimg build-rpm foreign-template test-foreign-template native-rootfs inspect-native-rootfs import-native-rootfs package-native-template-rpm test-native-template nested-dom0-status setup-openqa-guix-template-test openqa-template-rpm-normal openqa-template-rpm-minimal openqa-template-rpm-system-tests
+.PHONY: check script-cli-check build-native-rootfs-policy-check builder-hook-contract-check builder-adapter-contract-check builder-rpm-contract-check central-vmupdate-harness-check rpm-layout-check guix-system-contract-check check-qubes-pins prepare build-rootimg build-rpm foreign-template test-foreign-template native-rootfs inspect-native-rootfs import-native-rootfs package-native-template-rpm test-native-template nested-dom0-status setup-openqa-guix-template-test openqa-template-rpm-normal openqa-template-rpm-minimal openqa-template-rpm-system-tests
 
-check: script-cli-check build-native-rootfs-policy-check builder-hook-contract-check builder-adapter-contract-check builder-rpm-contract-check rpm-layout-check
+check: script-cli-check build-native-rootfs-policy-check builder-hook-contract-check builder-adapter-contract-check builder-rpm-contract-check central-vmupdate-harness-check rpm-layout-check
 
 script-cli-check:
 	./tests/script-cli-check.sh
@@ -19,6 +19,9 @@ builder-adapter-contract-check:
 
 builder-rpm-contract-check:
 	./tests/builder-rpm-contract-check.sh
+
+central-vmupdate-harness-check:
+	./tests/central-vmupdate-harness-check.sh
 
 rpm-layout-check:
 	./tests/rpm-layout-check.sh

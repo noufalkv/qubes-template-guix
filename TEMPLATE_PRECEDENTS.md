@@ -14,11 +14,10 @@ different.
   `https://forum.qubes-os.org/t/how-to-make-a-template/34320`
 - Qubes Builder v2 documentation:
   `https://doc.qubes-os.org/en/latest/developer/building/qubes-builder-v2.html`
-- Qubes Builder v2 template plugin checkout:
-  `/tmp/qubes-builderv2/qubesbuilder/plugins/template/`
-- Qubes R4.3 community template release config checkout:
-  `/tmp/qubes-release-configs/R4.3/qubes-os-r4.3-templates-community.yml`
-- Local Qubes agent source checkouts under `/home/user/qubes-opt/repos/`.
+- Qubes Builder v2 template plugin checkout.
+- Qubes R4.3 community template release config checkout.
+- Local or fresh upstream checkouts of the pinned Qubes VM agent source
+  repositories.
 
 The new-OS forum guide points template work at existing Fedora, Debian, and
 Arch scripts and describes the relevant hook responsibilities.  The newer
@@ -51,8 +50,10 @@ template entries.  The Guix sketch follows that model:
 - `guix-minimal` template entry:
   `dist: guix`, `flavor: minimal`
 
-The release-config patch remains a sketch until the maintainer repository URL,
-GPG fingerprint, signing path, and Builder v2 integration are accepted.
+The release-config patch remains a sketch until the Builder v2 integration,
+review repository URL, and publication flow are accepted.  Maintainer
+fingerprints and signing metadata are intentionally not part of this RFC
+mapping.
 
 ## Important Guix Differences
 

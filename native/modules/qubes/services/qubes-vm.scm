@@ -322,11 +322,11 @@
    "if [ /var/run -ef /run ] 2>/dev/null; then "
    ":; "
    "else "
-   "rm -rf /var/run/qubes /var/run/qubes-service; "
-   "rm -f /var/run/qubes-service-environment; "
-   "ln -s /run/qubes /var/run/qubes; "
-   "ln -s /run/qubes-service /var/run/qubes-service; "
-   "ln -sfn /run/qubes-service-environment /var/run/qubes-service-environment; "
+   "if [ ! -e /var/run/qubes ] && [ ! -L /var/run/qubes ]; then ln -sT /run/qubes /var/run/qubes 2>/dev/null || true; fi; "
+   "if [ ! -e /var/run/qubes-service ] && [ ! -L /var/run/qubes-service ]; then ln -sT /run/qubes-service /var/run/qubes-service 2>/dev/null || true; fi; "
+   "if [ ! -e /var/run/qubes-service-environment ] && [ ! -L /var/run/qubes-service-environment ]; then "
+   "ln -sT /run/qubes-service-environment /var/run/qubes-service-environment 2>/dev/null || true; "
+   "fi; "
    "fi"))
 
 (define %qubes-rw-device-wait-command
@@ -647,6 +647,8 @@
    "  https_proxy=\"${https_proxy:-$proxy}\" \\\n"
    "  HTTP_PROXY=\"${HTTP_PROXY:-$proxy}\" \\\n"
    "  HTTPS_PROXY=\"${HTTPS_PROXY:-$proxy}\" \\\n"
+   "  all_proxy=\"${all_proxy:-$proxy}\" \\\n"
+   "  ALL_PROXY=\"${ALL_PROXY:-$proxy}\" \\\n"
    "  no_proxy=\"${no_proxy:-$no_proxy_value}\" \\\n"
    "  NO_PROXY=\"${NO_PROXY:-$no_proxy_value}\" \\\n"
    "  /run/current-system/profile/bin/guix \"$@\"\n"
@@ -682,12 +684,12 @@
 (define (qubes-mount-dirs-shepherd-service _)
   (list
    (one-shot-service
-            'qubes-mount-dirs
-            '(qubes-sysinit)
-            (string-append %qubes-private-dirs-mounted-command
-                           "; " %qubes-rw-device-wait-command
-                           "; " %qubes-rw-fstab-command
-                           "; exec /usr/lib/qubes/init/mount-dirs.sh")
+    'qubes-mount-dirs
+    '(qubes-sysinit)
+    (string-append %qubes-private-dirs-mounted-command
+                   "; " %qubes-rw-device-wait-command
+                   "; " %qubes-rw-fstab-command
+                   "; exec /usr/lib/qubes/init/mount-dirs.sh")
     "/var/log/qubes-mount-dirs.log")))
 
 (define qubes-mount-dirs-service-type

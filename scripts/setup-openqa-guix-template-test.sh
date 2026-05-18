@@ -10,10 +10,13 @@ tests_dest="/var/lib/openqa/share/tests/qubesos"
 factory_hdd="/var/lib/openqa/share/factory/hdd"
 nose2_rpm="${QUBES_OPENQA_NOSE2_RPM:-$repo_root/.cache/python3-nose2-0.15.1-3.fc41.noarch.rpm}"
 nose2_rpm_url="${QUBES_OPENQA_NOSE2_RPM_URL:-https://archives.fedoraproject.org/pub/archive/fedora/linux/releases/41/Everything/x86_64/os/Packages/p/python3-nose2-0.15.1-3.fc41.noarch.rpm}"
-qubes_disk="${QUBES_OPENQA_QUBES_DISK:-/home/ubuntu/qubes-nested/vm/qubes-r4.3.0.qcow2}"
+qubes_version="${QUBES_VERSION:-4.3.0}"
+nested_workdir="${QUBES_NESTED_WORKDIR:-$HOME/qubes-nested}"
+qubes_disk="${QUBES_OPENQA_QUBES_DISK:-$nested_workdir/vm/qubes-r${qubes_version}.qcow2}"
 guix_root_image="${QUBES_OPENQA_GUIX_ROOT_IMAGE:-$repo_root/root.img}"
 guix_template_rpm="${QUBES_OPENQA_GUIX_TEMPLATE_RPM:-}"
-qubes_asset_name="${QUBES_OPENQA_QUBES_ASSET:-qubes-r4.3.0.qcow2}"
+update_target_template_rpm="${QUBES_OPENQA_UPDATE_TARGET_TEMPLATE_RPM:-}"
+qubes_asset_name="${QUBES_OPENQA_QUBES_ASSET:-qubes-r${qubes_version}.qcow2}"
 guix_asset_name="${QUBES_OPENQA_GUIX_ASSET:-guix-root.img}"
 guix_rpm_asset_name="${QUBES_OPENQA_GUIX_RPM_ASSET:-guix-template-rpm.img}"
 openqa_url="${QUBES_OPENQA_URL:-http://localhost:9526}"
@@ -22,17 +25,26 @@ template_name="${QUBES_OPENQA_TEMPLATE_NAME:-}"
 appvm_name="${QUBES_OPENQA_APPVM_NAME:-guix-openqa-test-app}"
 dom0_password="${QUBES_NESTED_DOM0_PASSWORD:-qubes}"
 dom0_console="${QUBES_OPENQA_DOM0_CONSOLE:-root-console}"
-dom0_type_max_interval="${QUBES_OPENQA_DOM0_TYPE_MAX_INTERVAL:-50}"
+dom0_type_max_interval="${QUBES_OPENQA_DOM0_TYPE_MAX_INTERVAL:-100}"
+dom0_ready_type_max_interval="${QUBES_OPENQA_DOM0_READY_TYPE_MAX_INTERVAL:-${QUBES_DOM0_READY_TYPE_MAX_INTERVAL:-$dom0_type_max_interval}}"
+dom0_serial_settle_delay="${QUBES_OPENQA_DOM0_SERIAL_SETTLE_DELAY:-${QUBES_DOM0_SERIAL_SETTLE_DELAY:-3}}"
 qemu_ram="${QUBES_OPENQA_RAM:-32768}"
 qemu_cpus="${QUBES_OPENQA_CPUS:-8}"
+qemu_append="${QUBES_OPENQA_QEMU_APPEND:-}"
+max_job_time="${QUBES_OPENQA_MAX_JOB_TIME:-}"
 install_mode="${GUIX_INSTALL_MODE:-}"
 run_qubes_system_tests="${GUIX_RUN_QUBES_SYSTEM_TESTS:-0}"
 qubes_system_tests="${GUIX_QUBES_SYSTEM_TESTS:-qubes.tests.integ.qrexec:14400 qubes.tests.integ.vm_qrexec_gui:14400}"
 run_proxy_download_test="${GUIX_RUN_PROXY_DOWNLOAD_TEST:-0}"
 run_proxy_stub_download_test="${GUIX_RUN_PROXY_STUB_DOWNLOAD_TEST:-0}"
+run_central_vmupdate_test="${GUIX_RUN_CENTRAL_VMUPDATE_TEST:-0}"
+bootstrap_update_target="${GUIX_BOOTSTRAP_UPDATE_TARGET:-0}"
+update_target_name="${QUBES_OPENQA_UPDATE_TARGET_NAME:-sys-net}"
 guix_proxy_download_url="${GUIX_PROXY_DOWNLOAD_URL:-https://guix.gnu.org/}"
 guix_proxy_stub_download_url="${GUIX_PROXY_STUB_DOWNLOAD_URL:-http://qubes-guix-test/}"
 guix_proxy_download_timeout="${GUIX_PROXY_DOWNLOAD_TIMEOUT:-240}"
+guix_central_vmupdate_timeout="${GUIX_CENTRAL_VMUPDATE_TIMEOUT:-3600}"
+guix_central_vmupdate_proxy_probe_url="${GUIX_CENTRAL_VMUPDATE_PROXY_PROBE_URL:-https://git.savannah.gnu.org/git/guix.git}"
 guix_expect_commands="${GUIX_EXPECT_COMMANDS:-}"
 guix_expect_desktops="${GUIX_EXPECT_DESKTOPS:-}"
 if [ -n "${GUIX_TEST_TIMEOUT:-}" ]; then
@@ -161,6 +173,13 @@ if [ -z "$template_name" ]; then
         *) template_name="guix-openqa-test" ;;
     esac
 fi
+if [ "$run_central_vmupdate_test" = "1" ]; then
+    cat >&2 <<'EOF'
+warning: GUIX_RUN_CENTRAL_VMUPDATE_TEST=1 requires the nested dom0 to have a
+warning: standard Internet-capable Qubes updates-proxy target, normally sys-net.
+warning: A controlled/stub updates-proxy target is not sufficient proof for this gate.
+EOF
+fi
 
 [ -d "$tests_source" ] || die "missing Qubes openQA tests source: $tests_source"
 [ -r "$tests_source/main.pm" ] || die "invalid Qubes openQA tests source: $tests_source"
@@ -168,6 +187,16 @@ fi
 [ -r "$guix_root_image" ] || die "missing Guix root image: $guix_root_image"
 if [ "$install_mode" = "rpm" ]; then
     [ -r "$guix_template_rpm" ] || die "missing Guix template RPM: $guix_template_rpm"
+fi
+if [ "$bootstrap_update_target" = "1" ]; then
+    [ "$install_mode" = "rpm" ] ||
+        die "GUIX_BOOTSTRAP_UPDATE_TARGET=1 requires GUIX_INSTALL_MODE=rpm"
+    [ -r "$update_target_template_rpm" ] ||
+        die "missing update target template RPM: $update_target_template_rpm"
+    qemu_append="${qemu_append:-device intel-iommu,intremap=on}"
+fi
+if [ -z "$max_job_time" ] && [ "$run_central_vmupdate_test" = "1" ]; then
+    max_job_time=21600
 fi
 need openqa-cli
 need jq
@@ -199,6 +228,12 @@ sudo install -o geekotest -g root -m 0644 \
 sudo install -o geekotest -g root -m 0644 \
     "$repo_root/scripts/test-guix-update-proxy-stub-download-dom0.sh" \
     "$tests_dest/data/test-guix-update-proxy-stub-download-dom0.sh"
+sudo install -o geekotest -g root -m 0644 \
+    "$repo_root/scripts/test-guix-central-vmupdate-dom0.sh" \
+    "$tests_dest/data/test-guix-central-vmupdate-dom0.sh"
+sudo install -o geekotest -g root -m 0644 \
+    "$repo_root/scripts/bootstrap-qubes-update-target-dom0.sh" \
+    "$tests_dest/data/bootstrap-qubes-update-target-dom0.sh"
 sudo install -o geekotest -g root -m 0644 \
     "$repo_root/scripts/diagnose-guix-postinstall-dom0.sh" \
     "$tests_dest/data/diagnose-guix-postinstall-dom0.sh"
@@ -276,19 +311,32 @@ if [ "$install_mode" = "rpm" ]; then
     rpm_asset_image="$(mktemp "$repo_root/work.openqa-rpm.XXXXXX.img")"
     rpm_staging="$(mktemp -d "$repo_root/work.openqa-rpm.XXXXXX")"
     rpm_bytes="$(stat -c '%s' "$guix_template_rpm")"
-    rpm_image_bytes=$(( ((rpm_bytes + 67108864 + 1048575) / 1048576) * 1048576 ))
+    rpm_payload_bytes="$rpm_bytes"
+    if [ "$bootstrap_update_target" = "1" ]; then
+        update_target_rpm_bytes="$(stat -c '%s' "$update_target_template_rpm")"
+        rpm_payload_bytes=$((rpm_payload_bytes + update_target_rpm_bytes))
+    fi
+    rpm_image_overhead=$((rpm_payload_bytes / 10 + 268435456))
+    rpm_image_bytes=$(( ((rpm_payload_bytes + rpm_image_overhead + 1048575) / 1048576) * 1048576 ))
     truncate -s "$rpm_image_bytes" "$rpm_asset_image"
     cp "$guix_template_rpm" "$rpm_staging/$(basename "$guix_template_rpm")"
+    if [ "$bootstrap_update_target" = "1" ]; then
+        mkdir -p "$rpm_staging/update-target"
+        cp "$update_target_template_rpm" \
+            "$rpm_staging/update-target/$(basename "$update_target_template_rpm")"
+    fi
+    cp "$repo_root/scripts/bootstrap-qubes-update-target-dom0.sh" "$rpm_staging/"
     cp "$repo_root/scripts/import-native-rootfs-dom0.sh" "$rpm_staging/"
     cp "$repo_root/scripts/test-native-guix-template-dom0.sh" "$rpm_staging/"
     cp "$repo_root/scripts/test-guix-update-proxy-config-dom0.sh" "$rpm_staging/"
     cp "$repo_root/scripts/test-guix-update-proxy-download-dom0.sh" "$rpm_staging/"
     cp "$repo_root/scripts/test-guix-update-proxy-stub-download-dom0.sh" "$rpm_staging/"
+    cp "$repo_root/scripts/test-guix-central-vmupdate-dom0.sh" "$rpm_staging/"
     cp "$repo_root/scripts/diagnose-guix-postinstall-dom0.sh" "$rpm_staging/"
     if [ "$run_qubes_system_tests" = "1" ]; then
         cp "$nose2_rpm" "$rpm_staging/python3-nose2.rpm"
     fi
-    mke2fs -q -t ext4 -d "$rpm_staging" "$rpm_asset_image"
+    mke2fs -q -t ext4 -m 0 -d "$rpm_staging" "$rpm_asset_image"
     rm -rf "$rpm_staging"
     copy_asset "$rpm_asset_image" "$guix_rpm_asset_name"
 fi
@@ -398,6 +446,8 @@ job_args=(
     QUBES_DOM0_PASSWORD="$dom0_password"
     QUBES_DOM0_CONSOLE="$dom0_console"
     QUBES_DOM0_TYPE_MAX_INTERVAL="$dom0_type_max_interval"
+    QUBES_DOM0_READY_TYPE_MAX_INTERVAL="$dom0_ready_type_max_interval"
+    QUBES_DOM0_SERIAL_SETTLE_DELAY="$dom0_serial_settle_delay"
     QUBES_LOGIN_TIMEOUT=1200
     GUIX_INSTALL_MODE="$install_mode"
     GUIX_ROOT_DEVICE=/dev/disk/by-id/scsi-0QEMU_QEMU_HARDDISK_guixroot
@@ -409,13 +459,30 @@ job_args=(
     GUIX_QUBES_SYSTEM_TESTS="$qubes_system_tests"
     GUIX_RUN_PROXY_DOWNLOAD_TEST="$run_proxy_download_test"
     GUIX_RUN_PROXY_STUB_DOWNLOAD_TEST="$run_proxy_stub_download_test"
+    GUIX_RUN_CENTRAL_VMUPDATE_TEST="$run_central_vmupdate_test"
+    GUIX_BOOTSTRAP_UPDATE_TARGET="$bootstrap_update_target"
+    GUIX_UPDATE_TARGET_NAME="$update_target_name"
     GUIX_PROXY_DOWNLOAD_URL="$guix_proxy_download_url"
     GUIX_PROXY_STUB_DOWNLOAD_URL="$guix_proxy_stub_download_url"
     GUIX_PROXY_DOWNLOAD_TIMEOUT="$guix_proxy_download_timeout"
+    GUIX_CENTRAL_VMUPDATE_TIMEOUT="$guix_central_vmupdate_timeout"
+    GUIX_CENTRAL_VMUPDATE_PROXY_PROBE_URL="$guix_central_vmupdate_proxy_probe_url"
     GUIX_EXPECT_COMMANDS="$guix_expect_commands"
     GUIX_EXPECT_DESKTOPS="$guix_expect_desktops"
     GUIX_TEST_TIMEOUT="$guix_test_timeout"
 )
+
+if [ -n "$qemu_append" ]; then
+    job_args+=(
+        QEMU_APPEND="$qemu_append"
+    )
+fi
+
+if [ -n "$max_job_time" ]; then
+    job_args+=(
+        MAX_JOB_TIME="$max_job_time"
+    )
+fi
 
 if [ "$install_mode" = "rpm" ]; then
     job_args=("${job_args[@]/NUMDISKS=2/NUMDISKS=3}")

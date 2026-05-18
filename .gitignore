@@ -17,6 +17,7 @@
 /mnt.*/
 /work/
 /work.builder-v2/
+/work.builder-adapter.*/
 /work.build-native-rootfs-policy.*/
 /work.builder-rpm.*/
 /work.package.*/

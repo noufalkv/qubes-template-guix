@@ -5,7 +5,8 @@ should keep the review surface small, explicit, and reproducible.
 
 ## Public History
 
-- Submit a clean branch with signed commits or a signed release tag.
+- Submit a clean review branch. Signed commits or a signed release tag are
+  publication evidence, not a prerequisite for RFC review.
 - Do not publish local backup refs, generated images, RPMs, cache directories,
   or obsolete experiment history.
 - Keep commits reviewable.  If the public branch is a single initial import,
@@ -13,6 +14,54 @@ should keep the review surface small, explicit, and reproducible.
 - Any later changes should be split by review area:
   packaging/source pins, Shepherd services, image/RPM tooling, Builder/release
   integration, validation harnesses, and documentation.
+
+Before asking Qubes to publish the template, run a release-owner identity
+preflight and replace every publication placeholder in draft/config files:
+
+```sh
+git remote -v
+git config user.name
+git config user.email
+git config user.signingkey
+git config commit.gpgsign
+gpg --list-secret-keys --keyid-format LONG
+rg '<OWNER>|<REPOSITORY>|<NAME>|<TAG_OR_COMMIT>'
+```
+
+The release branch or release tag should be signed by the owner asking Qubes to
+publish it.  Verify the exact object that will be submitted:
+
+```sh
+git log --show-signature --max-count=5
+git tag --verify "$SIGNED_TAG"
+```
+
+If the submission uses a signed tag rather than signed commits, make that clear
+in the `qubes-devel` thread and `[Contribution]` issue, and point reviewers at
+the verified tag.
+
+## Publication Hygiene
+
+Before pushing or opening any upstream discussion, verify that the review branch
+contains only source, review documentation, and reproducible build scripts:
+
+```sh
+git status --short
+git ls-files
+git grep -n -E 'ghp_[A-Za-z0-9_]{20,}|github_pat_|PAT[: =]|token[: =]' -- . ':(exclude)CONTRIBUTING.md'
+git grep -n -E '/home/(user|sandbox)' -- .
+```
+
+The credential scan should have no matches.  The local-home scan should have no
+matches except standard in-guest Qubes diagnostic paths documented in
+`SUBMISSION_AUDIT.md`.  If a contributor or release owner uses local external
+compute, SSH, openQA, or nested-virtualization setup to produce evidence, keep
+that setup out of commits unless it is a generic helper that a Qubes reviewer
+would reasonably run.  Do not commit generated RPMs, root images, provider
+logs, API credentials, temporary build directories, or local instance names.
+Test RPMs may be attached to a review issue for convenience, but the public
+repository must let reviewers reproduce them from the final source branch or
+release object.
 
 ## Required Local Contract Checks
 
@@ -38,8 +87,8 @@ make guix-system-contract-check
 
 This is a real Guix record check, not a source-text check.  It instantiates both
 template variants and verifies Qubes-visible defaults such as `/dev/xvdc1`
-swap, passwordless sudo, default privileged programs, required Qubes services,
-and `meminfo-writer` defaults.
+swap, passwordless sudo, default privileged programs, required Qubes services
+including the updates-proxy forwarder, and `meminfo-writer` defaults.
 
 Run the Builder v2 and release-config sketch checks directly in fresh upstream
 checkouts when changing files under `config/`.  Treat `make check`, rootfs
@@ -68,9 +117,10 @@ git -C /tmp/qubes-builderv2-test apply \
 cd /tmp/qubes-builderv2-test
 PYTHONPATH="$PWD" \
   python -m pytest \
-    tests/test_objects.py::test_dist \
+    tests/test_objects.py::test_dist_non_default_arch \
     tests/test_objects.py::test_dist_family \
-    tests/test_objects.py::test_template_plugin_supports_guix
+    tests/test_objects.py::test_template_plugin_supports_guix \
+    tests/test_objects.py::test_template_plugin_guix_parameters
 ```
 
 For the release-config sketch, apply
@@ -81,7 +131,7 @@ template YAML.  The exact validation snippet is recorded in `VALIDATION.md`.
 ## Release Evidence
 
 Do not ask Qubes to publish a template until `VALIDATION.md` contains fresh
-evidence from the signed public branch for:
+evidence from the final public branch or release object for:
 
 - normal and minimal rootfs builds.
 - normal and minimal image inspection.
@@ -98,7 +148,8 @@ evidence from the signed public branch for:
   `scripts/test-guix-update-proxy-stub-download-dom0.sh`.
 - A real Guix update or download command through the Qubes updates proxy, such
   as `scripts/test-guix-update-proxy-download-dom0.sh` in a review environment
-  with a working update-proxy target.
+  with a working update-proxy target.  This script first probes the raw Qubes
+  proxy path, then runs `guix download` through the generated wrapper.
 - Dynamic memory-balloon resize behavior under dom0 pressure.
 
 ## Review Rules
@@ -109,21 +160,24 @@ evidence from the signed public branch for:
   patch files, convert the rows identified in `ADAPTATION_INVENTORY.md`.
 - Do not replace standard Qubes behavior with Guix-specific policy unless the
   reason is documented and covered by validation.
-- Keep placeholders such as `<OWNER>`, `<REPOSITORY>`, `<NAME>`,
-  `<GPG_FINGERPRINT>`, and `<MAINTAINER_GPG_FINGERPRINT>` only in draft/config
-  or review-process files that explicitly warn not to submit them unchanged, or
-  in tests that validate those draft/config placeholders.
-- Disclose generative-AI assistance in the upstream discussion and only submit
-  changes a human maintainer has reviewed and will maintain.
+- Keep placeholders such as `<OWNER>`, `<REPOSITORY>`, and `<NAME>` only in
+  draft/config or review-process files that explicitly mark them as
+  non-publishable release metadata, or in tests that validate those
+  draft/config placeholders.
+- Disclose generative-AI assistance in the upstream discussion.  RFC/review PRs
+  can be opened before there is a release owner, but publication requests need
+  an agreed release owner outside this one-shot review branch.
 
 ## Multi-Repo Flow
 
 Use this order:
 
-1. Publish the signed template repository.
+1. Publish a clean template review branch.
 2. Start the `qubes-devel` RFC using `SUBMISSION_DRAFTS.md`.
 3. Discuss or submit the Builder v2 Guix distribution path.
-4. Submit release-config entries only after the Builder path and maintainer
-   identity are accepted.
-5. Refresh all release evidence from the final signed branch before asking for
+4. Discuss or submit the `qubes-core-admin-linux` Guix vmupdate backend if
+   centralized Qubes updater support is part of the requested scope.
+5. Keep release-config entries as RFC/review-only until the Builder path is
+   accepted and publication evidence is ready.
+6. Refresh all release evidence from the final release branch before asking for
    `templates-community-testing` publication.
