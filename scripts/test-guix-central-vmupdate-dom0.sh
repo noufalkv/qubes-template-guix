@@ -417,16 +417,14 @@ test -e /run/current-system
 test -r /etc/config.scm
 test -r /etc/guix/channels.scm
 test -x /usr/bin/python3
-test -x /run/qubes/bin/guix
-test -r /etc/profile.d/qubes-guix-update-proxy.sh
+test -x /usr/lib/qubes/upgrades-installed-check
+test -x /usr/lib/qubes/upgrades-status-notify
 . /usr/lib/qubes/init/functions
 qsvc updates-proxy-setup >/dev/null
 if qsvc qubes-updates-proxy >/dev/null 2>&1; then
     echo 'local qubes-updates-proxy service is enabled; TemplateVM should forward instead'
     exit 1
 fi
-herd status qubes-guix-update-proxy >/tmp/qubes-guix-update-proxy.status
-grep -F 'It is stopped' /tmp/qubes-guix-update-proxy.status >/dev/null
 herd status qubes-updates-proxy-forwarder >/tmp/qubes-updates-proxy-forwarder.status
 grep -F 'It is running' /tmp/qubes-updates-proxy-forwarder.status >/dev/null
 check_no_direct_default_route
@@ -458,7 +456,7 @@ timeout "$update_timeout" qubes-vm-update \
     --max-concurrency 1 \
     --show-output \
     --no-cleanup \
-    --no-progress \
+    --just-print-progress \
     2>&1 | tee "$update_log"
 update_status=${PIPESTATUS[0]}
 set -e
@@ -473,14 +471,21 @@ if logs_have_regex \
     fail_with_logs "qubes-vm-update log shows unsupported Guix or update-proxy failure" 1
 fi
 
-logs_have_fixed 'Refreshing Guix channel metadata from master.' ||
-    fail_with_logs "qubes-vm-update log did not show Guix refresh" 1
-logs_have_fixed 'Reconfiguring Guix System from /etc/config.scm using master.' ||
-    fail_with_logs "qubes-vm-update log did not show Guix system reconfigure" 1
-logs_have_fixed 'Reconfigured Guix System.' ||
-    fail_with_logs "qubes-vm-update log did not show successful Guix system reconfigure" 1
+logs_have_fixed 'Skipping separate Guix refresh; Guix System reconfigure uses the installed system Guix; release channel reference is /etc/guix/channels.scm.' ||
+    fail_with_logs "qubes-vm-update log did not show Guix refresh handoff" 1
+if logs_have_fixed 'Guix System already matches /etc/config.scm and /etc/guix/channels.scm; skipping reconfigure.'; then
+    :
+else
+    logs_have_fixed 'Reconfiguring Guix System from /etc/config.scm using the installed system Guix. Release channel reference: /etc/guix/channels.scm.' ||
+        fail_with_logs "qubes-vm-update log did not show Guix system reconfigure or no-op proof" 1
+    logs_have_fixed 'Reconfigured Guix System.' ||
+        fail_with_logs "qubes-vm-update log did not show successful Guix system reconfigure" 1
+fi
 logs_have_fixed 'Updated packages:' ||
     fail_with_logs "qubes-vm-update log did not show package update metadata" 1
+if ! logs_have_regex '(^|[[:space:]])guix-system[[:space:]]+/gnu/store/|(^|[[:space:]])[^[:space:]]+:[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+/gnu/store/'; then
+    fail_with_logs "qubes-vm-update log did not show Guix package metadata entries" 1
+fi
 
 guest_postcheck=$(cat <<'__QUBES_GUIX_GUEST__'
 set -eu
@@ -489,6 +494,7 @@ test -d /gnu/store
 herd status guix-daemon >/tmp/qubes-guix-daemon.status
 grep -F 'It is running' /tmp/qubes-guix-daemon.status >/dev/null
 guix --version >/tmp/qubes-guix-version.out
+test "$(/usr/lib/qubes/upgrades-installed-check)" = true
 __QUBES_GUIX_GUEST__
 )
 

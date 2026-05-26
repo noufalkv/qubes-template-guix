@@ -12,6 +12,7 @@
   #:use-module (gnu packages bash)
   #:use-module (gnu packages base)
   #:use-module (gnu packages compression)
+  #:use-module (gnu packages curl)
   #:use-module (gnu packages elf)
   #:use-module (gnu packages freedesktop)
   #:use-module (gnu packages gawk)
@@ -20,18 +21,22 @@
   #:use-module (gnu packages haskell-xyz)
   #:use-module (gnu packages icu4c)
   #:use-module (gnu packages image)
+  #:use-module (gnu packages libffi)
   #:use-module (gnu packages libunistring)
   #:use-module (gnu packages linux)
   #:use-module (gnu packages networking)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages pulseaudio)
   #:use-module (gnu packages python)
+  #:use-module (gnu packages python-build)
   #:use-module (gnu packages python-xyz)
   #:use-module (gnu packages virtualization)
   #:use-module (gnu packages xdisorg)
   #:use-module (gnu packages xorg)
   #:export (qubes-dom0-kernel
             xen-vchan-libs
+            xen-network-hotplug-tools
+            xenstore-read-tool
             qubes-libvchan-xen
             qubes-linux-utils-qrexec
             qubes-vm-utils
@@ -43,6 +48,12 @@
             qubes-xterm-desktop-entry
             %qubes-vm-headless-packages
             %qubes-vm-gui-packages))
+
+(define %qvm-template-repo-query-guix
+  (local-file
+   "../files/qvm-template-repo-query-guix"
+   "qvm-template-repo-query-guix"
+   #:recursive? #f))
 
 (define %qubes-source-components
   '(("qubes-core-vchan-xen" "v4.2.8"
@@ -209,6 +220,58 @@ root image does not need a guest kernel package.")
 vchan and qrexec components, without Xen hypervisor tools, QEMU, or firmware.")
     (license license:gpl2+)))
 
+(define-public xen-network-hotplug-tools
+  (package
+    (name "xen-network-hotplug-tools")
+    (version (package-version xen))
+    (source #f)
+    (build-system trivial-build-system)
+    (arguments
+     (list
+      #:modules '((guix build utils))
+      #:builder
+      #~(begin
+          (use-modules (guix build utils))
+          (let* ((out-bin (string-append #$output "/bin"))
+                 (out-scripts (string-append #$output "/etc/xen/scripts"))
+                 (xen-scripts (string-append #$xen "/etc/xen/scripts"))
+                 (rpath (string-append #$xen-vchan-libs "/lib")))
+            (mkdir-p out-bin)
+            (mkdir-p out-scripts)
+            (for-each
+             (lambda (tool)
+               (let ((target (string-append out-bin "/" tool)))
+                 (copy-file (string-append #$xen "/bin/" tool) target)
+                 (chmod target #o755)
+                 (invoke (string-append #$patchelf "/bin/patchelf")
+                         "--set-rpath" rpath target)))
+             '("xenstore-read" "xenstore-write"))
+            (for-each
+             (lambda (script)
+               (let ((target (string-append out-scripts "/" script)))
+                 (copy-file (string-append xen-scripts "/" script) target)
+                 (chmod target #o755)
+                 (substitute* target
+                   ((#$xen) #$output))))
+             '("hotplugpath.sh"
+               "locking.sh"
+               "logging.sh"
+               "vif-common.sh"
+               "xen-hotplug-common.sh"
+               "xen-network-common.sh"
+               "xen-script-common.sh"))))))
+    (native-inputs (list patchelf))
+    (inputs (list xen-vchan-libs))
+    (home-page "https://xenproject.org/")
+    (synopsis "Small Xen network hotplug subset for Qubes NetVMs")
+    (description "A small package containing the XenStore tools and Xen network
+hotplug helper scripts required by Qubes' VM-side vif-route-qubes backend
+script, without adding the full Xen tool stack to native Qubes Guix templates.")
+    (license license:gpl2)))
+
+(define-public xenstore-read-tool
+  xen-network-hotplug-tools)
+
 (define-public qubes-libvchan-xen
   (package
     (name "qubes-libvchan-xen")
@@ -326,6 +389,9 @@ information reporter used by Qubes memory ballooning.")
       ;; The daemon tests expect a live QubesDB/Xen VM environment; this
       ;; package build installs the VM-side daemon, tools, and bindings.
       #:tests? #f
+      #:modules '((guix build gnu-build-system)
+                  (guix build utils)
+                  (ice-9 regex))
       #:phases
       #~(modify-phases %standard-phases
           (delete 'configure)
@@ -352,21 +418,62 @@ information reporter used by Qubes memory ballooning.")
                       (string-append "DESTDIR=" #$output)
                       "LIBDIR=/lib"
                       "BINDIR=/bin")
-              (setenv "QUBESDB_OUTPUT" #$output)
-              (invoke "python3" "-c"
-                      "import glob, os, shutil, sys
-out = os.environ['QUBESDB_OUTPUT']
-site = os.path.join(out, 'lib', f'python{sys.version_info.major}.{sys.version_info.minor}', 'site-packages')
-os.makedirs(site, exist_ok=True)
-extensions = glob.glob('python/build/lib*/qubesdb*.so')
-assert extensions, 'no built qubesdb Python extension found'
-for extension in extensions:
-    shutil.copy2(extension, site)")
+              ;; The upstream client installs hard-linked applets that infer
+              ;; the command from argv[0].  In a Guix profile argv[0] is often
+              ;; a store/profile path rather than /usr/bin/qubesdb-read, which
+              ;; makes the applet print usage and exit 0.  Install explicit
+              ;; wrappers so both Qubes scripts and native services get stable
+              ;; read/write/list behavior.
+              (let ((qubesdb-cmd (string-append #$output "/bin/qubesdb-cmd")))
+                (for-each
+                 (lambda (entry)
+                   (let ((path (string-append #$output "/bin/" (car entry)))
+                         (command (cadr entry)))
+                     (when (file-exists? path)
+                       (delete-file path))
+                     (call-with-output-file path
+                       (lambda (port)
+                         (format port
+                                 "#!~a~%exec ~a -c ~a \"$@\"~%"
+                                 #$(file-append bash-minimal "/bin/sh")
+                                 qubesdb-cmd
+                                 command)))
+                     (chmod path #o755)))
+                 '(("qubesdb-read" "read")
+                   ("qubesdb-write" "write")
+                   ("qubesdb-rm" "rm")
+                   ("qubesdb-multiread" "multiread")
+                   ("qubesdb-list" "list")
+                   ("qubesdb-watch" "watch"))))
+              (let* ((extensions
+                      (find-files "python/build" "^qubesdb.*\\.so$"))
+                     (first-extension
+                      (and (pair? extensions) (car extensions)))
+                     (python-tag
+                      (and first-extension
+                           (string-match "\\.cpython-([0-9])([0-9]+)"
+                                         (basename first-extension)))))
+                (unless python-tag
+                  (error "no built qubesdb Python extension found"))
+                (let ((site
+                       (string-append #$output
+                                      "/lib/python"
+                                      (match:substring python-tag 1)
+                                      "."
+                                      (match:substring python-tag 2)
+                                      "/site-packages")))
+                  (mkdir-p site)
+                  (for-each
+                   (lambda (extension)
+                     (copy-file extension
+                                (string-append site "/"
+                                               (basename extension))))
+                   extensions)))
               (invoke "make" "-C" "include" "install"
                       (string-append "DESTDIR=" #$output)
                       "INCLUDEDIR=/include"))))))
-    (native-inputs (list pkg-config python-wrapper))
-    (inputs (list qubes-libvchan-xen))
+    (native-inputs (list pkg-config python-wrapper python-setuptools))
+    (inputs (list bash-minimal qubes-libvchan-xen))
     (home-page "https://www.qubes-os.org/")
     (synopsis "QubesDB VM daemon and client tools")
     (description "QubesDB VM-side daemon, command-line client, and Python bindings.")
@@ -383,6 +490,12 @@ for extension in extensions:
       ;; Upstream tests exercise live qrexec/Xen service behavior; this package
       ;; build only installs the VM-side agent and helper programs.
       #:tests? #f
+      #:modules '((guix build gnu-build-system)
+                  (guix build utils)
+                  (ice-9 ftw)
+                  (ice-9 textual-ports)
+                  (srfi srfi-1)
+                  (srfi srfi-13))
       #:phases
       #~(modify-phases %standard-phases
           (delete 'configure)
@@ -419,80 +532,253 @@ for extension in extensions:
               ;; available after qrexec-fork-server appears.  Native Guix
               ;; templates use Shepherd, so keep the same qrexec-fork-server
               ;; readiness boundary and omit the systemd-only final check.
-              (call-with-output-file (string-append #$output
-                                                    "/etc/qubes-rpc/qubes.WaitForSession")
-                (lambda (port)
-                  (display "#!/bin/sh
-set -eu
+              (let* ((wait-for-session
+                      (string-append #$output
+                                     "/etc/qubes-rpc/qubes.WaitForSession"))
+                     (wait-for-session-body
+                      '(begin
+                         (use-modules (ice-9 popen)
+                                      (ice-9 textual-ports)
+                                      (srfi srfi-13))
 
-if command -v qrexec-client >/dev/null 2>&1; then
-    exit 0
-fi
+                         (define (trim-newlines text)
+                           (let loop ((end (string-length text)))
+                             (if (and (> end 0)
+                                      (memv (string-ref text (- end 1))
+                                            '(#\newline #\return)))
+                                 (loop (- end 1))
+                                 (substring text 0 end))))
 
-if test \"$(qubesdb-read --default=True /qubes-gui-enabled)\" != True; then
-    exit 0
-fi
+                         (define (command-output program . args)
+                           (let* ((port (apply open-pipe* OPEN_READ program args))
+                                  (text (get-string-all port))
+                                  (status (close-pipe port)))
+                             (and (zero? status)
+                                  (trim-newlines text))))
 
-user=\"$(qubesdb-read /default-user 2>/dev/null || echo user)\"
-timeout=\"${QUBES_WAIT_FOR_SESSION_TIMEOUT:-300}\"
-elapsed=0
-socket=\"/var/run/qubes/qrexec-server.$user.sock\"
+                         (define (qubesdb-read path)
+                           (command-output
+                            "/run/current-system/profile/bin/qubesdb-read"
+                            path))
 
-while test \"$elapsed\" -lt \"$timeout\"; do
-    if test -S \"$socket\"; then
-        exit 0
-    fi
-    elapsed=$((elapsed + 1))
-    sleep 1
-done
+                         (define (non-empty text fallback)
+                           (if (and text (not (string-null? text)))
+                               text
+                               fallback))
 
-echo \"Timed out waiting for Guix Qubes session socket: $socket\" >&2
-exit 1
-" port)))
-              (chmod (string-append #$output
-                                     "/etc/qubes-rpc/qubes.WaitForSession")
-                     #o755)
-              (setenv "QUBES_QREXEC_OUTPUT" #$output)
-              (setenv "QUBES_QREXEC_EXTRA_PYTHON_ROOTS" #$python-pyinotify)
-              (invoke "python3" "-c"
-                      "import os, pathlib, shutil, sys
-out = pathlib.Path(os.environ['QUBES_QREXEC_OUTPUT'])
-extra_roots = [pathlib.Path(root) for root in os.environ['QUBES_QREXEC_EXTRA_PYTHON_ROOTS'].split(':') if root]
-site = out / 'lib' / f'python{sys.version_info.major}.{sys.version_info.minor}' / 'site-packages'
-extra_pythonpath = [str(root / 'lib' / f'python{sys.version_info.major}.{sys.version_info.minor}' / 'site-packages') for root in extra_roots]
-site.mkdir(parents=True, exist_ok=True)
-for package in ('qrexec',):
-    src = next((out / 'gnu').glob(f'store/*/lib/python*/site-packages/{package}'))
-    shutil.copytree(src, site / package, dirs_exist_ok=True)
-for src, dst in [('usr/bin', 'bin'), ('usr/lib/qubes', 'lib/qubes'),
-                 ('usr/lib/tmpfiles.d', 'lib/tmpfiles.d'),
-                 ('usr/include', 'include'), ('usr/share', 'share')]:
-    src_path = out / src
-    if src_path.exists():
-        dst_path = out / dst
-        dst_path.mkdir(parents=True, exist_ok=True)
-        for item in src_path.iterdir():
-            target = dst_path / item.name
-            if target.exists() or target.is_symlink():
-                if target.is_dir() and not target.is_symlink():
-                    shutil.rmtree(target)
-                else:
-                    target.unlink()
-            shutil.move(str(item), str(target))
-for script in (out / 'bin').iterdir():
-    if not script.is_file() or script.is_symlink():
-        continue
-    try:
-        text = script.read_text()
-    except UnicodeDecodeError:
-        continue
-    if text.startswith('#!/usr/bin/python3') and 'from qrexec.' in text:
-        pythonpath = [str(site)] + extra_pythonpath
-        text = text.replace('\\nfrom qrexec.', f'\\nimport sys\\nsys.path[:0] = {pythonpath!r}\\nfrom qrexec.', 1)
-        script.write_text(text)
-shutil.rmtree(out / 'gnu', ignore_errors=True)
-shutil.rmtree(out / 'usr', ignore_errors=True)"))))))
-    (native-inputs (list pkg-config gzip))
+                         (define (warn message)
+                           (display message (current-error-port))
+                           (newline (current-error-port)))
+
+                         (define (socket? path)
+                           (let ((st (false-if-exception (stat path))))
+                             (and st (eq? (stat:type st) 'socket))))
+
+                         (unless (string=?
+                                  (or (qubesdb-read "/qubes-gui-enabled")
+                                      "True")
+                                  "True")
+                           (exit 0))
+                         (let* ((user (non-empty (qubesdb-read "/default-user")
+                                                 "user"))
+                                (timeout-text
+                                 (non-empty
+                                  (getenv "QUBES_WAIT_FOR_SESSION_TIMEOUT")
+                                  "300"))
+                                (timeout (or (string->number timeout-text) 300))
+                                (socket (string-append
+                                         "/var/run/qubes/qrexec-server."
+                                         user
+                                         ".sock")))
+                           (let loop ((elapsed 0))
+                             (cond
+                              ((socket? socket) (exit 0))
+                              ((< elapsed timeout)
+                               (sleep 1)
+                               (loop (+ elapsed 1)))
+                              (else
+                               (warn (string-append
+                                      "Timed out waiting for Guix Qubes session socket: "
+                                      socket))
+                               (exit 1))))))))
+                ;; The upstream RPC entry is a symlink into /usr/bin.  Replace
+                ;; the entry itself; otherwise call-with-output-file follows the
+                ;; symlink and truncates the target helper instead.
+                (false-if-exception (delete-file wait-for-session))
+                (call-with-output-file wait-for-session
+                  (lambda (port)
+                    (display "#!/run/current-system/profile/bin/guile -s\n!#\n"
+                             port)
+                    (write wait-for-session-body port)
+                    (newline port)))
+                (chmod wait-for-session #o755)
+                (let ((st (lstat wait-for-session))
+                      (text (call-with-input-file wait-for-session
+                              get-string-all)))
+                  (unless (eq? (stat:type st) 'regular)
+                    (error "qubes.WaitForSession must be a regular script"))
+                  (unless (string-contains text
+                                           "/var/run/qubes/qrexec-server.")
+                    (error "qubes.WaitForSession script body was not emitted"))))
+              (let ()
+                (define (path-exists? path)
+                  (false-if-exception (lstat path)))
+
+              (define (non-symlink-directory? path)
+                (let ((st (false-if-exception (lstat path))))
+                  (and st (eq? (stat:type st) 'directory))))
+
+              (define (delete-path path)
+                (when (path-exists? path)
+                  (if (non-symlink-directory? path)
+                      (delete-file-recursively path)
+                      (delete-file path))))
+
+              (define (merge-tree source destination)
+                (when (path-exists? source)
+                  (mkdir-p destination)
+                  (for-each
+                   (lambda (name)
+                     (let ((from (string-append source "/" name))
+                           (to (string-append destination "/" name)))
+                       (if (and (non-symlink-directory? from)
+                                (non-symlink-directory? to))
+                           (begin
+                             (merge-tree from to)
+                             (rmdir from))
+                           (begin
+                             (delete-path to)
+                             (rename-file from to)))))
+                   (scandir source
+                            (lambda (entry)
+                              (not (member entry '("." ".."))))))))
+
+              (define (python-version-directory root)
+                (let* ((lib (string-append root "/lib"))
+                       (entries
+                        (and (path-exists? lib)
+                             (scandir lib
+                                      (lambda (entry)
+                                        (string-prefix? "python" entry))))))
+                  (and entries (pair? entries) (car entries))))
+
+              (define (python-site-packages root python-directory)
+                (let ((site (string-append root "/lib/" python-directory
+                                           "/site-packages")))
+                  (and (path-exists? site) site)))
+
+              (define (directory-entries directory)
+                (or (false-if-exception
+                     (scandir directory
+                              (lambda (entry)
+                                (not (member entry '("." ".."))))))
+                    '()))
+
+              (define (find-directory root name)
+                (let loop ((directory root))
+                  (and (path-exists? directory)
+                       (or (and (string=? (basename directory) name)
+                                directory)
+                           (any (lambda (entry)
+                                  (let ((child
+                                         (string-append directory "/" entry)))
+                                    (and (non-symlink-directory? child)
+                                         (loop child))))
+                                (directory-entries directory))))))
+
+              (define (read-text path)
+                (call-with-input-file path get-string-all))
+
+              (define (write-text path text)
+                (call-with-output-file path
+                  (lambda (port)
+                    (display text port))))
+
+              (define (replace-once text needle replacement context)
+                (let ((index (string-contains text needle)))
+                  (unless index
+                    (error "expected text not found" context))
+                  (string-append (substring text 0 index)
+                                 replacement
+                                 (substring text
+                                            (+ index (string-length needle))))))
+
+              (define (python-quote text)
+                (call-with-output-string
+                  (lambda (port)
+                    (display "'" port)
+                    (string-for-each
+                     (lambda (char)
+                       (case char
+                         ((#\\ #\')
+                          (display "\\" port)
+                          (display char port))
+                         ((#\newline)
+                          (display "\\n" port))
+                         (else
+                          (display char port))))
+                     text)
+                    (display "'" port))))
+
+              (define (python-list entries)
+                (string-append "[" (string-join (map python-quote entries) ", ")
+                               "]"))
+
+              (define python-directory
+                (or (python-version-directory #$python-pyinotify)
+                    (error "could not determine Python site-packages version")))
+              (define site
+                (string-append #$output "/lib/" python-directory
+                               "/site-packages"))
+              (define pythonpath
+                (cons site
+                      (filter-map
+                       (lambda (root)
+                         (python-site-packages root python-directory))
+                       (list #$python-pyinotify))))
+
+              (mkdir-p site)
+              (let ((qrexec-source
+                     (find-directory (string-append #$output "/gnu/store")
+                                     "qrexec")))
+                (unless qrexec-source
+                  (error "qrexec Python package was not installed"))
+                (delete-path (string-append site "/qrexec"))
+                (copy-recursively qrexec-source
+                                  (string-append site "/qrexec")))
+              (for-each
+               (lambda (pair)
+                 (merge-tree (string-append #$output "/" (car pair))
+                             (string-append #$output "/" (cdr pair))))
+               '(("usr/bin" . "bin")
+                 ("usr/lib/qubes" . "lib/qubes")
+                 ("usr/lib/tmpfiles.d" . "lib/tmpfiles.d")
+                 ("usr/include" . "include")
+                 ("usr/share" . "share")))
+              (let ((bindir (string-append #$output "/bin")))
+                (when (path-exists? bindir)
+                  (for-each
+                   (lambda (name)
+                     (let* ((script (string-append bindir "/" name))
+                            (text (false-if-exception (read-text script))))
+                       (when (and text
+                                  (string-prefix? "#!/usr/bin/python3" text)
+                                  (string-contains text "from qrexec."))
+                         (write-text
+                          script
+                          (replace-once
+                           text
+                           "\nfrom qrexec."
+                           (string-append "\nimport sys\nsys.path[:0] = "
+                                          (python-list pythonpath)
+                                          "\nfrom qrexec.")
+                           script)))))
+                   (scandir bindir
+                            (lambda (entry)
+                              (not (member entry '("." ".."))))))))
+                (delete-path (string-append #$output "/gnu"))
+                (delete-path (string-append #$output "/usr"))))))))
+    (native-inputs (list pkg-config gzip python-setuptools))
     (inputs (list bash-minimal linux-pam python-pyinotify qubes-libvchan-xen
                   python-wrapper))
     (home-page "https://www.qubes-os.org/")
@@ -511,17 +797,50 @@ shutil.rmtree(out / 'usr', ignore_errors=True)"))))))
       ;; The agent-linux tree is mostly VM filesystem, init, and hook
       ;; integration; its validation is integration-level in a Qubes TemplateVM.
       #:tests? #f
+      #:modules '((guix build gnu-build-system)
+                  (guix build utils)
+                  (ice-9 ftw)
+                  (ice-9 textual-ports)
+                  (srfi srfi-1)
+                  (srfi srfi-13))
       #:phases
       #~(modify-phases %standard-phases
           (delete 'configure)
-          (add-after 'unpack 'dereference-guix-skel-in-home-init
+          (add-after 'unpack 'normalize-guix-skel-in-home-init
             (lambda _
               ;; Guix exposes /etc/skel as a generated symlink to a store
-              ;; directory.  Qubes' home initializer uses cp -a -T, which would
-              ;; otherwise preserve that top-level symlink as the user's home.
+              ;; directory and may include store-backed entries below it.
+              ;; Qubes' home initializer uses cp -a -T, which would otherwise
+              ;; preserve read-only store permissions in the persistent home.
               (substitute* "init/functions"
                 (("cp \"-af\\$enable_selinux\" -T /etc/skel \"\\$home_root/\\$homedirwithouthome\"")
-                 "skel_source=$(readlink -f /etc/skel || echo /etc/skel)\n            cp \"-af$enable_selinux\" -T \"$skel_source\" \"$home_root/$homedirwithouthome\""))))
+                 "skel_source=$(readlink -f /etc/skel || echo /etc/skel)\n            cp \"-afL$enable_selinux\" -T \"$skel_source\" \"$home_root/$homedirwithouthome\""))))
+          (add-after 'normalize-guix-skel-in-home-init 'make-guix-skel-owner-writable
+            (lambda _
+              ;; Store directories are intentionally read-only.  Once copied
+              ;; into /rw, the private home skeleton must behave like normal
+              ;; per-user state so Guix and desktop tools can create entries
+              ;; below ~/.config and ~/.cache.
+              (substitute* "init/functions"
+                (("            chmod 700 \"\\$home_root/\\$homedirwithouthome\" &"
+                  all)
+                 (string-append
+                  "            chmod -R u+rwX \"$home_root/$homedirwithouthome\" || return 73\n"
+                  all
+                  )))))
+          (add-after 'unpack 'support-networking-without-systemd
+            (lambda _
+              ;; Qubes' setup-ip applies network sysctls through
+              ;; systemd-sysctl on systemd templates.  Native Guix templates
+              ;; apply these settings with qubes-network-sysctl-service-type.
+              (substitute* "network/setup-ip"
+                (("/lib/systemd/systemd-sysctl") ":"))
+              ;; The NetVM hotplug path re-applies the same hardening to newly
+              ;; attached vif devices.  Keep that behavior by replacing only
+              ;; the systemd executable with a Guile helper installed below.
+              (substitute* "network/vif-route-qubes"
+                (("/usr/lib/systemd/systemd-sysctl")
+                 "/usr/lib/qubes/qubes-network-interface-sysctl"))))
           (replace 'build
             (lambda _
               (invoke "make" "-C" "qubes-rpc"
@@ -541,6 +860,16 @@ shutil.rmtree(out / 'usr', ignore_errors=True)"))))))
           (replace 'install
             (lambda _
               (invoke "make" "install-corevm"
+                      (string-append "DESTDIR=" #$output)
+                      "SBINDIR=/bin"
+                      "LIBDIR=/lib"
+                      "SYSLIBDIR=/lib"
+                      "SYSTEM_DROPIN_DIR=/lib/systemd/system"
+                      "USER_DROPIN_DIR=/lib/systemd/user"
+                      "PYTHON=python3"
+                      "DIST=guix"
+                      "release=Guix")
+              (invoke "make" "install-netvm"
                       (string-append "DESTDIR=" #$output)
                       "SBINDIR=/bin"
                       "LIBDIR=/lib"
@@ -574,171 +903,397 @@ shutil.rmtree(out / 'usr', ignore_errors=True)"))))))
                       "LIBDIR=/lib"
                       "SYSCONFDIR=/etc"
                       "STATEDIR=/var/lib")
-              (setenv "QUBES_VM_CORE_OUTPUT" #$output)
-              (setenv "QUBES_VM_CORE_EXTRA_PYTHON_ROOTS"
-                      (string-join (list #$qubesdb-vm #$python-pygobject
-                                         #$python-pyxdg)
-                                   ":"))
-              (invoke "python3" "-c"
-                      "import os, shutil, sys
-out = os.environ['QUBES_VM_CORE_OUTPUT']
-extra_roots = [root for root in os.environ['QUBES_VM_CORE_EXTRA_PYTHON_ROOTS'].split(':') if root]
-site = os.path.join(out, 'lib', f'python{sys.version_info.major}.{sys.version_info.minor}', 'site-packages')
-extra_pythonpath = [os.path.join(root, 'lib', f'python{sys.version_info.major}.{sys.version_info.minor}', 'site-packages') for root in extra_roots]
-def merge_tree(source, destination):
-    if not os.path.exists(source):
-        return
-    os.makedirs(destination, exist_ok=True)
-    for name in os.listdir(source):
-        from_path = os.path.join(source, name)
-        to_path = os.path.join(destination, name)
-        if os.path.isdir(from_path) and not os.path.islink(from_path) and os.path.isdir(to_path) and not os.path.islink(to_path):
-            merge_tree(from_path, to_path)
-            os.rmdir(from_path)
-        else:
-            if os.path.lexists(to_path):
-                if os.path.isdir(to_path) and not os.path.islink(to_path):
-                    shutil.rmtree(to_path)
-                else:
-                    os.unlink(to_path)
-            os.rename(from_path, to_path)
-for source, destination in [('usr/bin', 'bin'), ('usr/lib', 'lib'), ('usr/share', 'share')]:
-    merge_tree(os.path.join(out, source), os.path.join(out, destination))
-shutil.rmtree(os.path.join(out, 'usr'), ignore_errors=True)
-os.makedirs(site, exist_ok=True)
-shutil.copytree('build/lib/qubesagent', os.path.join(site, 'qubesagent'), dirs_exist_ok=True)
-bindir = os.path.join(out, 'bin')
-os.makedirs(bindir, exist_ok=True)
-postinstall = os.path.join(out, 'etc', 'qubes-rpc', 'qubes.PostInstall')
-if os.path.exists(postinstall):
-    text = open(postinstall).read()
-    # Qubes RPC services do not necessarily run through a login shell.  Give
-    # post-install hooks the profile-visible commands used by the Guix VM.
-    text = text.replace(
-        '''
+              (let ()
+                (define (path-exists? path)
+                  (false-if-exception (lstat path)))
 
-for script in /etc/qubes/post-install.d/*.sh; do
-''',
-        '''
+              (define (non-symlink-directory? path)
+                (let ((st (false-if-exception (lstat path))))
+                  (and st (eq? (stat:type st) 'directory))))
 
-export PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:/usr/bin:/usr/sbin:/bin:/sbin${PATH:+:$PATH}
+              (define (delete-path path)
+                (when (path-exists? path)
+                  (if (non-symlink-directory? path)
+                      (delete-file-recursively path)
+                      (delete-file path))))
 
-for script in /etc/qubes/post-install.d/*.sh; do
-''')
-    open(postinstall, 'w').write(text)
-postinstall_config = os.path.join(out, 'etc', 'qubes', 'rpc-config',
-                                  'qubes.PostInstall')
-os.makedirs(os.path.dirname(postinstall_config), exist_ok=True)
-with open(postinstall_config, 'w') as config:
-    # The post-install hooks update root-owned template state and may perform
-    # privileged maintenance such as fstrim.  Match the root execution expected
-    # by Qubes integration tests.
-    config.write(\"force-user = 'root'\\n\")
-updates_proxy_forwarder = os.path.join(out, 'lib', 'qubes',
-                                       'guix-updates-proxy-forwarder')
-with open(updates_proxy_forwarder, 'w') as script:
-    script.write('''#!/bin/sh
-exec qrexec-client-vm --use-stdin-socket '' qubes.UpdatesProxy
-''')
-os.chmod(updates_proxy_forwarder, 0o755)
-features_hook = os.path.join(out, 'etc', 'qubes', 'post-install.d',
-                             '10-qubes-core-agent-features.sh')
-if os.path.exists(features_hook):
-    text = open(features_hook).read()
-    if 'supported-service.meminfo-writer=1' not in text:
-        raise SystemExit('Qubes features hook no longer advertises meminfo-writer')
-    text = text.replace(
-        '''advertise_systemd_service() {
-    qsrv=$1
-    shift
-    for unit in \"$@\"; do
-        if systemctl -q is-enabled \"$unit\" 2>/dev/null; then
-            qvm-features-request supported-service.\"$qsrv\"=1
-        fi
-    done
-}
-''',
-        '''advertise_systemd_service() {
-    qsrv=$1
-    shift
-    if ! command -v systemctl >/dev/null 2>&1; then
-        case \"$qsrv\" in
-            updates-proxy-setup)
-                qvm-features-request supported-service.\"$qsrv\"=1
-                ;;
-        esac
-        return
-    fi
-    for unit in \"$@\"; do
-        if systemctl -q is-enabled \"$unit\" 2>/dev/null; then
-            qvm-features-request supported-service.\"$qsrv\"=1
-        fi
-    done
-}
-''')
-    open(features_hook, 'w').write(text)
-features_request = os.path.join(bindir, 'qvm-features-request')
-if os.path.exists(features_request):
-    text = open(features_request).read()
-    pythonpath = [site] + extra_pythonpath
-    text = text.replace(
-        '''import argparse
-''',
-        f'''import sys
-sys.path[:0] = {pythonpath!r}
+              (define (merge-tree source destination)
+                (when (path-exists? source)
+                  (mkdir-p destination)
+                  (for-each
+                   (lambda (name)
+                     (let ((from (string-append source "/" name))
+                           (to (string-append destination "/" name)))
+                       (if (and (non-symlink-directory? from)
+                                (non-symlink-directory? to))
+                           (begin
+                             (merge-tree from to)
+                             (rmdir from))
+                           (begin
+                             (delete-path to)
+                             (rename-file from to)))))
+                   (scandir source
+                            (lambda (entry)
+                              (not (member entry '("." ".."))))))))
 
-import argparse
-''',
-        1)
-    # Native Guix templates use Shepherd, not systemd.  The post-install RPC
-    # itself proves qrexec-agent is active, so preserve feature reporting when
-    # systemctl is absent.
-    text = text.replace(
-        '''def is_active(service):
-    status = subprocess.call([\"systemctl\", \"is-active\", \"--quiet\", service])
-    return status == 0
-''',
-        '''def is_active(service):
-    try:
-        status = subprocess.call([\"systemctl\", \"is-active\", \"--quiet\", service])
-    except FileNotFoundError:
-        return service == \"qubes-qrexec-agent\"
-    return status == 0
-''')
-    open(features_request, 'w').write(text)
-session_autostart = os.path.join(bindir, 'qubes-session-autostart')
-if os.path.exists(session_autostart):
-    text = open(session_autostart).read()
-    pythonpath = [site] + extra_pythonpath
-    text = text.replace(
-        '''import sys
-''',
-        f'''import sys
-sys.path[:0] = {pythonpath!r}
-''',
-        1)
-    open(session_autostart, 'w').write(text)
-for name, module in [('qubes-firewall', 'qubesagent.firewall'), ('qubes-vmexec', 'qubesagent.vmexec')]:
-    with open(os.path.join(bindir, name), 'w') as script:
-        pythonpath = [site] + extra_pythonpath
-        script.write(f'''#!/usr/bin/env python3
-import sys
-sys.path[:0] = {pythonpath!r}
-from {module} import main
-if __name__ == '__main__':
-    raise SystemExit(main())
-''')
-    os.chmod(os.path.join(bindir, name), 0o755)
-shutil.rmtree(os.path.join(out, 'gnu'), ignore_errors=True)
-for stale in ('qubes-firewall', 'qubes-vmexec'):
-    try:
-        os.remove(os.path.join(out, 'usr', 'bin', stale))
-    except FileNotFoundError:
-        pass"))))))
+              (define (python-version-directory root)
+                (let* ((lib (string-append root "/lib"))
+                       (entries
+                        (and (path-exists? lib)
+                             (scandir lib
+                                      (lambda (entry)
+                                        (string-prefix? "python" entry))))))
+                  (and entries (pair? entries) (car entries))))
+
+              (define (python-site-packages root python-directory)
+                (let ((site (string-append root "/lib/" python-directory
+                                           "/site-packages")))
+                  (and (path-exists? site) site)))
+
+              (define (read-text path)
+                (call-with-input-file path get-string-all))
+
+              (define (write-text path text)
+                (mkdir-p (dirname path))
+                (call-with-output-file path
+                  (lambda (port)
+                    (display text port))))
+
+              (define (replace-once text needle replacement context)
+                (let ((index (string-contains text needle)))
+                  (unless index
+                    (error "expected text not found" context))
+                  (string-append (substring text 0 index)
+                                 replacement
+                                 (substring text
+                                            (+ index (string-length needle))))))
+
+              (define (patch-file-once path needle replacement)
+                (write-text path
+                            (replace-once (read-text path)
+                                          needle
+                                          replacement
+                                          path)))
+
+              (define (python-quote text)
+                (call-with-output-string
+                  (lambda (port)
+                    (display "'" port)
+                    (string-for-each
+                     (lambda (char)
+                       (case char
+                         ((#\\ #\')
+                          (display "\\" port)
+                          (display char port))
+                         ((#\newline)
+                          (display "\\n" port))
+                         (else
+                          (display char port))))
+                     text)
+                    (display "'" port))))
+
+              (define (python-list entries)
+                (string-append "[" (string-join (map python-quote entries) ", ")
+                               "]"))
+
+              (define (write-guile-script path expression)
+                (mkdir-p (dirname path))
+                (call-with-output-file path
+                  (lambda (port)
+                    (display "#!/run/current-system/profile/bin/guile -s\n" port)
+                    (display "!#\n" port)
+                    (write expression port)
+                    (newline port)))
+                (chmod path #o755))
+
+              (define (write-python-wrapper path pythonpath module)
+                (write-text
+                 path
+                 (string-append
+                  "#!" (which "python3") "\n"
+                  "import sys\n"
+                  "sys.path[:0] = " (python-list pythonpath) "\n"
+                  "from " module " import main\n"
+                  "if __name__ == '__main__':\n"
+                  "    raise SystemExit(main())\n"))
+                (chmod path #o755))
+
+              (define python-directory
+                (or (python-version-directory #$python-pygobject)
+                    (error "could not determine Python site-packages version")))
+              (define site
+                (string-append #$output "/lib/" python-directory
+                               "/site-packages"))
+              (define extra-pythonpath
+                (filter-map
+                 (lambda (root)
+                   (python-site-packages root python-directory))
+                 (list #$qubesdb-vm #$python-dbus
+                       #$python-pygobject #$python-pyxdg)))
+              (define pythonpath
+                (cons site extra-pythonpath))
+              (define bindir
+                (string-append #$output "/bin"))
+              (define qubes-libdir
+                (string-append #$output "/lib/qubes"))
+
+              (for-each
+               (lambda (pair)
+                 (merge-tree (string-append #$output "/" (car pair))
+                             (string-append #$output "/" (cdr pair))))
+               '(("usr/bin" . "bin")
+                 ("usr/lib" . "lib")
+                 ("usr/share" . "share")))
+              (delete-path (string-append #$output "/usr"))
+              (mkdir-p site)
+              (delete-path (string-append site "/qubesagent"))
+              (copy-recursively "build/lib/qubesagent"
+                                (string-append site "/qubesagent"))
+              (mkdir-p bindir)
+
+              (let ((postinstall
+                     (string-append #$output
+                                    "/etc/qubes-rpc/qubes.PostInstall")))
+                (when (path-exists? postinstall)
+                  ;; Qubes RPC services do not necessarily run through a login
+                  ;; shell.  Give post-install hooks the profile-visible commands
+                  ;; used by the Guix VM.
+                  (patch-file-once
+                   postinstall
+                   "\nfor script in /etc/qubes/post-install.d/*.sh; do\n"
+                   "\nexport PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin:/usr/bin:/usr/sbin:/bin:/sbin${PATH:+:$PATH}\n\nfor script in /etc/qubes/post-install.d/*.sh; do\n")))
+
+              (let ((filecopy
+                     (string-append #$output
+                                    "/etc/qubes-rpc/qubes.Filecopy")))
+                (when (path-exists? filecopy)
+                  ;; Guix exposes setuid/setgid programs from a runtime
+                  ;; privileged directory instead of trusting mode bits inside
+                  ;; the store.  Keep upstream's absolute RPC service path
+                  ;; working by resolving qfile-unpacker through that runtime
+                  ;; copy first.
+                  (patch-file-once
+                   filecopy
+                   "exec /usr/lib/qubes/qfile-unpacker $arg\n"
+                   "for unpacker in /run/setuid-programs/qfile-unpacker /run/privileged/bin/qfile-unpacker /usr/lib/qubes/qfile-unpacker; do\n    if [ -x \"$unpacker\" ]; then\n        exec \"$unpacker\" $arg\n    fi\ndone\necho \"qfile-unpacker not found\" >&2\nexit 127\n")))
+
+              (write-text
+               (string-append #$output "/etc/qubes/rpc-config/qubes.PostInstall")
+               "force-user = 'root'\n")
+
+              (mkdir-p qubes-libdir)
+              (write-guile-script
+               (string-append qubes-libdir "/guix-updates-proxy-forwarder")
+               '(begin
+                  (execl "/run/current-system/profile/bin/qrexec-client-vm"
+                         "qrexec-client-vm"
+                         "--use-stdin-socket"
+                         ""
+                         "qubes.UpdatesProxy")))
+              (let ((repo-query
+                     (string-append qubes-libdir
+                                    "/qvm-template-repo-query"))
+                    (dnf-repo-query
+                     (string-append qubes-libdir
+                                    "/qvm-template-repo-query.dnf"))
+                    (guix-repo-query
+                     (string-append qubes-libdir
+                                    "/qvm-template-repo-query-guix")))
+                (copy-file #$%qvm-template-repo-query-guix guix-repo-query)
+                (substitute* guix-repo-query
+                  (("#!/run/current-system/profile/bin/python3")
+                   (string-append "#!" #$python "/bin/python3"))
+                  (("\\[\"curl\"")
+                   (string-append "[\"" #$curl "/bin/curl\""))
+                  (("\\[\"zstd\"")
+                   (string-append "[\"" #$zstd "/bin/zstd\"")))
+                (chmod guix-repo-query #o755)
+                (when (path-exists? repo-query)
+                  (rename-file repo-query dnf-repo-query)
+                  (write-text
+                   repo-query
+                   (string-append
+                    "#!" #$bash-minimal "/bin/bash\n"
+                    "set -e\n"
+                    "script_dir=\"$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd -P)\"\n"
+                    "if command -v dnf5 >/dev/null 2>&1 || command -v dnf >/dev/null 2>&1 || command -v dnf4 >/dev/null 2>&1; then\n"
+                    "    exec \"$script_dir/qvm-template-repo-query.dnf\" \"$@\"\n"
+                    "fi\n"
+                    "exec \"$script_dir/qvm-template-repo-query-guix\" \"$@\"\n"))
+                  (chmod repo-query #o755)))
+              (write-guile-script
+               (string-append qubes-libdir
+                              "/qubes-network-interface-sysctl")
+               '(begin
+                  (use-modules (ice-9 match)
+                               (srfi srfi-1)
+                               (srfi srfi-13))
+
+                  (define settings
+                    '(("ipv4" "accept_source_route" . "0")
+                      ("ipv4" "accept_redirects" . "0")
+                      ("ipv4" "secure_redirects" . "0")
+                      ("ipv4" "send_redirects" . "0")
+                      ("ipv4" "drop_unicast_in_l2_multicast" . "1")
+                      ("ipv6" "accept_source_route" . "-1")
+                      ("ipv6" "accept_redirects" . "0")
+                      ("ipv6" "accept_ra" . "0")
+                      ("ipv6" "accept_dad" . "0")
+                      ("ipv6" "autoconf" . "0")
+                      ("ipv6" "drop_unicast_in_l2_multicast" . "1")))
+
+                  (define (warn message)
+                    (display message (current-error-port))
+                    (newline (current-error-port)))
+
+                  (define (arg-prefix arg)
+                    (and (string-prefix? "--prefix=" arg)
+                         (substring arg (string-length "--prefix="))))
+
+                  (define (prefix->target prefix)
+                    (match (string-split prefix #\/)
+                      (("" "net" family "conf" interface)
+                       (cons family interface))
+                      (_ #f)))
+
+                  (define targets
+                    (delete-duplicates
+                     (filter-map prefix->target
+                                 (filter-map arg-prefix
+                                             (cdr (command-line))))
+                     equal?))
+
+                  (define (write-sysctl family interface name value)
+                    (let ((path (string-append "/proc/sys/net/" family
+                                               "/conf/" interface "/"
+                                               name)))
+                      (when (file-exists? path)
+                        (catch #t
+                          (lambda ()
+                            (call-with-output-file path
+                              (lambda (port)
+                                (display value port)
+                                (newline port))))
+                          (lambda (key . args)
+                            (warn (string-append
+                                   "failed to write network sysctl: "
+                                   path))
+                            (exit 1))))))
+
+                  (for-each
+                   (match-lambda
+                     ((family . interface)
+                      (for-each
+                       (lambda (setting)
+                         (when (string=? (car setting) family)
+                           (write-sysctl family interface
+                                         (cadr setting)
+                                         (cddr setting))))
+                       settings)))
+                   targets)))
+              (for-each
+               (lambda (helper)
+                 (let ((destination (string-append qubes-libdir "/" helper)))
+                   (copy-file (string-append "package-managers/" helper)
+                              destination)
+                   (chmod destination #o755)))
+               '("upgrades-installed-check" "upgrades-status-notify"))
+
+              (let ((installed-check
+                     (string-append qubes-libdir "/upgrades-installed-check")))
+                (unless (string-contains (read-text installed-check)
+                                         "## Guix System")
+                  (patch-file-once
+                   installed-check
+                   "elif [ -e /etc/arch-release ]; then\n"
+                   (string-append
+                    "elif [ -e /etc/guix/channels.scm ] || [ -e /run/current-system ]; then\n"
+                    "    ## Guix System\n"
+                    "    # There is no cheap metadata-only Guix System update check comparable to\n"
+                    "    # dnf check-update or apt-get -s upgrade.  The Qubes vmupdate backend\n"
+                    "    # reports system/profile changes while reconfiguring; this helper only\n"
+                    "    # clears the post-update notification state after that succeeds.\n"
+                    "    echo true\n"
+                    "    exit_code=0\n"
+                    "elif [ -e /etc/arch-release ]; then\n"))))
+
+              (let ((features-request
+                     (string-append bindir "/qvm-features-request")))
+                (when (path-exists? features-request)
+                  (patch-file-once
+                   features-request
+                   "import argparse\n"
+                   (string-append "import sys\nsys.path[:0] = "
+                                  (python-list pythonpath)
+                                  "\n\nimport argparse\n"))
+                  ;; Native Guix templates use Shepherd, not systemd.  The
+                  ;; post-install RPC itself proves qrexec-agent is active, so
+                  ;; preserve feature reporting when systemctl is absent.
+                  (patch-file-once
+                   features-request
+                   "def is_active(service):\n    status = subprocess.call([\"systemctl\", \"is-active\", \"--quiet\", service])\n    return status == 0\n"
+                   "def is_active(service):\n    try:\n        status = subprocess.call([\"systemctl\", \"is-active\", \"--quiet\", service])\n    except FileNotFoundError:\n        return service == \"qubes-qrexec-agent\"\n    return status == 0\n")))
+
+              (let ((session-autostart
+                     (string-append bindir "/qubes-session-autostart")))
+                (when (path-exists? session-autostart)
+                  (patch-file-once
+                   session-autostart
+                   "import sys\n"
+                   (string-append "import sys\nsys.path[:0] = "
+                                  (python-list pythonpath)
+                                  "\n"))))
+              (let ((start-app
+                     (string-append #$output "/etc/qubes-rpc/qubes.StartApp")))
+                (when (path-exists? start-app)
+                  (patch-file-once
+                   start-app
+                   "import sys, os, pwd\n"
+                   (string-append "import sys, os, pwd\nsys.path[:0] = "
+                                  (python-list pythonpath)
+                                  "\n"))))
+              (let ((desktop-run
+                     (string-append bindir "/qubes-desktop-run")))
+                (when (path-exists? desktop-run)
+                  (patch-file-once
+                   desktop-run
+                   "from qubesagent.xdg import launch\nimport sys\n"
+                   (string-append "import sys\nsys.path[:0] = "
+                                  (python-list pythonpath)
+                                  "\nfrom qubesagent.xdg import launch\n"))))
+              (let ((xdg-launcher
+                     (string-append site "/qubesagent/xdg.py")))
+                (when (path-exists? xdg-launcher)
+                  (patch-file-once
+                   xdg-launcher
+                   "import functools\n\n"
+                   (string-append
+                    "import functools\n"
+                    "import os\n\n"
+                    "_gi_typelib_path = '" #$glib
+                    "/lib/girepository-1.0'\n"
+                    "os.environ['GI_TYPELIB_PATH'] = _gi_typelib_path + "
+                    "(':' + os.environ['GI_TYPELIB_PATH'] "
+                    "if os.environ.get('GI_TYPELIB_PATH') else '')\n\n"))))
+
+              (for-each
+               (lambda (entry)
+                 (write-python-wrapper
+                  (string-append bindir "/" (car entry))
+                  pythonpath
+                  (cdr entry)))
+               '(("qubes-firewall" . "qubesagent.firewall")
+                 ("qubes-vmexec" . "qubesagent.vmexec")))
+              (delete-path (string-append #$output "/gnu"))
+              (for-each
+               (lambda (stale)
+                 (delete-path (string-append #$output "/usr/bin/" stale)))
+               '("qubes-firewall" "qubes-vmexec"))))))))
     (native-inputs (list desktop-file-utils pandoc pkg-config python-wrapper
-                         shared-mime-info))
-    (inputs (list bash-minimal coreutils gawk grep iproute procps sed
-                  python-pygobject python-pyxdg
+                         python-setuptools shared-mime-info))
+    (inputs (list bash-minimal conntrack-tools coreutils gawk grep iproute
+                  glib nftables procps sed python-dbus python-pygobject
+                  python-pyxdg
                   qubes-linux-utils-qrexec
                   qubesdb-vm qubes-vm-qrexec socat))
     (home-page "https://www.qubes-os.org/")
@@ -771,7 +1326,8 @@ for stale in ('qubes-firewall', 'qubes-vmexec'):
      (list
       #:modules '((guix build gnu-build-system)
                   (guix build utils)
-                  (ice-9 ftw))
+                  (ice-9 ftw)
+                  (srfi srfi-13))
       ;; GUI agent tests require a running Qubes GUI/Xen display environment;
       ;; this package build installs the VM-side GUI agent and Xorg helpers.
       #:tests? #f
@@ -856,19 +1412,6 @@ for stale in ('qubes-firewall', 'qubes-vmexec'):
                  "appvm-scripts/etc/X11/xinit/xinitrc.d/20qt-gnome-desktop-session-id.sh"
                  "appvm-scripts/etc/X11/xinit/xinitrc.d/50guivm-windows-prefix.sh"
                  "appvm-scripts/etc/X11/xinit/xinitrc.d/60xfce-desktop.sh"))
-              ;; Keep the Arch-style distribution hook for profiles whose
-              ;; xinitrc sources /etc/X11/xinit/xinitrc.d.
-              (call-with-output-file
-                  (string-append #$output
-                                 "/etc/X11/xinit/xinitrc.d/z-qubes-session.sh")
-                (lambda (port)
-                  (display "#!/bin/sh
-echo \"Starting qubes-session...\"
-exec /usr/bin/qubes-session
-" port)))
-              (chmod (string-append #$output
-                                     "/etc/X11/xinit/xinitrc.d/z-qubes-session.sh")
-                     #o755)
               ;; The upstream non-GuiVM path starts xinit through
               ;; qubes-gui-runuser so Xorg itself runs as the default user.
               ;; In this Guix System image there is no distro Xorg wrapper or
@@ -888,7 +1431,7 @@ exec /usr/bin/qubes-session
                 (("qubes-xorg-wrapper \\$DISPLAY_XORG -nolisten")
                  "qubes-xorg-wrapper $DISPLAY_XORG -modulepath /run/current-system/profile/lib/xorg/modules -nolisten")
                 (("exec /usr/bin/qubes-gui-runuser \"\\$DEFAULT_USER\" /bin/sh -l -c \"exec /usr/bin/xinit \\$XSESSION -- /usr/lib/qubes/qubes-xorg-wrapper :0 -nolisten tcp vt07 -wr -config xorg-qubes.conf > ~/.xsession-errors 2>&1\"")
-                 "exec /usr/bin/xinit /usr/bin/qubes-gui-runuser \"$DEFAULT_USER\" /bin/sh -l -c \"exec /usr/bin/qubes-session\" -- /usr/lib/qubes/qubes-xorg-wrapper :0 -modulepath /run/current-system/profile/lib/xorg/modules -nolisten tcp vt07 -wr -config xorg-qubes.conf -ac > \"/home/$DEFAULT_USER/.xsession-errors\" 2>&1"))
+                 "exec /usr/bin/xinit /usr/bin/qubes-gui-runuser \"$DEFAULT_USER\" /usr/bin/env DISPLAY=:0 XDG_CONFIG_DIRS=/run/current-system/profile/etc/xdg XDG_DATA_DIRS=/run/current-system/profile/share GI_TYPELIB_PATH=/run/current-system/profile/lib/girepository-1.0 PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin /usr/bin/qubes-session qubes-session -- /usr/lib/qubes/qubes-xorg-wrapper :0 -modulepath /run/current-system/profile/lib/xorg/modules -nolisten tcp vt07 -wr -config xorg-qubes.conf -ac > \"/home/$DEFAULT_USER/.xsession-errors\" 2>&1"))
               ;; install-common follows the distribution FHS and places the
               ;; agent under /usr.  Guix profiles do not merge /usr/bin into
               ;; /bin, and the compatibility activation links /usr/lib/qubes
@@ -902,6 +1445,55 @@ exec /usr/bin/qubes-session
                                  (string-append #$output "/share"))
               (move-profile-tree (string-append #$output "/usr/include")
                                  (string-append #$output "/include"))
+              (let ((qubes-session
+                     (string-append #$output "/bin/qubes-session")))
+                (when (file-exists? qubes-session)
+                  (substitute*
+                      qubes-session
+                    (("export QUBES_ENV_SOURCED=1\n")
+                     (string-append
+                      "export QUBES_ENV_SOURCED=1\n"
+                      "\n"
+                      "# The native Guix session is started directly from xinit,\n"
+                      "# so make the GUI/profile environment explicit before\n"
+                      "# XDG autostart launches qrexec-fork-server.  Qubes\n"
+                      "# StartApp services inherit that daemon environment.\n"
+                      ": \"${DISPLAY:=:0}\"\n"
+                      ": \"${XDG_CONFIG_DIRS:=/run/current-system/profile/etc/xdg}\"\n"
+                      ": \"${XDG_DATA_DIRS:=/run/current-system/profile/share}\"\n"
+                      ": \"${GI_TYPELIB_PATH:=/run/current-system/profile/lib/girepository-1.0}\"\n"
+                      ": \"${SSL_CERT_DIR:=/etc/ssl/certs}\"\n"
+                      ": \"${SSL_CERT_FILE:=/etc/ssl/certs/ca-certificates.crt}\"\n"
+                      ": \"${GIT_SSL_CAINFO:=/etc/ssl/certs/ca-certificates.crt}\"\n"
+                      ": \"${CURL_CA_BUNDLE:=/etc/ssl/certs/ca-certificates.crt}\"\n"
+                      ": \"${XDG_CACHE_HOME:=/var/tmp/guix-cache-${USER:-user}}\"\n"
+                      "PATH=\"/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin${PATH:+:$PATH}\"\n"
+                      "export DISPLAY XDG_CONFIG_DIRS XDG_DATA_DIRS GI_TYPELIB_PATH\n"
+                      "export SSL_CERT_DIR SSL_CERT_FILE GIT_SSL_CAINFO CURL_CA_BUNDLE XDG_CACHE_HOME PATH\n")))))
+              (let* ((python-site-packages
+                      (lambda (package)
+                        (let* ((python-lib (string-append package "/lib"))
+                               (python-directory
+                                (car (scandir
+                                      python-lib
+                                      (lambda (entry)
+                                        (string-prefix? "python" entry))))))
+                          (string-append python-lib "/" python-directory
+                                         "/site-packages"))))
+                     (pythonpath
+                      (map python-site-packages
+                           (list #$python-xcffib #$python-cffi
+                                 #$python-pycparser)))
+                     (icon-sender
+                      (string-append #$output "/lib/qubes/icon-sender")))
+                (when (file-exists? icon-sender)
+                  (substitute* icon-sender
+                    (("import xcffib")
+                     (string-append "import sys\n"
+                                    "sys.path[:0] = ['"
+                                    (string-join pythonpath "', '")
+                                    "']\n"
+                                    "import xcffib")))))
               ;; Upstream installs these Qubes RPC entries as FHS-relative
               ;; symlinks into /usr/bin.  After normalizing /usr/bin into the
               ;; Guix profile's /bin, keep the qrexec services executable.
@@ -929,7 +1521,7 @@ exec /usr/bin/qubes-session
                   libxdamage libxext libxfixes libxt linux-pam pixman
                   qubes-libvchan-xen qubes-vm-gui-common qubesdb-vm
                   xen-vchan-libs xorg-server))
-    (propagated-inputs (list python-xcffib))
+    (propagated-inputs (list python-cffi python-pycparser python-xcffib))
     (home-page "https://www.qubes-os.org/")
     (synopsis "Qubes GUI agent")
     (description "VM-side Qubes GUI agent for X11 application forwarding.")
@@ -968,7 +1560,7 @@ appmenu discovery in the minimal native GNU Guix System TemplateVM.")
 
 (define %qubes-vm-headless-packages
   (list qubes-libvchan-xen qubes-vm-utils qubesdb-vm qubes-vm-qrexec
-        qubes-vm-core))
+        qubes-vm-core xen-network-hotplug-tools))
 
 (define %qubes-vm-gui-packages
   (append %qubes-vm-headless-packages

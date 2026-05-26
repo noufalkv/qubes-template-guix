@@ -1,0 +1,67 @@
+--- tests/update2.pm
++++ tests/update2.pm
+@@ -159,9 +159,31 @@ sub run {
+     if (get_var("SALT_SYSTEM_TESTS")) {
+         assert_script_run("cp /root/extra-files/update/zsystemtests.py /usr/lib/python3.*/site-packages/vmupdate/agent/source/plugins/");
+     }
++    assert_script_run("if [ -r /root/extra-files/update/core-admin-guix-vmupdate.tgz ]; then tar -C /usr/lib/python3.*/site-packages/vmupdate/agent -xzf /root/extra-files/update/core-admin-guix-vmupdate.tgz; fi");
+ 
+-    assert_script_run("script -c 'qubes-vm-update --force-update --log DEBUG --max-concurrency=2 $targets --show-output' -a -e qubesctl-upgrade.log", timeout => 14400);
+-    upload_logs("qubesctl-upgrade.log");
++    my $vmupdate_status;
++    if (get_var('GUIX_SEQUENTIAL_VMUPDATE', '0') eq '1' && $targets =~ /guix/) {
++        my @vmupdate_targets = split(/,/, $targets =~ s/^--targets=//r);
++        my $qrexec_timeout = get_var('GUIX_VMUPDATE_QREXEC_TIMEOUT', '600');
++        foreach my $target (@vmupdate_targets) {
++            if ($target =~ /^guix(?:-minimal)?$/) {
++                assert_script_run("qvm-prefs $target qrexec_timeout $qrexec_timeout", timeout => 90);
++            }
++        }
++        foreach my $target (@vmupdate_targets) {
++            my $log = "qubesctl-upgrade-$target.log";
++            $vmupdate_status = script_run("script -c 'qubes-vm-update --force-update --log DEBUG --max-concurrency=1 --targets=$target --show-output' -a -e $log", timeout => 14400);
++            upload_logs($log, failok => 1);
++            die "qubes-vm-update failed for $target with status $vmupdate_status" if $vmupdate_status != 0;
++            if ($target =~ /^guix(?:-minimal)?$/) {
++                assert_script_run("qvm-shutdown --wait $target >/dev/null 2>&1 || qvm-kill $target >/dev/null 2>&1 || true", timeout => 900);
++            }
++        }
++    } else {
++        $vmupdate_status = script_run("script -c 'qubes-vm-update --force-update --log DEBUG --max-concurrency=2 $targets --show-output' -a -e qubesctl-upgrade.log", timeout => 14400);
++        upload_logs("qubesctl-upgrade.log", failok => 1);
++        die "qubes-vm-update failed with status $vmupdate_status" if $vmupdate_status != 0;
++    }
+ 
+     # disable all states
+     script_run('rm -f /srv/salt/_tops/base/*');
+@@ -179,7 +201,12 @@ sub run {
+     # with distupgrade package version will be uploaded later anyway
+     if (!get_var("DISTUPGRADE_TEMPLATES")) {
+-        $self->upload_packages_versions;
++        if (get_var('GUIX_SEQUENTIAL_VMUPDATE', '0') eq '1' && $targets =~ /guix/) {
++            my @package_inventory_templates = split(/,/, $targets =~ s/^--targets=//r);
++            $self->upload_packages_versions(templates => \@package_inventory_templates);
++        } else {
++            $self->upload_packages_versions;
++        }
+     }
+ 
+     $self->save_and_upload_log('journalctl -b', 'journalctl.log', {timeout => 120});
+ 
+@@ -196,8 +223,14 @@ sub run {
+         script_run('qvm-shutdown --wait sys-firewall');
+         script_run('qvm-kill sys-whonix');
+         script_run('qvm-kill sys-firewall');
+-        assert_script_run('qvm-start sys-firewall', timeout => 90);
+-        assert_script_run('if qvm-check sys-whonix; then qvm-start sys-whonix; fi', timeout => 90);
++        if (get_var('GUIX_SEQUENTIAL_VMUPDATE', '0') eq '1' && $targets =~ /guix/) {
++            my $service_vm_timeout = get_var('GUIX_VMUPDATE_SERVICE_VM_TIMEOUT', '300');
++            assert_script_run('qvm-start sys-firewall', timeout => $service_vm_timeout);
++            assert_script_run('if qvm-check sys-whonix; then qvm-start sys-whonix; fi', timeout => $service_vm_timeout);
++        } else {
++            assert_script_run('qvm-start sys-firewall', timeout => 90);
++            assert_script_run('if qvm-check sys-whonix; then qvm-start sys-whonix; fi', timeout => 90);
++        }
+         type_string("exit\n");
+         type_string("exit\n");
+     }

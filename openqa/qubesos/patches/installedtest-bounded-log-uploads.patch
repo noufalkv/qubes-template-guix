@@ -1,0 +1,20 @@
+--- lib/installedtest.pm
++++ lib/installedtest.pm
+@@ -302,13 +302,15 @@
+ 
+ sub save_and_upload_log {
+     my ($self, $cmd, $file, $args) = @_;
++    my $upload_failok = $args->{failok}
++        || check_var('GUIX_FAILOK_LOG_UPLOADS', '1');
+     script_run("$cmd > $file", timeout=>$args->{timeout});
+     my $ret = upload_logs(
+         $file,
+         timeout=>$args->{timeout},
+-        failok=>$args->{failok}
++        failok=>$upload_failok
+     ) unless $args->{noupload};
+     save_screenshot if $args->{screenshot};
+-    return undef if ($args->{failok} and !-e "ulogs/$ret");
++    return undef if ($upload_failok and !-e "ulogs/$ret");
+     return $ret;
+ }

@@ -7,7 +7,7 @@ use warnings;
 require 'qubesdistribution.pm';
 use parent -norequire, 'qubesdistribution';
 
-use testapi qw(get_var type_password type_string wait_serial);
+use testapi qw(assert_screen get_var match_has_tag send_key type_password type_string wait_serial);
 
 sub init {
     my ($self) = @_;
@@ -18,6 +18,24 @@ sub init {
 
 sub activate_console {
     my ($self, $console) = @_;
+
+    if ($console eq 'root-console') {
+        $testapi::password = get_var('QUBES_DOM0_PASSWORD', 'qubes');
+
+        assert_screen ['tty3-selected', 'text-logged-in-root', 'text-login'], 60;
+        if (match_has_tag('tty3-selected') || match_has_tag('text-login')) {
+            type_string("root\n");
+            assert_screen 'password-prompt', 30;
+            type_password();
+            send_key('ret');
+        }
+        assert_screen 'text-logged-in-root', 60;
+        type_string("\n", max_interval => 100);
+        sleep 2;
+        type_string("export TERM=dumb; PS1='root# '\n", max_interval => 100);
+        sleep 2;
+        return;
+    }
 
     if ($console eq 'root-virtio-terminal') {
         my $prompt = 'root# ';
@@ -44,6 +62,13 @@ sub activate_console {
     }
 
     return $self->SUPER::activate_console($console);
+}
+
+sub console_selected {
+    my ($self, $console, %args) = @_;
+
+    return if $console eq 'root-console';
+    return $self->SUPER::console_selected($console, %args);
 }
 
 1;

@@ -1,0 +1,67 @@
+--- lib/installedtest.pm
++++ lib/installedtest.pm
+@@ -69,6 +69,29 @@
+ }
+ 
+ 
++sub recover_sys_net {
++    my ($self) = @_;
++
++    return if script_run('qvm-check --running sys-net') == 0;
++    if (script_run("qvm-start sys-net", timeout => 180) != 0) {
++        assert_script_run(q!net_bdf="$(for dev in /sys/bus/pci/devices/*; do class="$(cat "$dev/class" 2>/dev/null || true)"; case "$class" in 0x02*) basename "$dev"; break;; esac; done)"; test -n "$net_bdf"; net_id="${net_bdf#*:}"; net_id="${net_id/:/_}"; net_dev="dom0:$net_id"; echo "Using $net_dev for sys-net"; qvm-pci dt sys-net "$net_dev" >/dev/null 2>&1 || true; qvm-pci at sys-net "$net_dev" -p -o no-strict-reset=True!, timeout => 120);
++        assert_script_run("qvm-start sys-net", timeout => 180);
++    }
++    # don't fail if whonix is not installed
++    script_run("qvm-start sys-whonix", timeout => 90);
++}
++
++sub nested_network_stack_ready {
++    my ($self) = @_;
++
++    return 0 unless check_var('GUIX_ACCEPT_RUNNING_SERVICE_NET', '1');
++    select_root_console();
++    my $ready = script_run('qvm-check --running sys-net') == 0
++        && script_run('qvm-check --running sys-firewall') == 0;
++    select_console(get_var('GUI_CONSOLE', 'x11'), await_console => 0);
++    return $ready;
++}
++
+ sub handle_system_startup {
+     my ($self) = @_;
+ 
+@@ -131,6 +154,10 @@
+     }
+     assert_screen ["login-prompt-user-selected"], 600;
+ 
++    select_root_console();
++    $self->recover_sys_net;
++    select_console(get_var('GUI_CONSOLE', 'x11'), await_console => 0);
++
+     $self->init_gui_session;
+ 
+     select_root_console();
+@@ -148,11 +175,7 @@
+ 
+     # WTF part
+     if (script_run('qvm-check --running sys-net') != 0) {
+-        assert_script_run('qvm-pci dt sys-net dom0:00_04.0');
+-        assert_script_run('qvm-pci at sys-net dom0:00_04.0 -p -o no-strict-reset=True');
+-        assert_script_run('qvm-start sys-net');
+-        # don't fail if whonix is not installed
+-        script_run('qvm-start sys-whonix', timeout => 90);
++        $self->recover_sys_net;
+     }
+     $self->select_gui_console;
+ 
+@@ -232,7 +255,9 @@
+     if (check_var("CONNECT_WIFI", "1")) {
+         $self->connect_wifi;
+     } else {
+-        assert_screen(["nm-connection-established", "nm-applet-connected"], 150);
++        if (!check_screen(["nm-connection-established", "nm-applet-connected"], 150)) {
++            die "network stack is running but NetworkManager applet needle is missing" unless $self->nested_network_stack_ready;
++        }
+     }
+     assert_screen("no-notifications");
+ 

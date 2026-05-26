@@ -62,21 +62,17 @@ echo PROCS
 ps -ef | grep -E 'socat|guix-updates|qrexec|shepherd' | grep -v grep || true
 echo HERD
 herd status qubes-updates-proxy-forwarder || true
-herd status qubes-guix-update-proxy || true
 herd status guix-daemon || true
 herd status qubes-network-uplink || true
 echo GUIX_PROXY_CONFIG
-ls -l /run/qubes/bin/guix /etc/profile.d/qubes-guix-update-proxy.sh || true
-sed -n '1,80p' /run/qubes/bin/guix 2>/dev/null || true
-sed -n '1,80p' /etc/profile.d/qubes-guix-update-proxy.sh 2>/dev/null || true
+ps -ef | grep '[g]uix-daemon' || true
+ls -l /etc/profile.d/qubes-guix-update-proxy.sh /run/qubes/bin/guix 2>/dev/null || true
 pid=\$(pgrep -x guix-daemon | head -n 1 || true)
 if [ -n "\$pid" ]; then
     tr '\\0' '\\n' <"/proc/\$pid/environ" | grep -E '^(http|https)_proxy=' || true
 fi
 echo LOG_UPDATES
 cat /var/log/qubes-updates-proxy-forwarder.log || true
-echo LOG_GUIX_PROXY
-cat /var/log/qubes-guix-update-proxy.log || true
 echo LOG_NET
 cat /var/log/qubes-network-uplink.log || true
 __GUEST_DIAG__

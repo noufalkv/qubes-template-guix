@@ -26,7 +26,7 @@ sub checked_shell_command {
 }
 
 sub serial_output_path {
-    return get_var('QUBES_DOM0_SERIAL_OUTPUT_PATH', "/dev/$testapi::serialdev");
+    return get_var('QUBES_DOM0_SERIAL_OUTPUT_PATH', '/root/openqa-guix-serial-output');
 }
 
 sub shell_simple_path {
@@ -45,20 +45,34 @@ sub prepare_serial_output_path {
     my $serial_path = "/dev/$testapi::serialdev";
     my $output_path = serial_output_path();
     my $command_interval = get_var('QUBES_DOM0_TYPE_MAX_INTERVAL', 50);
-    my $ready = sprintf('oqserial%06d', ++$serial_copy_counter);
+    my @candidates = ($serial_path, '/dev/console', '/dev/ttyS0', '/dev/xvc0');
+    my %seen;
 
-    return if $output_path eq $serial_path;
+    @candidates = grep { !$seen{$_}++ } @candidates;
 
-    for my $attempt (1 .. 3) {
-        type_string('ln -sf ' . shell_simple_path($serial_path) . ' ' . shell_simple_path($output_path)
-            . " && echo $ready > " . shell_simple_path($serial_path) . "\n",
-            max_interval => $command_interval);
-        if (wait_serial(qr/\Q$ready\E/, timeout => 60, quiet => 1)) {
+    for my $candidate (@candidates) {
+        my $safe_candidate = shell_simple_path($candidate);
+        my $safe_output = shell_simple_path($output_path);
+
+        for my $attempt (1 .. 3) {
+            my $ready = sprintf('oqserial%06d', ++$serial_copy_counter);
+            my $prepare_cmd;
+
+            if ($output_path =~ m{\A/dev/}) {
+                next unless $output_path eq $candidate;
+                $prepare_cmd = "test -w $safe_candidate && echo $ready > $safe_candidate";
+            } else {
+                $prepare_cmd = "test -w $safe_candidate && ln -sf $safe_candidate $safe_output && echo $ready > $safe_output";
+            }
+
+            type_string("$prepare_cmd\n", max_interval => $command_interval);
+            if (wait_serial(qr/\Q$ready\E/, timeout => 60, quiet => 1)) {
+                settle_dom0_console();
+                return;
+            }
+            send_key('ctrl-c');
             settle_dom0_console();
-            return;
         }
-        send_key('ctrl-c');
-        settle_dom0_console();
     }
 
     die "dom0 serial output path could not be prepared: $output_path";
@@ -149,53 +163,72 @@ sub append_serial_heredoc {
     settle_dom0_console();
 }
 
+sub stage_dom0_file_b64 {
+    my ($content, $dest, $mode, $label) = @_;
+    my $sha256 = sha256_hex($content);
+    my $b64 = encode_base64($content, '');
+    my @lines = ($b64 =~ /.{1,76}/g);
+    my $b64_dest = "$dest.b64";
+    my $tmp_dest = "$dest.tmp";
+    my $lines_per_chunk = get_var('QUBES_DOM0_B64_LINES_PER_CHUNK', 8);
+    my $transfer_attempts = get_var('QUBES_DOM0_B64_TRANSFER_ATTEMPTS', 3);
+
+    $label =~ s/[^A-Za-z0-9]/_/g;
+
+    if ($lines_per_chunk !~ /\A[1-9][0-9]*\z/) {
+        $lines_per_chunk = 8;
+    }
+    if ($transfer_attempts !~ /\A[1-9][0-9]*\z/) {
+        $transfer_attempts = 3;
+    }
+
+    my $decode = join(' ',
+        'rm -f', shell_quote($tmp_dest) . ';',
+        'base64 -d', shell_quote($b64_dest), '>', shell_quote($tmp_dest) . ';',
+        'actual="$(sha256sum ' . shell_quote($tmp_dest) . ' | awk ' . shell_quote('{print $1}') . ')";',
+        'if [ "$actual" !=', shell_quote($sha256), ']; then',
+        'echo', shell_quote("hash mismatch for $dest: expected $sha256 actual \$actual") . ';',
+        'exit 1;',
+        'fi;',
+        'chmod', shell_quote($mode), shell_quote($tmp_dest) . ';',
+        'mv -f', shell_quote($tmp_dest), shell_quote($dest) . ';',
+        'rm -f', shell_quote($b64_dest));
+
+    for my $attempt (1 .. $transfer_attempts) {
+        my @pending = @lines;
+        dom0_assert_script_run('rm -f ' . shell_quote($tmp_dest) . ' ' . shell_quote($b64_dest) . ' && : > ' . shell_quote($b64_dest),
+            timeout => 60);
+
+        while (@pending) {
+            my @chunk = splice @pending, 0, $lines_per_chunk;
+            append_serial_heredoc($b64_dest, join("\n", @chunk) . "\n", $label);
+        }
+
+        my $status = dom0_script_run(checked_shell_command($decode), timeout => 120);
+        return if defined $status && $status == 0;
+
+        last if $attempt >= $transfer_attempts;
+        record_info('stage', "Retrying checked dom0 transfer for $dest after checksum/decode failure");
+    }
+
+    die "checked dom0 transfer failed for $dest";
+}
+
 sub stage_dom0_command_script {
     my ($cmd) = @_;
     my $script_path = sprintf('/tmp/openqa-dom0-cmd-%06d.sh', $dom0_command_counter);
-    my $quoted_script_path = shell_quote($script_path);
-    my $serial_output = shell_simple_path(serial_output_path());
-    my $ready = sprintf('oqcmd%06dready', $dom0_command_counter);
+    my $content = "#!/usr/bin/env bash\n$cmd\n";
 
-    for my $attempt (1 .. 3) {
-        type_string(": > $quoted_script_path && chmod 0700 $quoted_script_path && echo $ready > $serial_output\n",
-            max_interval => get_var('QUBES_DOM0_TYPE_MAX_INTERVAL', 50));
-        if (wait_serial(qr/\Q$ready\E/, timeout => 60)) {
-            settle_dom0_console();
-            append_serial_heredoc($script_path, "#!/usr/bin/env bash\n$cmd\n", 'CMD');
-            return $script_path;
-        }
-        send_key('ctrl-c');
-        settle_dom0_console();
-    }
-
-    die "dom0 command script could not be initialized: $script_path";
+    stage_dom0_file_b64($content, $script_path, '0700', 'CMD');
+    return $script_path;
 }
 
 sub stage_data_file {
     my ($name, $dest) = @_;
     my $content = read_data_file($name);
-    my $sha256 = sha256_hex($content);
-    my $b64 = encode_base64($content, '');
-    my @lines = ($b64 =~ /.{1,76}/g);
-    my $b64_dest = "$dest.b64";
-    my $label = $name;
-    $label =~ s/[^A-Za-z0-9]/_/g;
 
     record_info('stage', "Copying $name to dom0 serial console");
-    dom0_assert_script_run(': > ' . shell_quote($b64_dest), timeout => 60);
-
-    while (@lines) {
-        my @chunk = splice @lines, 0, 40;
-        append_serial_heredoc($b64_dest, join("\n", @chunk) . "\n", $label);
-    }
-
-    my $decode = join(' ',
-        'base64 -d', shell_quote($b64_dest), '>', shell_quote($dest) . ';',
-        'chmod 0700', shell_quote($dest) . ';',
-        'actual="$(sha256sum ' . shell_quote($dest) . ' | awk ' . shell_quote('{print $1}') . ')";',
-        'test "$actual" =', shell_quote($sha256) . ';',
-        'rm -f', shell_quote($b64_dest));
-    dom0_assert_script_run(checked_shell_command($decode), timeout => 120);
+    stage_dom0_file_b64($content, $dest, '0700', $name);
 }
 
 sub rpm_asset_mount_command {
@@ -237,6 +270,8 @@ sub stage_rpm_asset_files {
 
     push @files, 'python3-nose2.rpm'
         if get_var('GUIX_RUN_QUBES_SYSTEM_TESTS', '0') eq '1';
+    push @files, 'core-admin-guix-vmupdate.tgz'
+        if get_var('GUIX_CORE_ADMIN_BACKEND', '0') eq '1';
 
     my $file_words = join(' ', map { shell_quote($_) } @files);
     my $copy_files = join("\n",
@@ -280,11 +315,61 @@ sub dom0_wait_for_qubes_cli {
     die "qvm-ls did not return before timeout";
 }
 
+sub install_core_admin_guix_backend {
+    my $serial_output = shell_simple_path(serial_output_path());
+    my $patch_core_admin_cmd = join("\n",
+        'set -eu',
+        'python3 - <<\'PY\'',
+        'import importlib',
+        'import importlib.util',
+        'import os',
+        'import pathlib',
+        'import shutil',
+        'import sys',
+        'import tarfile',
+        '',
+        'agent_spec = importlib.util.find_spec("vmupdate.agent")',
+        'assert agent_spec is not None, "vmupdate.agent package not found"',
+        'agent_dirs = list(agent_spec.submodule_search_locations or [])',
+        'assert agent_dirs, "vmupdate.agent package has no source directory"',
+        'agent_dir = pathlib.Path(agent_dirs[0])',
+        'agent_dir_real = agent_dir.resolve()',
+        'archive_path = pathlib.Path("/root/core-admin-guix-vmupdate.tgz")',
+        'assert archive_path.is_file(), f"missing {archive_path}"',
+        '',
+        'with tarfile.open(archive_path, "r:gz") as archive:',
+        '    for member in archive.getmembers():',
+        '        target = (agent_dir / member.name).resolve()',
+        '        assert target == agent_dir_real or str(target).startswith(str(agent_dir_real) + os.sep), member.name',
+        '    archive.extractall(agent_dir)',
+        '',
+        'source_dir = agent_dir / "source"',
+        'guix_dir = source_dir / "guix"',
+        'for path in (agent_dir, source_dir, guix_dir):',
+        '    shutil.rmtree(path / "__pycache__", ignore_errors=True)',
+        '',
+        'sys.path.insert(0, str(agent_dir))',
+        'package_manager = importlib.import_module("source.common.package_manager")',
+        'assert hasattr(package_manager, "AgentType")',
+        'guix_cli = importlib.import_module("source.guix.guix_cli")',
+        'assert guix_cli.GUIXCLI.CHANNELS_FILE == "/etc/guix/channels.scm"',
+        'assert "/run/qubes/bin/guix" not in guix_cli.GUIXCLI.GUIX_CANDIDATES',
+        'print(f"patched full core-admin Guix vmupdate agent: {agent_dir}")',
+        'PY');
+
+    dom0_assert_script_run(checked_shell_command(join("\n",
+        '{',
+        $patch_core_admin_cmd,
+        '} 2>&1 | tee ' . $serial_output)),
+        timeout => 120);
+}
+
 sub run {
     my ($self) = @_;
 
     my $template = get_var('GUIX_TEMPLATE_NAME', 'guix-openqa-test');
     my $appvm = get_var('GUIX_APPVM_NAME', 'guix-openqa-test-app');
+    my $appvm_netvm = get_var('GUIX_APPVM_NETVM', '');
     my $serial_output = shell_simple_path(serial_output_path());
     my $root_device = get_var('GUIX_ROOT_DEVICE', '/dev/disk/by-id/scsi-0QEMU_QEMU_HARDDISK_guixroot');
     my $root_bytes = get_var('GUIX_ROOT_BYTES', '21474836480');
@@ -321,6 +406,13 @@ sub run {
         if (get_var('GUIX_RUN_QUBES_SYSTEM_TESTS', '0') eq '1') {
             stage_data_file('python3-nose2.rpm', '/root/python3-nose2.rpm');
         }
+        if (get_var('GUIX_CORE_ADMIN_BACKEND', '0') eq '1') {
+            stage_data_file('core-admin-guix-vmupdate.tgz', '/root/core-admin-guix-vmupdate.tgz');
+        }
+    }
+
+    if (get_var('GUIX_CORE_ADMIN_BACKEND', '0') eq '1') {
+        install_core_admin_guix_backend();
     }
 
     my @cleanup_vms = (
@@ -398,6 +490,27 @@ sub run {
         dom0_assert_script_run(checked_shell_command($import_cmd), timeout => 1800);
     }
 
+    if (get_var('GUIX_BOOTSTRAP_UPDATE_TARGET', '0') eq '1') {
+        die "GUIX_BOOTSTRAP_UPDATE_TARGET=1 requires GUIX_INSTALL_MODE=rpm"
+            unless $install_mode eq 'rpm';
+        my $bootstrap_update_target_invocation = join(' ',
+            '/root/bootstrap-qubes-update-target-dom0.sh',
+            '--target', shell_quote(get_var('GUIX_UPDATE_TARGET_NAME', 'sys-net')),
+            '--network-mode', shell_quote(get_var('GUIX_UPDATE_TARGET_NETWORK_MODE', 'auto')),
+            '--template-rpm "$update_target_rpm"',
+            '2>&1 | tee /root/openqa-guix-update-target-bootstrap.log ' . $serial_output);
+        my $bootstrap_update_target_cmd = join("\n",
+            rpm_asset_mount_command($rpm_device),
+            'update_target_rpm="$(find /mnt/guix-template-rpm/update-target -maxdepth 1 -type f -name ' . shell_quote('qubes-template-*.rpm') . ' -print -quit)";',
+            '[ -n "$update_target_rpm" ];',
+            $bootstrap_update_target_invocation);
+        my $bootstrap_update_target_status = dom0_script_run(checked_shell_command($bootstrap_update_target_cmd), timeout => 1800);
+        if (!defined $bootstrap_update_target_status || $bootstrap_update_target_status != 0) {
+            upload_dom0_logs();
+            die "Qubes update target bootstrap failed";
+        }
+    }
+
     my $system_tests = '';
     if (get_var('GUIX_RUN_QUBES_SYSTEM_TESTS', '0') eq '1') {
         $system_tests = join(' ',
@@ -416,6 +529,11 @@ sub run {
         $desktop_checks .= ' --expect-desktop ' . shell_quote($desktop);
     }
 
+    my $appvm_netvm_arg = '';
+    if (length $appvm_netvm) {
+        $appvm_netvm_arg = '--appvm-netvm ' . shell_quote($appvm_netvm);
+    }
+
     my $test_cmd = join(' ',
         get_var('GUIX_RUN_QUBES_SYSTEM_TESTS', '0') eq '1'
             ? 'GUIX_NOSE2_RPM=/root/python3-nose2.rpm QUBES_DOM0_TEST_USER=' . shell_quote($testapi::username)
@@ -423,6 +541,7 @@ sub run {
         '/root/test-native-guix-template-dom0.sh',
         '--template', shell_quote($template),
         '--appvm', shell_quote($appvm),
+        $appvm_netvm_arg,
         $command_checks,
         $desktop_checks,
         $system_tests,
@@ -441,26 +560,6 @@ sub run {
     if (!defined $proxy_config_status || $proxy_config_status != 0) {
         upload_dom0_logs();
         die "Guix update proxy config check failed";
-    }
-
-    if (get_var('GUIX_BOOTSTRAP_UPDATE_TARGET', '0') eq '1') {
-        die "GUIX_BOOTSTRAP_UPDATE_TARGET=1 requires GUIX_INSTALL_MODE=rpm"
-            unless $install_mode eq 'rpm';
-        my $bootstrap_update_target_invocation = join(' ',
-            '/root/bootstrap-qubes-update-target-dom0.sh',
-            '--target', shell_quote(get_var('GUIX_UPDATE_TARGET_NAME', 'sys-net')),
-            '--template-rpm "$update_target_rpm"',
-            '2>&1 | tee /root/openqa-guix-update-target-bootstrap.log ' . $serial_output);
-        my $bootstrap_update_target_cmd = join("\n",
-            rpm_asset_mount_command($rpm_device),
-            'update_target_rpm="$(find /mnt/guix-template-rpm/update-target -maxdepth 1 -type f -name ' . shell_quote('qubes-template-*.rpm') . ' -print -quit)";',
-            '[ -n "$update_target_rpm" ];',
-            $bootstrap_update_target_invocation);
-        my $bootstrap_update_target_status = dom0_script_run(checked_shell_command($bootstrap_update_target_cmd), timeout => 1800);
-        if (!defined $bootstrap_update_target_status || $bootstrap_update_target_status != 0) {
-            upload_dom0_logs();
-            die "Qubes update target bootstrap failed";
-        }
     }
 
     if (get_var('GUIX_RUN_PROXY_STUB_DOWNLOAD_TEST', '0') eq '1') {

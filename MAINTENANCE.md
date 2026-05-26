@@ -102,10 +102,11 @@ file and source table.
 
 Guix network traffic should use the Qubes updates proxy path, not a separate
 network policy.  The implementation provides a Guix-facing forwarder to
-`qubes.UpdatesProxy`, configures `guix-daemon` declaratively through
-`guix-configuration`, and generates a `/run/qubes/bin/guix` wrapper for
-client-side Guix commands when `updates-proxy-setup` is enabled.  The
-`qubes-core-admin-linux` RFC backend keeps central updates system-only:
+`qubes.UpdatesProxy` and keeps `guix-daemon` unproxied for ordinary AppVM use.
+Guix update operations that must use the Qubes proxy should run with an
+explicit `http_proxy`/`https_proxy` environment when `updates-proxy-setup` is
+enabled.  The `qubes-core-admin-linux` RFC backend keeps central updates
+system-only:
 refresh uses `guix time-machine --branch=master -- describe`, and upgrade uses
 `guix time-machine --branch=master -- system reconfigure /etc/config.scm`
 instead of updating root or user Guix profiles as package-manager state.  The
@@ -114,8 +115,8 @@ backend reports the current Guix System generation and per-output
 package summary, preserving Guix manifest columns before Qubes output
 sanitization, using vmupdate-scoped temporary time-machine state, and streaming
 Guix refresh/reconfigure output through the normal vmupdate log path.
-RPM-mode openQA job 27 validated the generated Guix proxy wrapper, updates-proxy
-forwarder, and `guix-daemon` service state in a rebuilt `guix-minimal`
+RPM-mode openQA job 27 validated the then-current generated Guix proxy wrapper,
+updates-proxy forwarder, and `guix-daemon` service state in a rebuilt `guix-minimal`
 TemplateVM.  OpenQA jobs 38, 41, and 44 repeated that path on rebuilt minimal
 RPMs and passed a controlled `guix download` through stock Qubes default-target
 policy with a temporary update-target stub; jobs 41 and 44 also verified that

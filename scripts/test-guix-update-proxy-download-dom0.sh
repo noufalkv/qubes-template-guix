@@ -72,6 +72,22 @@ esac
 command -v qvm-run >/dev/null 2>&1 || die "qvm-run not found"
 command -v qvm-check >/dev/null 2>&1 || die "qvm-check not found"
 command -v qvm-start >/dev/null 2>&1 || die "qvm-start not found"
+command -v timeout >/dev/null 2>&1 || die "timeout not found"
+
+wait_for_qrexec() {
+    vm=$1
+    attempt=1
+    while [ "$attempt" -le 90 ]; do
+        if timeout 10 qvm-run --pass-io --no-gui --user root "$vm" ':' \
+            >/dev/null 2>&1; then
+            return 0
+        fi
+        printf 'waiting for qrexec in %s (%s/90)\n' "$vm" "$attempt" >&2
+        attempt=$((attempt + 1))
+        sleep 2
+    done
+    return 1
+}
 
 qvm-check "$template_name" >/dev/null 2>&1 ||
     die "template does not exist: $template_name"
@@ -79,29 +95,26 @@ qvm-check "$template_name" >/dev/null 2>&1 ||
 if ! qvm-check --running "$template_name" >/dev/null 2>&1; then
     qvm-start "$template_name" >/dev/null
 fi
+wait_for_qrexec "$template_name" ||
+    die "qrexec did not become ready in template: $template_name"
 
 guest_script=$(cat <<'__QUBES_GUIX_GUEST__'
 set -eu
 
 download_url=$1
 download_timeout=$2
-wrapper=/run/qubes/bin/guix
-profile=/etc/profile.d/qubes-guix-update-proxy.sh
 payload=/tmp/qubes-guix-proxy-download.payload
 stdout=/tmp/qubes-guix-proxy-download.out
 stderr=/tmp/qubes-guix-proxy-download.err
 probe_stdout=/tmp/qubes-guix-proxy-probe.out
 probe_stderr=/tmp/qubes-guix-proxy-probe.err
+proxy=http://127.0.0.1:8082/
+guix=/run/current-system/profile/bin/guix
 
 diagnose_proxy_download() {
     echo '== qubes service flags =='
     ls -la /run/qubes-service /var/run/qubes-service 2>&1 || true
-    echo '== proxy wrapper/profile =='
-    ls -l "$wrapper" "$profile" 2>&1 || true
-    sed -n '1,120p' "$wrapper" 2>/dev/null || true
-    sed -n '1,120p' "$profile" 2>/dev/null || true
     echo '== shepherd status =='
-    herd status qubes-guix-update-proxy 2>&1 || true
     herd status qubes-updates-proxy-forwarder 2>&1 || true
     herd status guix-daemon 2>&1 || true
     echo '== download stdout =='
@@ -113,7 +126,6 @@ diagnose_proxy_download() {
     echo '== raw proxy probe stderr =='
     cat "$probe_stderr" 2>/dev/null || true
     echo '== proxy service logs =='
-    cat /var/log/qubes-guix-update-proxy.log 2>/dev/null || true
     cat /var/log/qubes-updates-proxy-forwarder.log 2>/dev/null || true
     if grep -Fq 'Request refused' /var/log/qubes-updates-proxy-forwarder.log 2>/dev/null; then
         echo '== likely dom0 updates-proxy policy refusal =='
@@ -216,9 +228,9 @@ herd status qubes-updates-proxy-forwarder >/tmp/qubes-updates-proxy-forwarder.st
 cat /tmp/qubes-updates-proxy-forwarder.status
 grep -F 'It is running' /tmp/qubes-updates-proxy-forwarder.status >/dev/null
 
-echo 'checking generated Guix proxy wrapper'
-test -x "$wrapper"
-test -r "$profile"
+echo 'checking Guix is not hidden behind a global wrapper'
+test ! -e /run/qubes/bin/guix
+test ! -e /etc/profile.d/qubes-guix-update-proxy.sh
 
 echo 'checking source TemplateVM has no direct default route'
 check_no_direct_default_route
@@ -228,7 +240,12 @@ check_raw_proxy
 
 rm -f "$payload" "$stdout" "$stderr"
 echo "running guix download through Qubes updates proxy: $download_url"
-if ! timeout "$download_timeout" "$wrapper" download \
+if ! timeout "$download_timeout" /run/current-system/profile/bin/env \
+    http_proxy="$proxy" https_proxy="$proxy" \
+    HTTP_PROXY="$proxy" HTTPS_PROXY="$proxy" \
+    all_proxy="$proxy" ALL_PROXY="$proxy" \
+    no_proxy=127.0.0.1,localhost NO_PROXY=127.0.0.1,localhost \
+    "$guix" download \
     --output="$payload" "$download_url" >"$stdout" 2>"$stderr"; then
     cat "$stderr" 2>/dev/null || true
     exit 1

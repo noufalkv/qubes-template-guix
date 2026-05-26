@@ -76,8 +76,8 @@ case "$variant" in
         appvm_name="guix-openqa-test-app"
         image="root-gui-r${release}.img"
         asset="guix-root-r${release}.img"
-        expect_commands="xfce4-terminal xterm Xorg su"
-        expect_desktops="xfce4-terminal.desktop"
+        expect_commands="evince mousepad thunar xfce4-terminal xterm Xorg su"
+        expect_desktops="org.gnome.Evince.desktop org.xfce.mousepad.desktop thunar.desktop xfce4-terminal.desktop"
         ;;
     minimal)
         template_name="guix-minimal"

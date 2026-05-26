@@ -40,6 +40,308 @@ real Guix update tooling through an Internet update target still remain open.
 The clean `upstream-review` branch exposes the following current contract
 checks.  Final publication reruns are still required before publication.
 
+Current-head local and remote recheck after refreshing the pinned Guix channel,
+fixing Python `setuptools` native inputs for the Qubes VM packages, and fixing
+openQA worker credential generation on May 26, 2026:
+
+- A current worktree snapshot was synced to the remote Guix/openQA builder at
+  `/home/sandbox/guix-live-20260526013724`.  The remote preflight passed
+  `./tests/openqa-wiring-check.sh`, `./tests/openqa-perl-syntax-check.sh`,
+  `bash -n scripts/setup-openqa-guix-template-test.sh`,
+  `./tests/qubes-service-wiring-check.sh`, and
+  `./tests/qvm-template-repo-query-guix-check.sh`.
+- The normal variant was built with
+  `QUBES_OPENQA_RAM=24576 ./scripts/run-openqa-template-rpm.sh --variant normal --version 4.3.0 --release 202605260137`.
+  The build refreshed Guix from `config/channels.scm` at commit
+  `74180388ea30ac5d642d72fa7453743a6b19305b`, built the Guix System root
+  image, passed rootfs inspection, passed the writable-root activation test,
+  and packaged
+  `/home/sandbox/guix-live-20260526013724/dist/qubes-template-guix-4.3.0-202605260137.noarch.rpm`
+  with SHA256
+  `b41bfb7f1b178770429cef9a7f754eaf9eb63bd569ec7f68b15754440aabaeff`.
+- RPM-mode openQA job 211 passed for the normal `guix` variant:
+  `qubesos-4.3-guix-template-x86_64-Buildguix-normal-rpm-r202605260137-202605260152-guix_template@qemu_x86_64`.
+- The minimal variant was built from the same remote snapshot with
+  `QUBES_OPENQA_RAM=24576 ./scripts/run-openqa-template-rpm.sh --variant minimal --version 4.3.0 --release 202605260245`.
+  The build refreshed Guix from the same pinned channel, built the Guix System
+  root image, passed rootfs inspection, passed the writable-root activation
+  test, and packaged
+  `/home/sandbox/guix-live-20260526013724/dist/qubes-template-guix-minimal-4.3.0-202605260245.noarch.rpm`
+  with SHA256
+  `8d8b84b8a8f5f6936c16d1a939d342870137b8a80811bc7961d8a4fedabe1c6b`.
+- RPM-mode openQA job 212 passed for the minimal `guix-minimal` variant:
+  `qubesos-4.3-guix-template-x86_64-Buildguix-minimal-rpm-r202605260245-202605260245-guix_template@qemu_x86_64`.
+- During this rerun, `scripts/setup-openqa-guix-template-test.sh` was fixed to
+  write `KEY` and `SECRET` into `/etc/openqa/workers.ini` from the generated
+  script API key.  Without that, the worker repeatedly failed to register with
+  `API key and secret are needed for the worker connecting http://localhost:9526`.
+- This is fresh live TemplateVM/AppVM RPM-mode smoke evidence for both normal
+  and minimal test RPMs.  It is still draft-review evidence, not Qubes project
+  publication approval and not a final signed community-template release.
+
+Current-head local and remote recheck after Guile helper,
+`qubes.WaitForSession`, AppVM persistence, and update-proxy config fixes on
+May 22, 2026:
+
+- A current worktree snapshot was synced to the remote Guix/openQA builder at
+  `/home/sandbox/guix-live-20260522192045`.  The remote preflight passed the
+  Guix system-contract phase, built
+  `/home/sandbox/guix-live-20260522192045/root.img`, inspected the ext4 root
+  image, and passed the activation test.  The activation log included
+  materializing the system profile, populating `/etc`, creating
+  `/etc/machine-id`, and initializing `/rw/home` plus `/rw/home/user`.
+- The same root image was packaged as
+  `/home/sandbox/guix-live-20260522192045/dist/qubes-template-guix-4.3.0-202605221923.noarch.rpm`
+  with SHA256
+  `5c3326f8a5f62dbb0951a699cb924dbf226bac46ec44101e7488dc34ce483151`.
+- RPM-mode openQA job 200 passed for the normal `guix` variant with
+  `QUBES_OPENQA_RAM=24576`,
+  `QUBES_OPENQA_BUILD=guix-normal-202605221923-24g`,
+  `QUBES_OPENQA_TEMPLATE_NAME=guix`, and
+  `QUBES_OPENQA_APPVM_NAME=guix-openqa-test-app`.  The result directory was
+  `/var/lib/openqa/testresults/00000/00000200-qubesos-4.3-guix-template-x86_64-Buildguix-normal-202605221923-24g-guix_template@qemu_x86_64`.
+- Job 200 exercised the real dom0 smoke driver in openQA.  Serial evidence
+  showed qrexec readiness waits for both the TemplateVM and AppVM, a writable
+  non-symlink `/etc/fstab`, executable `qubes.WaitForSession`, `/rw` and
+  `/usr/local` mountpoint checks, `/home`, `$HOME`, and `/usr/local` on the
+  private `/rw` device before and after AppVM restart, direct
+  `qubes.WaitForSession` service calls as the AppVM user, and the final marker
+  `native Guix TemplateVM smoke tests passed for guix`.
+- Job 200 also passed the generated update-proxy configuration gate.  Serial
+  evidence showed the `qubes-updates-proxy-forwarder` Shepherd service,
+  starting `guix-daemon` through `/run/current-system/profile/bin/guix`, the
+  `guix-daemon` service state, recognition that the socket-activated daemon can
+  be idle with no persistent process after a successful daemon-backed command,
+  and the final marker `guix update proxy config check passed`.
+- The minimal variant was built from the same remote snapshot as
+  `/home/sandbox/guix-live-20260522192045/root-minimal.img`; root image
+  inspection and activation both passed.  The activation log included
+  materializing the system profile, populating `/etc`, creating
+  `/etc/machine-id`, and initializing `/rw/home` plus `/rw/home/user`.
+- The minimal root image was packaged as
+  `/home/sandbox/guix-live-20260522192045/dist/qubes-template-guix-minimal-4.3.0-202605222025.noarch.rpm`
+  with SHA256
+  `c28167853281cbad366cd8963f2ce6151ae2fa87cf30881936f07cb90470d9cf`.
+- RPM-mode openQA job 201 passed for the minimal `guix-minimal` variant with
+  `QUBES_OPENQA_RAM=24576`,
+  `QUBES_OPENQA_BUILD=guix-minimal-202605222025-24g`,
+  `QUBES_OPENQA_TEMPLATE_NAME=guix-minimal`, and
+  `QUBES_OPENQA_APPVM_NAME=guix-minimal-openqa-test-app`.  The result
+  directory was
+  `/var/lib/openqa/testresults/00000/00000201-qubesos-4.3-guix-template-x86_64-Buildguix-minimal-202605222025-24g-guix_template@qemu_x86_64`.
+- Job 201 exercised the same real dom0 smoke driver for the minimal variant.
+  Serial evidence showed qrexec readiness waits for both the TemplateVM and
+  AppVM, a writable non-symlink `/etc/fstab`, executable
+  `qubes.WaitForSession`, `/rw` and `/usr/local` mountpoint checks, `/home`,
+  `$HOME`, and `/usr/local` on the private `/rw` device before and after AppVM
+  restart, direct `qubes.WaitForSession` service calls as the AppVM user, and
+  the final marker `native Guix TemplateVM smoke tests passed for guix-minimal`.
+- Job 201 also passed the generated update-proxy configuration gate for the
+  minimal variant.  Serial evidence showed the
+  `qubes-updates-proxy-forwarder` Shepherd service, starting `guix-daemon`
+  through `/run/current-system/profile/bin/guix`, the `guix-daemon` service
+  state, recognition that the socket-activated daemon can be idle with no
+  persistent process after a successful daemon-backed command, and the final
+  marker `guix update proxy config check passed`.
+- This is fresh live TemplateVM/AppVM and generated update-proxy configuration
+  evidence for both the normal and minimal variants.  It is still not final
+  publication evidence from a committed public tag and not a real
+  Internet-capable Guix channel/substitute/download update-target pass.
+- `git diff --check` passed.
+- `make check` passed.  This reran the script CLI, rootfs policy, Builder hook,
+  Builder adapter, Builder RPM, central vmupdate harness, and normal plus
+  minimal RPM layout checks.
+- `bash -n scripts/*.sh tests/*.sh` passed.
+- The script CLI contract now also verifies the openQA setup script rejects
+  invalid update-target network modes, rejects update-target bootstrap outside
+  RPM install mode, and rejects bootstrap scheduling without an update-target
+  template RPM before it reaches the openQA host mutation or job scheduling
+  path.  It also verifies an invalid `GUIX_CORE_ADMIN_LINUX_TREE` fails at the
+  core-admin backend preflight instead of falling through to a generic missing
+  `openqa-cli` error.
+- `tests/guile-script-meta-switch-check.sh` now runs in the default
+  `make check` suite.  It verifies that generated `guile -s` script headers in
+  `native/modules` include the required `!#` meta-switch terminator, and it
+  runs a direct Guile smoke check when `guile` is present.  It also checks the
+  generated `qubes.WaitForSession` source shape on non-Guix hosts, rejecting
+  the old `qrexec-client` early return and requiring the qrexec fork-server
+  socket wait.  The template sources now add that terminator for the ACPI
+  poweroff helper and the Guix-generated `guix-updates-proxy-forwarder` and
+  `qubes-network-interface-sysctl` helpers.
+- The AppVM smoke script used by openQA now writes restart sentinels below
+  `/home`, `/rw`, and `/usr/local`, restarts the AppVM, verifies all three
+  persisted, rechecks that `/gnu/store`, `/var/guix/db`, and
+  `/var/guix/profiles` are not on the private `/rw` device after restart, and
+  verifies a `/var/guix` sentinel did not persist.  It also asserts that
+  `/home`, the default user's `$HOME`, and `/usr/local` are actually on the
+  private `/rw` device before and after restart.  The same smoke driver now
+  checks the live TemplateVM/AppVM compatibility paths that Qubes tools depend
+  on: writable non-symlink `/etc/fstab`, `/usr/lib/qubes`,
+  `/usr/lib/qubes-bind-dirs.d`, `/etc/qubes-rpc`, and executable core RPC
+  entries.  Jobs 200 and 201 now supply normal- and minimal-variant live
+  openQA evidence for this smoke driver; final committed-branch reruns remain
+  open.
+- `tests/appvm-persistence-harness-check.sh` now runs in the default
+  `make check` suite.  It uses fake `qvm-*` commands plus temporary Unix
+  qrexec sockets to execute the real dom0 smoke driver far enough to prove that
+  the AppVM lifecycle contains the `/home` write/readback, root-owned `/rw`
+  and `/usr/local` write/readbacks, shutdown, restart, Guix store/profile
+  placement recheck, and volatile `/var/guix` negative assertion in the right
+  order.  The fake `qvm-run` wrapper records into the lifecycle log as well as
+  its command log, so this gate verifies that writes happen before shutdown and
+  readbacks/negative assertions happen after the restart, and that the command
+  stream still contains the private-volume device and compatibility-path
+  assertions.  It also verifies the real smoke driver calls
+  `qubes.WaitForSession` before the first persistence writes and again after
+  the post-restart readbacks.  This prevents the scripted openQA persistence
+  assertions from silently disappearing, but it is not a substitute for the
+  live Qubes/openQA run.
+- `tests/openqa-wiring-check.sh` now runs in the default `make check` suite.
+  It statically verifies that the openQA module stages and executes the real
+  dom0 smoke driver in both RPM-asset and direct-rootfs modes, passes the AppVM
+  name/NetVM, optional Qubes system-test, command, desktop, and timeout knobs
+  through the scheduler, and treats smoke-driver failure as an openQA failure.
+  It also verifies that the central Guix vmupdate driver is staged in both
+  install modes, remains gated by `GUIX_RUN_CENTRAL_VMUPDATE_TEST`, receives
+  its timeout and proxy-probe settings from the scheduler, and fails the openQA
+  job on driver failure.  The same source guard now covers the update-proxy
+  config, controlled stub-download, and opt-in public-download drivers: they
+  must be staged in both install modes, receive their scheduler-provided URL
+  and timeout settings, and fail the openQA job on driver failure.  It also
+  verifies that the RPM-mode update-target bootstrap helper is included in the
+  openQA assets, staged into direct-rootfs jobs, gated by
+  `GUIX_BOOTSTRAP_UPDATE_TARGET`, restricted to RPM install mode, passed the
+  scheduler-provided target/network-mode/template-RPM arguments, mapped as the
+  default AppVM NetVM when bootstrapping is enabled, and paired with the
+  QEMU user-net/USB NIC append arguments needed for the NAT update-target mode.
+  It also verifies the optional `GUIX_CORE_ADMIN_BACKEND=1` path stages and
+  installs the current core-admin Guix vmupdate backend files before the
+  central updater gate runs.
+  This guards the openQA wiring from becoming a shallow proxy check, but it is
+  not a substitute for a live openQA job.
+- `tests/openqa-perl-syntax-check.sh` now runs in the default `make check`
+  suite.  It provides minimal local `testapi`, `basetest`, and
+  `qubesdistribution` stubs so the custom openQA distribution class and
+  `guix_template.pm` test module are parsed by Perl even on hosts without a
+  real openQA/isotovideo installation.  This catches syntax and import drift,
+  but it is still not a substitute for running the job under openQA.
+- `tests/qubes-service-wiring-check.sh` now runs in the default `make check`
+  suite.  It is a non-Guix source guard for the persistence-related Shepherd
+  chain: `qubes-mount-dirs` must use the standard `/dev/xvdb -> /rw` fstab
+  entry and `rw-only` QubesDB mode check, `qubes-bind-dirs` must require
+  `qubes-mount-dirs`, `qubes-misc-post` and `qubes-qrexec-agent` must require
+  `qubes-bind-dirs`, the GUI agent must require both bind-dirs and qrexec, and
+  feature advertisement must require qrexec and commit through
+  `qubes.FeaturesRequest`; the default service list must preserve the same
+  ordering.  It also guards the package patch that dereferences Guix's
+  store-backed `/etc/skel` during Qubes `initialize_home` and makes the copied
+  `/rw/home` skeleton owner-writable, which is required for Guix and desktop
+  state below `~/.config` and `~/.cache` in AppVMs.  This does not replace the
+  Guix-folded service contract or image activation run, but it catches the
+  persistence startup chain drifting on hosts where `guix-system-contract-check`
+  cannot run.
+- The root image activation gate now checks persistence prerequisites that are
+  otherwise easy to miss in an immutable Guix system profile: activation must
+  create `/rw` and `/usr/local`, materialize `/etc/fstab` as a writable regular
+  file rather than a store symlink, and expose the fixed Qubes paths
+  `/usr/lib/qubes`, `/usr/lib/qubes-bind-dirs.d`, and `/etc/qubes-rpc`.  The
+  local shell still has no built root image, but the remote preflight for
+  `/home/sandbox/guix-live-20260522192045/root.img` passed this activation
+  gate before the image was packaged for job 200.
+- The generated `qubes.WaitForSession` RPC no longer returns immediately just
+  because `qrexec-client` exists in the guest.  The Guix-capable contract test
+  now checks that the generated RPC waits for the per-user
+  `/var/run/qubes/qrexec-server.*.sock` fork-server socket and does not contain
+  the old `qrexec-client` early-return condition.  The fast local meta-switch
+  check also guards that source shape for non-Guix hosts.  The remote preflight
+  refreshed the Guix-capable contract coverage for this snapshot, and job 200
+  additionally exercised the installed `qubes.WaitForSession` artifact from the
+  generated RPM through openQA.
+- The local shell still has no `guix` binary in `PATH`, so
+  `make guix-system-contract-check` could not be refreshed here.  This host
+  also lacks `qvm-*`, `openqa-cli`, and `isotovideo`; the fresh Guix
+  system-contract, root-image activation, and live openQA evidence above was
+  therefore produced on the remote Guix-capable openQA builder instead.
+- After fetching QubesOS/qubes-core-admin-linux, the checked-in
+  `config/qubes-core-admin-linux-guix-vmupdate.example.patch` applied cleanly
+  with `git apply --check` to a temporary clean tree from upstream
+  `origin/main` at `32a14bb`.  The already-modified local `guix-vmupdate`
+  branch is not used as the apply target for that check.
+- `make check-qubes-pins` passed on May 22, 2026.  The checked pins remain
+  current for `qubes-core-vchan-xen` v4.2.8,
+  `qubes-linux-utils` v4.3.17, `qubes-core-qubesdb` v4.3.2,
+  `qubes-core-qrexec` v4.3.12, `qubes-core-agent-linux` v4.3.43,
+  `qubes-gui-common` v4.3.1, and `qubes-gui-agent-linux` v4.3.16.
+- No GitHub CLI, token, or configured credential helper was available in this
+  shell, so no upstream GitHub comment or issue update was posted from this
+  environment.
+
+Current-head openQA update-path recheck after core-admin Guix vmupdate backend
+and official `system_tests_update` integration fixes on May 23, 2026:
+
+- A Qubes openQA worker on `qubes-guix-tw-0523` ran
+  `system_tests_update-full-agent-sequential` through the local tunnel
+  `http://127.0.0.1:19526/tests/19`.  The job finished
+  `done passed`, started `2026-05-23T17:52:27`, and finished
+  `2026-05-23T19:06:31`.
+- Job 19 passed every scheduled module:
+  `startup` in `7m42s`, `update_templates` in `20m53s`, `update2` in
+  `29m23s`, `switch_template` in `11m23s`, and `shutdown` in `43s`.
+- Job 19 is live evidence for the official Qubes `system_tests_update` path,
+  not just the custom `guix_template.pm` smoke path.  The patched `update2.pm`
+  staged the current core-admin Guix vmupdate backend archive, updated the
+  `guix` and `guix-minimal` targets sequentially with a larger qrexec timeout,
+  shut each Guix target down after its update, and limited package inventory
+  upload to the Guix targets for the sequential run.
+- Uploaded job 19 logs showed both central updater calls exiting cleanly:
+  `update2-qubesctl-upgrade-guix.log` ended with
+  `COMMAND_EXIT_CODE="0"`, and
+  `update2-qubesctl-upgrade-guix-minimal.log` ended with
+  `COMMAND_EXIT_CODE="0"`.  Both logs showed the intended native Guix System
+  no-op reconfigure behavior: release channel reference
+  `/etc/guix/channels.scm`, `/etc/config.scm` already matching the running
+  system, and a `guix-system /gnu/store/...-system` result.
+- The job 19 package inventory uploads
+  `update2-template-guix-packages.txt` and
+  `update2-template-guix-minimal-packages.txt` were empty, which is expected
+  for this first Guix integration because upstream package inventory collection
+  is RPM/DPKG/Pacman-oriented.
+- Earlier live jobs 17 and 18 had already passed `update2` for the same Guix
+  central-update path but failed later in `switch_template`.  Job 19 reran
+  after the `switch_template` fix and passed the full official tail.
+- The `switch_template` issue was fixed with a reviewable patch against
+  upstream `tests/switch_template.pm`: it waits for each dependent VM to halt,
+  kills running DispVM instances before retargeting their DVM template, and
+  leaves DispVM or network-providing service VMs halted instead of restarting
+  them in a nested environment where qrexec startup checks were fragile.  Job
+  19 passed that patched module in the live worker.
+- The local validation bundle was rerun after the live job:
+  `bash -n scripts/setup-openqa-guix-template-test.sh`,
+  `bash tests/openqa-wiring-check.sh`,
+  `bash tests/openqa-perl-syntax-check.sh`,
+  `bash tests/central-vmupdate-harness-check.sh`, and
+  `PYTHONPATH=/home/user/qubes-pr-work/qubes-core-admin-linux pytest -q
+  /home/user/qubes-pr-work/qubes-core-admin-linux/vmupdate/tests/test_agent_guix.py`
+  all passed.  The pytest suite reported `37 passed`.
+- `tests/openqa-perl-syntax-check.sh` now also applies the reviewable
+  `openqa/qubesos/patches/update2-guix-sequential-vmupdate.patch` and
+  `openqa/qubesos/patches/switch-template-running-dispvms.patch` to fresh
+  cached upstream `openqa-tests-qubesos` copies of `tests/update2.pm` and
+  `tests/switch_template.pm`, then compiles the patched files with local
+  openQA/os-autoinst stubs.  This specifically guards the reviewable patch
+  files from drifting away from upstream syntax.
+- `tests/openqa-wiring-check.sh` now verifies that the openQA setup script
+  applies both reviewable official-test patches, forwards
+  `GUIX_VMUPDATE_QREXEC_TIMEOUT` and `GUIX_VMUPDATE_SERVICE_VM_TIMEOUT`, stages
+  the core-admin vmupdate archive, and preserves the patch-apply Perl syntax
+  coverage above.  This is still a source guard, not a substitute for job 19's
+  live openQA evidence.
+- This proves the current review snapshot's official-style Qubes openQA update
+  flow for the native Guix templates in the nested worker.  It is still not
+  final publication evidence from a signed release object, not Qubes Builder v2
+  publish/upload acceptance, and not maintainer approval for
+  `templates-community-testing`.
+
 Current-head local recheck after review-history cleanup on May 18, 2026:
 
 - `make check` passed from the squashed `upstream-review` branch after the

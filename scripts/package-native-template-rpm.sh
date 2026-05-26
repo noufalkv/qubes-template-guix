@@ -33,8 +33,8 @@ Options:
   --split-size SIZE   Split size for root.img.part.NN. Default: 1900M
   --gui 0|1           Advertise GUI support status. Default: 1.
   --appmenu-entry ID  Add a desktop-file ID to Qubes appmenu allowlists.
-                      Defaults to xfce4-terminal.desktop for normal names and
-                      xterm.desktop for names ending in -minimal.
+                      Defaults to a small desktop baseline for normal names
+                      and xterm.desktop for names ending in -minimal.
   --shrink            Minimize the ext4 root image before packaging.
   --no-shrink         Preserve the ext4 root image size. This is the default.
   -h, --help          Show this help.
@@ -178,7 +178,14 @@ validate_version_field "$release" "release"
 if [ "${#appmenu_entries[@]}" -eq 0 ] && [ "$appmenu_entries_set" -eq 0 ]; then
     case "$template_name" in
         *-minimal) appmenu_entries=(xterm.desktop) ;;
-        *) appmenu_entries=(xfce4-terminal.desktop) ;;
+        *)
+            appmenu_entries=(
+                org.gnome.Evince.desktop
+                org.xfce.mousepad.desktop
+                thunar.desktop
+                xfce4-terminal.desktop
+            )
+            ;;
     esac
 fi
 for appmenu_entry in "${appmenu_entries[@]}"; do

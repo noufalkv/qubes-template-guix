@@ -5,24 +5,39 @@
   #:use-module (gnu packages admin)
   #:use-module (gnu packages base)
   #:use-module (gnu packages bash)
+  #:use-module (gnu packages benchmark)
   #:use-module (gnu packages certs)
   #:use-module (gnu packages compression)
+  #:use-module (gnu packages curl)
+  #:use-module (gnu packages commencement)
+  #:use-module (gnu packages dns)
   #:use-module (gnu packages freedesktop)
   #:use-module (gnu packages gawk)
   #:use-module (gnu packages glib)
   #:use-module (gnu packages guile)
+  #:use-module (gnu packages libffi)
   #:use-module (gnu packages linux)
   #:use-module (gnu packages networking)
   #:use-module (gnu packages nss)
   #:use-module (gnu packages package-management)
+  #:use-module (gnu packages pciutils)
+  #:use-module (gnu packages rpm)
+  #:use-module (gnu packages pulseaudio)
   #:use-module (gnu packages python)
+  #:use-module (gnu packages python-build)
+  #:use-module (gnu packages python-xyz)
+  #:use-module (gnu packages gnome)
+  #:use-module (gnu packages gtk)
+  #:use-module (gnu packages version-control)
   #:use-module (gnu packages xfce)
+  #:use-module (gnu packages xdisorg)
   #:use-module (gnu packages xorg)
   #:use-module (gnu services)
   #:use-module (gnu services base)
   #:use-module (gnu services dbus)
-  #:use-module (gnu services networking)
+  #:use-module (gnu services sysctl)
   #:use-module (gnu system nss)
+  #:use-module (gnu system privilege)
   #:use-module (guix gexp)
   #:use-module (srfi srfi-1)
   #:use-module (qubes packages qubes-vm)
@@ -42,32 +57,30 @@
     shepherd-transient
     static-networking
     sysctl
+    udev
     virtual-terminal))
 
-(define %qubes-base-services-with-lean-udev
-  (modify-services %base-services
-    ;; Configure the daemon proxy declaratively. Calling Shepherd's
-    ;; set-http-proxy action from another boot-time service restarts
-    ;; guix-daemon while Shepherd is still starting services, which can leave
-    ;; shutdown waiting on an unfinished service.
-    (guix-service-type config =>
-      (guix-configuration
-       (inherit config)
-       (http-proxy "http://127.0.0.1:8082/")))
-    (udev-service-type config =>
-      (udev-configuration
-       (inherit config)
-       (rules '())))))
+(define %qubes-kernel-sysctl-settings
+  '(("kernel.threads-max" . "51200")))
+
+(define %qubes-base-services
+  ;; Keep the daemon usable in ordinary networked AppVMs.  The Qubes updates
+  ;; proxy forwarder is gated by the updates-proxy-setup service flag; forcing
+  ;; guix-daemon through 127.0.0.1:8082 here breaks substitute downloads when
+  ;; that flag is absent.
+  %base-services)
+
+(define %qubes-sysctl-service
+  (service qubes-sysctl-service-type
+           (sysctl-configuration
+            (settings (append %qubes-kernel-sysctl-settings
+                              %default-sysctl-settings)))))
 
 (define %qubes-minimal-base-services
   (filter (lambda (service)
             (not (memq (service-type-name (service-kind service))
                        %qubes-omitted-base-service-types)))
-          %qubes-base-services-with-lean-udev))
-
-(define %qubes-loopback-networking-services
-  (list (service static-networking-service-type
-                 (list %loopback-static-networking))))
+          %qubes-base-services))
 
 (define* (qubes-dom0-kernel-bootloader-config _config _entries
                                               #:key
@@ -111,22 +124,37 @@
 
 (define %qubes-common-packages
   (append %qubes-vm-gui-packages
-          (list acpid bash coreutils diffutils e2fsprogs findutils gawk
-                glibc grep guile-3.0 guix gzip iproute kmod nss-certs procps
-                python python-pygobject python-pyxdg sed setxkbmap shadow
-                socat sudo tar util-linux
+          (list acpid bash conntrack-tools coreutils diffutils e2fsprogs
+                findutils gawk git glibc grep guile-3.0 guix gzip inetutils
+                iproute kmod curl
+                nftables nss-certs procps python python-dbus python-pygobject
+                python-pyxdg sed setxkbmap shadow socat sudo tar util-linux zstd
                 xdpyinfo xev xinput xinit xmodmap xprop xrandr xrdb
                 xsetroot xwininfo
                 dbus xorg-server xterm)))
 
+(define %qubes-normal-desktop-packages
+  ;; Keep the normal template intentionally small, but provide the basic
+  ;; application classes Qubes desktop tests and users expect to discover:
+  ;; terminal, file manager, text editor, and document viewer.
+  (list evince mousepad thunar xfce4-terminal))
+
 (define (qubes-variant-packages variant)
   (case variant
     ((minimal)
-     (cons qubes-xterm-desktop-entry %qubes-common-packages))
+     (append (list qubes-xterm-desktop-entry)
+             %qubes-common-packages))
     ((normal)
-     (cons xfce4-terminal %qubes-common-packages))
+     (append %qubes-normal-desktop-packages
+             %qubes-common-packages))
     (else
      (error "unsupported Qubes Guix template variant" variant))))
+
+(define %qubes-privileged-programs
+  (cons (privileged-program
+         (program (file-append qubes-vm-core "/lib/qubes/qfile-unpacker"))
+         (setuid? #t))
+        %default-privileged-programs))
 
 (define* (qubes-template-operating-system #:key (variant 'normal))
   (operating-system
@@ -174,7 +202,7 @@
 
     (packages (qubes-variant-packages variant))
 
-    (privileged-programs %default-privileged-programs)
+    (privileged-programs %qubes-privileged-programs)
     (sudoers-file
      (plain-file "sudoers"
                  "root ALL=(ALL) ALL
@@ -183,9 +211,9 @@ user ALL=(ALL) NOPASSWD:ALL
 "))
 
     (services
-     (append %qubes-loopback-networking-services
-             (list (service dbus-root-service-type))
+     (append (list (service dbus-root-service-type))
              %qubes-vm-gui-services
+             (list %qubes-sysctl-service)
              %qubes-minimal-base-services))
 
     (name-service-switch %mdns-host-lookup-nss)))

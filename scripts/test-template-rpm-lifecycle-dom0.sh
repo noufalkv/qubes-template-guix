@@ -234,7 +234,7 @@ run_smoke_test() {
             args+=(--expect-command xterm --expect-command Xorg --expect-desktop xterm.desktop)
             ;;
         *)
-            args+=(--expect-command xfce4-terminal --expect-command Xorg --expect-desktop xfce4-terminal.desktop)
+            args+=(--expect-command evince --expect-command mousepad --expect-command thunar --expect-command xfce4-terminal --expect-command Xorg --expect-desktop org.gnome.Evince.desktop --expect-desktop org.xfce.mousepad.desktop --expect-desktop thunar.desktop --expect-desktop xfce4-terminal.desktop)
             ;;
     esac
 

@@ -83,6 +83,23 @@ sudo chroot "$mount_dir" /bin/sh -lc \
 
 sudo chroot "$mount_dir" /bin/sh -lc '
     set -eu
+    test -d /rw
+    test -d /usr/local
+    test -f /etc/fstab
+    test ! -L /etc/fstab
+    printf "\n# qubes-guix activation fstab write check\n" >> /etc/fstab
+    test -L /usr/lib/qubes
+    test -L /usr/lib/qubes-bind-dirs.d
+    test -d /etc/qubes-rpc
+    test ! -L /etc/qubes-rpc
+    printf "#!/bin/sh\nexit 0\n" > /etc/qubes-rpc/test.GuixWritable
+    chmod 755 /etc/qubes-rpc/test.GuixWritable
+    test -x /etc/qubes-rpc/test.GuixWritable
+    test -d /etc/qubes/post-install.d
+    test ! -L /etc/qubes/post-install.d
+    printf "#!/bin/sh\nexit 0\n" > /etc/qubes/post-install.d/50-test.sh
+    chmod 755 /etc/qubes/post-install.d/50-test.sh
+    test -x /etc/qubes/post-install.d/50-test.sh
     test -d /etc/pam.d
     test -f /etc/pam.d/qrexec
     test -f /etc/pam.d/qubes-gui-agent
@@ -90,6 +107,8 @@ sudo chroot "$mount_dir" /bin/sh -lc '
     grep -q "force-user[[:space:]]*=[[:space:]]*'\''root'\''" /etc/qubes/rpc-config/qubes.PostInstall
     test -x /etc/qubes-rpc/qubes.PostInstall
     test -x /etc/qubes-rpc/qubes.VMShell
+    grep -F "exec /bin/bash" /etc/qubes-rpc/qubes.VMShell
+    grep -F "exec /bin/bash" /etc/qubes-rpc/qubes.VMRootShell
     /bin/sh -c true
     /bin/bash -lc true
     test -r /etc/os-release
@@ -271,5 +290,25 @@ def run_vmshell_as(user):
 for name in ("root", "user"):
     run_vmshell_as(name)
 PY
+
+sudo chroot "$mount_dir" /bin/sh -lc '
+    set -eu
+    rm -rf /rw/home
+    . /usr/lib/qubes/init/functions
+    initialize_home /rw/home ifneeded
+    test -d /rw/home/user
+    test ! -L /rw/home/user/.config
+    test ! -L /rw/home/user/.cache
+    if [ -e /var/guix/profiles/per-user/user ]; then
+        test "$(stat -c %d /var/guix/profiles/per-user/user)" != "$(stat -c %d /rw)"
+    fi
+'
+
+sudo chroot --userspec=user:users "$mount_dir" /bin/sh -lc '
+    set -eu
+    export HOME=/rw/home/user
+    test -w "$HOME"
+    mkdir -p "$HOME/.config/guix" "$HOME/.cache/guix"
+'
 
 printf 'native root image activation test passed: %s\n' "$image"

@@ -147,6 +147,7 @@ required_patterns=(
     lib/qubes/qubes-trigger-sync-appmenus.sh
     lib/qubes/qubes-gui-agent-pre.sh
     lib/qubes/qfile-agent
+    lib/qubes/qfile-unpacker
     etc/qubes/post-install.d/10-qubes-core-agent-features.sh
     etc/qubes/post-install.d/10-qubes-core-agent-appmenus.sh
     etc/qubes/post-install.d/90-qubes-core-agent.sh

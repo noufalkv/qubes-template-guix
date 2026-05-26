@@ -86,6 +86,65 @@ check_central_openqa_warning() {
 
 check_central_openqa_warning
 
+check_setup_env_error() {
+    local label="$1"
+    local expected="$2"
+    local tmp
+    local output
+    local status
+    shift 2
+
+    tmp="$(mktemp -d "${TMPDIR:-/tmp}/qubes-guix-openqa-setup.XXXXXX")"
+    trap 'rm -rf "$tmp"' RETURN
+    mkdir -p "$tmp/tests"
+    : >"$tmp/tests/main.pm"
+    : >"$tmp/dom0.qcow2"
+    : >"$tmp/root.img"
+    : >"$tmp/template.rpm"
+
+    set +e
+    output="$(
+        env "$@" \
+            "$repo_root/scripts/setup-openqa-guix-template-test.sh" \
+            --tests-source "$tmp/tests" \
+            --qubes-disk "$tmp/dom0.qcow2" \
+            --guix-root-image "$tmp/root.img" \
+            --template-rpm "$tmp/template.rpm" \
+            --no-schedule 2>&1
+    )"
+    status=$?
+    set -e
+
+    [ "$status" -ne 0 ] || {
+        printf 'expected setup-openqa-guix-template-test.sh to fail: %s\n' \
+            "$label" >&2
+        exit 1
+    }
+
+    printf '%s\n' "$output" | grep -Fq "$expected" || {
+        printf 'unexpected setup error for %s, wanted %s:\n%s\n' \
+            "$label" "$expected" "$output" >&2
+        exit 1
+    }
+}
+
+check_setup_env_error invalid-update-target-network-mode \
+    'unsupported QUBES_OPENQA_UPDATE_TARGET_NETWORK_MODE' \
+    GUIX_INSTALL_MODE=rpm \
+    QUBES_OPENQA_UPDATE_TARGET_NETWORK_MODE=bad
+check_setup_env_error bootstrap-requires-rpm-mode \
+    'GUIX_BOOTSTRAP_UPDATE_TARGET=1 requires GUIX_INSTALL_MODE=rpm' \
+    GUIX_INSTALL_MODE=direct \
+    GUIX_BOOTSTRAP_UPDATE_TARGET=1
+check_setup_env_error bootstrap-requires-update-target-rpm \
+    'missing update target template RPM' \
+    GUIX_INSTALL_MODE=rpm \
+    GUIX_BOOTSTRAP_UPDATE_TARGET=1
+check_setup_env_error core-admin-backend-tree-preflight \
+    'missing core-admin entrypoint' \
+    GUIX_INSTALL_MODE=rpm \
+    GUIX_CORE_ADMIN_LINUX_TREE=/tmp/qubes-guix-missing-core-admin-tree
+
 check_invalid_template_name() {
     local label="$1"
     local output

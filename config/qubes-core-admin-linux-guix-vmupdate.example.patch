@@ -1,44 +1,3 @@
-From 182199ca9e91535c5386f13a26ea8b6cf0e57610 Mon Sep 17 00:00:00 2001
-From: Autonomous AI contribution <autonomous-ai@localhost>
-Date: Mon, 18 May 2026 11:37:39 +0200
-Subject: [PATCH] Add Guix vmupdate backend
-
-Add a Guix source backend for qvm-template update handling.  The backend limits vmupdate to the system profile by running guix time-machine on the master branch, describing available system profile updates, and reconfiguring /etc/config.scm through guix system reconfigure.
-
-Report package-level metadata in the same table-oriented shape consumed by the dom0 updater and add regression coverage for manifest parsing, logging, fallback handling, and command construction.
----
- vmupdate/agent/entrypoint.py           |   6 +-
- vmupdate/agent/source/guix/__init__.py |  20 +
- vmupdate/agent/source/guix/guix_cli.py | 318 ++++++++++++++
- vmupdate/agent/source/utils.py         |   5 +-
- vmupdate/tests/test_agent_guix.py      | 581 +++++++++++++++++++++++++
- 5 files changed, 928 insertions(+), 2 deletions(-)
- create mode 100644 vmupdate/agent/source/guix/__init__.py
- create mode 100644 vmupdate/agent/source/guix/guix_cli.py
- create mode 100644 vmupdate/tests/test_agent_guix.py
-
-diff --git a/vmupdate/agent/entrypoint.py b/vmupdate/agent/entrypoint.py
-index 157e887..431387d 100755
---- a/vmupdate/agent/entrypoint.py
-+++ b/vmupdate/agent/entrypoint.py
-@@ -90,12 +90,16 @@ def get_package_manager(
-     elif os_data["os_family"] == "ArchLinux":
-         from source.pacman.pacman_cli import PACMANCLI as PackageManager
-
-+        print("Progress reporting not supported.", flush=True)
-+    elif os_data["os_family"] == "Guix":
-+        from source.guix.guix_cli import GUIXCLI as PackageManager
-+
-         print("Progress reporting not supported.", flush=True)
-     elif os_data["os_family"] == "Qubes":
-         PackageManager = import_dom0_package_manager(os_data, log, no_progress)
-     else:
-         raise NotImplementedError(
--            "Only Debian, RedHat and ArchLinux based OS is supported."
-+            "Only Debian, RedHat, ArchLinux, Qubes and Guix based OS is supported."
-         )
-
-     pkg_mng = PackageManager(log_handler, log_level, agent_type)
 diff --git a/vmupdate/agent/source/guix/__init__.py b/vmupdate/agent/source/guix/__init__.py
 new file mode 100644
 index 0000000..d4ad59b
@@ -67,10 +26,10 @@ index 0000000..d4ad59b
 +# USA.
 diff --git a/vmupdate/agent/source/guix/guix_cli.py b/vmupdate/agent/source/guix/guix_cli.py
 new file mode 100644
-index 0000000..69e9021
+index 0000000..5b12c2d
 --- /dev/null
 +++ b/vmupdate/agent/source/guix/guix_cli.py
-@@ -0,0 +1,318 @@
+@@ -0,0 +1,444 @@
 +# coding=utf-8
 +#
 +# The Qubes OS Project, https://www.qubes-os.org
@@ -93,6 +52,8 @@ index 0000000..69e9021
 +# USA.
 +
 +import os
++import re
++import selectors
 +import shlex
 +import shutil
 +import subprocess
@@ -108,20 +69,25 @@ index 0000000..69e9021
 +    PROGRESS_REPORTING = False
 +
 +    TIME_MACHINE_BRANCH = "master"
++    CHANNELS_FILE = "/etc/guix/channels.scm"
 +    SYSTEM_CONFIG = "/etc/config.scm"
++    CURRENT_SYSTEM = "/run/current-system"
++    CURRENT_CONFIGURATION = "/run/current-system/configuration.scm"
++    CURRENT_PROVENANCE = "/run/current-system/provenance"
 +    SYSTEM_PROFILE = "/run/current-system/profile"
 +    SERVICE_DIR = "/run/qubes-service"
-+    TIME_MACHINE_ENVIRONMENT = (
-+        "HOME=/tmp",
-+        "XDG_CONFIG_HOME=/tmp/qubes-vm-update-guix-config",
-+        "XDG_CACHE_HOME=/tmp/qubes-vm-update-guix-cache",
++    GUIX_ENVIRONMENT = (
++        "-u",
++        "XDG_CONFIG_HOME",
++        "-u",
++        "XDG_CACHE_HOME",
++        "HOME=/root",
 +    )
 +    MANIFEST_SEPARATOR = "|"
 +    STATE_PATHS = {
-+        "guix-system": "/run/current-system",
++        "guix-system": CURRENT_SYSTEM,
 +    }
 +    GUIX_CANDIDATES = (
-+        "/run/qubes/bin/guix",
 +        "/root/.config/guix/current/bin/guix",
 +        "/var/guix/profiles/per-user/root/current-guix/bin/guix",
 +        "/run/current-system/profile/bin/guix",
@@ -155,10 +121,10 @@ index 0000000..69e9021
 +                                                "qubes-updates-proxy"))
 +        )
 +
-+    def _with_time_machine_environment(
++    def _with_guix_environment(
 +            self, command: List[str]
 +    ) -> List[str]:
-+        env = list(self.TIME_MACHINE_ENVIRONMENT)
++        env = list(self.GUIX_ENVIRONMENT)
 +
 +        if self._uses_qubes_update_proxy():
 +            proxy = "http://127.0.0.1:8082/"
@@ -177,7 +143,9 @@ index 0000000..69e9021
 +        return ["env", *env, *command]
 +
 +    def _run_guix(self, command: List[str]) -> ProcessResult:
-+        result = self.run_cmd(self._with_time_machine_environment(command))
++        prepared = self._with_guix_environment(command)
++        result = self._run_guix_once(prepared)
++
 +        if result and not (result.out.strip() or result.err.strip()):
 +            result.err = (
 +                f"Guix command failed with exit code {result.code}: "
@@ -186,27 +154,64 @@ index 0000000..69e9021
 +            result.posted = False
 +        return result
 +
++    def _run_guix_once(self, command: List[str]) -> ProcessResult:
++        self.log.debug("run command: %s", " ".join(command))
++        out_parts = []
++        err_parts = []
++        with subprocess.Popen(
++            command,
++            stdin=subprocess.PIPE,
++            stdout=subprocess.PIPE,
++            stderr=subprocess.PIPE,
++        ) as proc:
++            if proc.stdin is not None:
++                proc.stdin.close()
++            with selectors.DefaultSelector() as selector:
++                if proc.stdout is not None:
++                    selector.register(proc.stdout, selectors.EVENT_READ,
++                                      "out")
++                if proc.stderr is not None:
++                    selector.register(proc.stderr, selectors.EVENT_READ,
++                                      "err")
++
++                while selector.get_map():
++                    for key, _events in selector.select():
++                        chunk = os.read(key.fileobj.fileno(), 4096)
++                        if not chunk:
++                            selector.unregister(key.fileobj)
++                            key.fileobj.close()
++                            continue
++                        text = ProcessResult.sanitize_output(chunk)
++                        if key.data == "out":
++                            out_parts.append(text)
++                            print(text, end="", flush=True)
++                        else:
++                            err_parts.append(text)
++                            print(text, end="", file=sys.stderr, flush=True)
++
++            code = proc.wait()
++
++        result = ProcessResult(code, "".join(out_parts), "".join(err_parts))
++        result.posted = bool(result.out or result.err)
++        self.log.debug("command exit code: %i", result.code)
++        return result
++
 +    def refresh(self, hard_fail: bool) -> ProcessResult:
 +        """
-+        Refresh Guix channel metadata for system reconfiguration.
++        Guix System has no separate package database refresh for vmupdate.
 +
-+        Use guix time-machine so Qubes vmupdate does not mutate root's Guix
-+        checkout as package-manager state.  The update target is the Guix
-+        System generation produced by the later reconfigure step.
++        The update is the system reconfiguration itself.  Running guix
++        time-machine here would build a Guix checkout before the real update
++        and can exhaust updater timeouts without changing the system
++        generation.
 +        """
-+        cmd = [
-+            self.package_manager,
-+            "time-machine",
-+            f"--branch={self.TIME_MACHINE_BRANCH}",
-+            "--",
-+            "describe",
-+        ]
 +        print(
-+            f"Refreshing Guix channel metadata from "
-+            f"{self.TIME_MACHINE_BRANCH}.",
++            "Skipping separate Guix refresh; Guix System reconfigure uses "
++            f"the installed system Guix; release channel reference is "
++            f"{self._time_machine_source_description()}.",
 +            flush=True,
 +        )
-+        return self._run_guix(cmd)
++        return ProcessResult()
 +
 +    def get_packages(self) -> Dict[str, List[str]]:
 +        """
@@ -330,15 +335,81 @@ index 0000000..69e9021
 +
 +        return None
 +
++    def _time_machine_source_args(self) -> List[str]:
++        if os.path.exists(self.CHANNELS_FILE):
++            return ["-C", self.CHANNELS_FILE]
++
++        return [f"--branch={self.TIME_MACHINE_BRANCH}"]
++
++    def _time_machine_source_description(self) -> str:
++        if os.path.exists(self.CHANNELS_FILE):
++            return self.CHANNELS_FILE
++
++        return self.TIME_MACHINE_BRANCH
++
++    @staticmethod
++    def _read_text_file(path: str) -> Optional[str]:
++        try:
++            with open(path, "r", encoding="utf-8") as handle:
++                return handle.read()
++        except OSError:
++            return None
++        except UnicodeDecodeError:
++            return None
++
++    @staticmethod
++    def _channel_commit(text: Optional[str]) -> Optional[str]:
++        if text is None:
++            return None
++        match = re.search(r'\(commit\s+"([^"]+)"\)', text)
++        if match is None:
++            return None
++        return match.group(1)
++
++    def _current_generation_matches_pinned_inputs(self) -> bool:
++        """
++        Detect the common Guix TemplateVM no-op update case cheaply.
++
++        The native template is built from a pinned channels.scm and a generated
++        self-contained /etc/config.scm that embeds the original small system
++        definition.  If the running generation provenance already carries the
++        same Guix channel commit, and that original system definition is still
++        embedded in /etc/config.scm, a central updater run has no new input to
++        apply.  Avoiding a full no-op reconfigure matters because Guix graph
++        evaluation can take tens of minutes in nested openQA.
++        """
++        if not os.path.exists(self.CURRENT_SYSTEM):
++            return False
++
++        configured_channels = self._read_text_file(self.CHANNELS_FILE)
++        current_provenance = self._read_text_file(self.CURRENT_PROVENANCE)
++        configured_commit = self._channel_commit(configured_channels)
++        current_commit = self._channel_commit(current_provenance)
++        if configured_commit is None or configured_commit != current_commit:
++            return False
++
++        system_config = self._read_text_file(self.SYSTEM_CONFIG)
++        current_config = self._read_text_file(self.CURRENT_CONFIGURATION)
++        if system_config is None or current_config is None:
++            return False
++
++        current_config = current_config.strip()
++        if not current_config:
++            return False
++
++        return current_config in system_config
++
 +    def get_action(self, remove_obsolete) -> List[str]:
 +        """
 +        Kept for the PackageManager interface; upgrade_internal runs the
-+        reconfiguration through guix time-machine.
++        Guix System reconfiguration.
++
++        The installed system Guix is already the release-pinned Guix from the
++        template build.  Using it directly avoids rebuilding a Guix checkout
++        inside every central updater run, which is too slow and fragile in
++        nested test and update environments.
 +        """
 +        return [
-+            "time-machine",
-+            f"--branch={self.TIME_MACHINE_BRANCH}",
-+            "--",
 +            "system",
 +            "reconfigure",
 +            "--no-bootloader",
@@ -351,10 +422,24 @@ index 0000000..69e9021
 +                EXIT.ERR_VM_UPDATE,
 +                err=f"missing Guix system configuration: {self.SYSTEM_CONFIG}")
 +
++        if self._current_generation_matches_pinned_inputs():
++            print(
++                f"Guix System already matches {self.SYSTEM_CONFIG} and "
++                f"{self._time_machine_source_description()}; skipping "
++                "reconfigure.",
++                flush=True,
++            )
++            print(
++                f"guix-system {os.path.realpath(self.CURRENT_SYSTEM)}",
++                flush=True,
++            )
++            return ProcessResult()
++
 +        cmd = [self.package_manager, *self.get_action(remove_obsolete)]
 +        print(
 +            f"Reconfiguring Guix System from {self.SYSTEM_CONFIG} "
-+            f"using {self.TIME_MACHINE_BRANCH}.",
++            f"using the installed system Guix. Release channel reference: "
++            f"{self._time_machine_source_description()}.",
 +            flush=True,
 +        )
 +        result = self._run_guix(cmd)
@@ -414,10 +499,10 @@ index e64f3e8..86d7830 100644
 
 diff --git a/vmupdate/tests/test_agent_guix.py b/vmupdate/tests/test_agent_guix.py
 new file mode 100644
-index 0000000..793a94c
+index 0000000..8d8a8b0
 --- /dev/null
 +++ b/vmupdate/tests/test_agent_guix.py
-@@ -0,0 +1,581 @@
+@@ -0,0 +1,736 @@
 +# coding=utf-8
 +#
 +# The Qubes OS Project, https://www.qubes-os.org
@@ -474,6 +559,16 @@ index 0000000..793a94c
 +    monkeypatch.setattr(GUIXCLI, "SERVICE_DIR", str(service_dir))
 +    monkeypatch.setattr(GUIXCLI, "SYSTEM_CONFIG",
 +                        str(tmp_path / "config.scm"))
++    monkeypatch.setattr(GUIXCLI, "CHANNELS_FILE",
++                        str(tmp_path / "channels.scm"))
++    monkeypatch.setattr(GUIXCLI, "CURRENT_SYSTEM",
++                        str(tmp_path / "run" / "current-system"))
++    monkeypatch.setattr(GUIXCLI, "CURRENT_CONFIGURATION",
++                        str(tmp_path / "run" / "current-system"
++                            / "configuration.scm"))
++    monkeypatch.setattr(GUIXCLI, "CURRENT_PROVENANCE",
++                        str(tmp_path / "run" / "current-system"
++                            / "provenance"))
 +    monkeypatch.setattr(GUIXCLI, "SYSTEM_PROFILE",
 +                        str(tmp_path / "run" / "current-system" / "profile"))
 +    monkeypatch.setattr(GUIXCLI, "STATE_PATHS", {
@@ -487,23 +582,12 @@ index 0000000..793a94c
 +def collect_commands(manager, monkeypatch):
 +    commands = []
 +
-+    def run_cmd(command, realtime=True):
++    def run_guix_once(command):
 +        commands.append(command)
 +        return ProcessResult()
 +
-+    monkeypatch.setattr(manager, "run_cmd", run_cmd)
++    monkeypatch.setattr(manager, "_run_guix_once", run_guix_once)
 +    return commands
-+
-+
-+def collect_commands_and_realtime(manager, monkeypatch):
-+    calls = []
-+
-+    def run_cmd(command, realtime=True):
-+        calls.append((command, realtime))
-+        return ProcessResult()
-+
-+    monkeypatch.setattr(manager, "run_cmd", run_cmd)
-+    return calls
 +
 +
 +def test_os_release_guix_selects_guix_family(monkeypatch):
@@ -584,89 +668,201 @@ index 0000000..793a94c
 +    assert "Package manager not found" in str(exc_info.value)
 +
 +
-+def test_refresh_runs_time_machine_describe_with_proxy(
++def test_run_guix_once_streams_and_captures_output(
 +        tmp_path, monkeypatch, capsys):
-+    manager, guix, service_dir = make_manager(tmp_path, monkeypatch)
++    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    command = tmp_path / "command"
++    command.write_text(
++        "#!/bin/sh\n"
++        "printf 'out line\\n'\n"
++        "printf 'err line\\n' >&2\n"
++        "exit 3\n",
++        encoding="ascii",
++    )
++    command.chmod(0o755)
++
++    result = manager._run_guix_once([str(command)])
++
++    assert result.code == 3
++    assert result.out == "out line\n"
++    assert result.err == "err line\n"
++    assert result.posted is True
++    captured = capsys.readouterr()
++    assert captured.out == "out line\n"
++    assert captured.err == "err line\n"
++
++
++def test_refresh_skips_separate_time_machine_with_proxy(
++        tmp_path, monkeypatch, capsys):
++    manager, _guix, service_dir = make_manager(tmp_path, monkeypatch)
 +    service_dir.mkdir()
 +    (service_dir / "updates-proxy-setup").write_text("", encoding="ascii")
 +    commands = collect_commands(manager, monkeypatch)
 +
 +    assert not manager.refresh(hard_fail=True)
 +
-+    assert commands == [[
-+        "env",
-+        *GUIXCLI.TIME_MACHINE_ENVIRONMENT,
-+        "http_proxy=http://127.0.0.1:8082/",
-+        "https_proxy=http://127.0.0.1:8082/",
-+        "HTTP_PROXY=http://127.0.0.1:8082/",
-+        "HTTPS_PROXY=http://127.0.0.1:8082/",
-+        "all_proxy=http://127.0.0.1:8082/",
-+        "ALL_PROXY=http://127.0.0.1:8082/",
-+        "no_proxy=127.0.0.1,localhost",
-+        "NO_PROXY=127.0.0.1,localhost",
-+        guix,
-+        "time-machine",
-+        f"--branch={GUIXCLI.TIME_MACHINE_BRANCH}",
-+        "--",
-+        "describe",
-+    ]]
-+    assert "Refreshing Guix channel metadata from master." in (
++    assert commands == []
++    assert "Skipping separate Guix refresh" in (
 +        capsys.readouterr().out
 +    )
 +
 +
-+def test_refresh_streams_time_machine_output(tmp_path, monkeypatch):
-+    manager, guix, _service_dir = make_manager(tmp_path, monkeypatch)
-+    calls = collect_commands_and_realtime(manager, monkeypatch)
++def test_refresh_reports_installed_channels_file(
++        tmp_path, monkeypatch, capsys):
++    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    Path(GUIXCLI.CHANNELS_FILE).write_text("(list)\n", encoding="ascii")
++    commands = collect_commands(manager, monkeypatch)
 +
 +    assert not manager.refresh(hard_fail=True)
 +
-+    assert calls == [([
-+        "env",
-+        *GUIXCLI.TIME_MACHINE_ENVIRONMENT,
-+        guix,
-+        "time-machine",
-+        f"--branch={GUIXCLI.TIME_MACHINE_BRANCH}",
-+        "--",
-+        "describe",
-+    ], True)]
++    assert commands == []
++    assert (
++        f"Skipping separate Guix refresh; Guix System reconfigure uses "
++        f"the installed system Guix; release channel reference is "
++        f"{GUIXCLI.CHANNELS_FILE}."
++    ) in capsys.readouterr().out
 +
 +
-+def test_refresh_reports_silent_guix_failure(tmp_path, monkeypatch):
++def test_refresh_does_not_touch_root_guix_checkout(
++        tmp_path, monkeypatch):
 +    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    commands = collect_commands(manager, monkeypatch)
 +
-+    def run_cmd(command, realtime=True):
-+        result = ProcessResult(EXIT.ERR)
-+        result.posted = True
-+        return result
++    assert not manager.refresh(hard_fail=True)
 +
-+    monkeypatch.setattr(manager, "run_cmd", run_cmd)
++    assert commands == []
++
++
++def test_refresh_always_defers_to_system_reconfigure(tmp_path, monkeypatch):
++    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    commands = collect_commands(manager, monkeypatch)
 +
 +    result = manager.refresh(hard_fail=True)
 +
-+    assert result.code == EXIT.ERR
-+    assert "Guix command failed with exit code 1:" in result.err
-+    assert "time-machine --branch=master -- describe" in result.err
-+    assert result.posted is False
++    assert not result
++    assert commands == []
++
++
++def test_guix_environment_reuses_root_guix_state():
++    assert "HOME=/root" in GUIXCLI.GUIX_ENVIRONMENT
++    assert "HOME=/tmp" not in GUIXCLI.GUIX_ENVIRONMENT
++    assert "XDG_CONFIG_HOME=/tmp/qubes-vm-update-guix-config" not in (
++        GUIXCLI.GUIX_ENVIRONMENT
++    )
++    assert "XDG_CACHE_HOME=/tmp/qubes-vm-update-guix-cache" not in (
++        GUIXCLI.GUIX_ENVIRONMENT
++    )
++    assert (
++        "-u",
++        "XDG_CONFIG_HOME",
++        "-u",
++        "XDG_CACHE_HOME",
++    ) == GUIXCLI.GUIX_ENVIRONMENT[:4]
++
++
++def write_current_generation_inputs(
++        tmp_path, current_source="(operating-system)\n",
++        configured_source=None, configured_commit="abc123",
++        current_commit="abc123"):
++    if configured_source is None:
++        configured_source = (
++            ";; generated wrapper\n"
++            f"{current_source}"
++        )
++    Path(GUIXCLI.SYSTEM_CONFIG).write_text(configured_source,
++                                           encoding="ascii")
++    Path(GUIXCLI.CHANNELS_FILE).write_text(
++        f"(list (channel (name 'guix) "
++        f"(commit \"{configured_commit}\")))\n",
++        encoding="ascii",
++    )
++    Path(GUIXCLI.CURRENT_SYSTEM).mkdir(parents=True, exist_ok=True)
++    Path(GUIXCLI.CURRENT_CONFIGURATION).write_text(current_source,
++                                                   encoding="ascii")
++    Path(GUIXCLI.CURRENT_PROVENANCE).write_text(
++        f'(provenance (channels (channel (commit "{current_commit}"))))\n',
++        encoding="ascii",
++    )
++
++
++def test_upgrade_skips_reconfigure_when_current_generation_matches_inputs(
++        tmp_path, monkeypatch, capsys):
++    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    write_current_generation_inputs(tmp_path)
++    commands = collect_commands(manager, monkeypatch)
++
++    assert not manager.upgrade_internal(remove_obsolete=True)
++
++    assert commands == []
++    out = capsys.readouterr().out
++    assert (
++        f"Guix System already matches {GUIXCLI.SYSTEM_CONFIG} and "
++        f"{GUIXCLI.CHANNELS_FILE}; skipping reconfigure."
++    ) in out
++    assert f"guix-system {Path(GUIXCLI.CURRENT_SYSTEM).resolve()}" in out
++
++
++def test_upgrade_reconfigures_when_current_generation_commit_differs(
++        tmp_path, monkeypatch):
++    manager, guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    write_current_generation_inputs(tmp_path, current_commit="old")
++    commands = collect_commands(manager, monkeypatch)
++
++    assert not manager.upgrade_internal(remove_obsolete=True)
++
++    assert commands == [[
++        "env",
++        *GUIXCLI.GUIX_ENVIRONMENT,
++        guix,
++        "system",
++        "reconfigure",
++        "--no-bootloader",
++        GUIXCLI.SYSTEM_CONFIG,
++    ]]
++
++
++def test_upgrade_reconfigures_when_current_generation_source_differs(
++        tmp_path, monkeypatch):
++    manager, guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    write_current_generation_inputs(
++        tmp_path,
++        current_source="(operating-system (host-name \"old\"))\n",
++        configured_source="(operating-system (host-name \"new\"))\n",
++    )
++    commands = collect_commands(manager, monkeypatch)
++
++    assert not manager.upgrade_internal(remove_obsolete=True)
++
++    assert commands == [[
++        "env",
++        *GUIXCLI.GUIX_ENVIRONMENT,
++        guix,
++        "system",
++        "reconfigure",
++        "--no-bootloader",
++        GUIXCLI.SYSTEM_CONFIG,
++    ]]
 +
 +
 +def test_update_proxy_vm_does_not_proxy_its_own_guix(tmp_path, monkeypatch):
 +    manager, guix, service_dir = make_manager(tmp_path, monkeypatch)
++    Path(GUIXCLI.SYSTEM_CONFIG).write_text("(operating-system)\n",
++                                           encoding="ascii")
 +    service_dir.mkdir()
 +    (service_dir / "updates-proxy-setup").write_text("", encoding="ascii")
 +    (service_dir / "qubes-updates-proxy").write_text("", encoding="ascii")
 +    commands = collect_commands(manager, monkeypatch)
 +
-+    assert not manager.refresh(hard_fail=True)
++    assert not manager.upgrade_internal(remove_obsolete=False)
 +
 +    assert commands == [[
 +        "env",
-+        *GUIXCLI.TIME_MACHINE_ENVIRONMENT,
++        *GUIXCLI.GUIX_ENVIRONMENT,
 +        guix,
-+        "time-machine",
-+        f"--branch={GUIXCLI.TIME_MACHINE_BRANCH}",
-+        "--",
-+        "describe",
++        "system",
++        "reconfigure",
++        "--no-bootloader",
++        GUIXCLI.SYSTEM_CONFIG,
 +    ]]
 +
 +
@@ -675,17 +871,15 @@ index 0000000..793a94c
 +    manager, guix, _service_dir = make_manager(tmp_path, monkeypatch)
 +    Path(GUIXCLI.SYSTEM_CONFIG).write_text("(operating-system)\n",
 +                                           encoding="ascii")
++    Path(GUIXCLI.CHANNELS_FILE).write_text("(list)\n", encoding="ascii")
 +    commands = collect_commands(manager, monkeypatch)
 +
 +    assert not manager.upgrade_internal(remove_obsolete=True)
 +
 +    assert commands == [[
 +        "env",
-+        *GUIXCLI.TIME_MACHINE_ENVIRONMENT,
++        *GUIXCLI.GUIX_ENVIRONMENT,
 +        guix,
-+        "time-machine",
-+        f"--branch={GUIXCLI.TIME_MACHINE_BRANCH}",
-+        "--",
 +        "system",
 +        "reconfigure",
 +        "--no-bootloader",
@@ -693,29 +887,72 @@ index 0000000..793a94c
 +    ]]
 +    out = capsys.readouterr().out
 +    assert "Reconfiguring Guix System" in out
++    assert "using the installed system Guix" in out
++    assert f"Release channel reference: {GUIXCLI.CHANNELS_FILE}" in out
 +    assert "Reconfigured Guix System." in out
 +
 +
-+def test_upgrade_streams_reconfigure_output(tmp_path, monkeypatch):
++def test_upgrade_direct_reconfigure_without_channels_file(
++        tmp_path, monkeypatch):
 +    manager, guix, _service_dir = make_manager(tmp_path, monkeypatch)
 +    Path(GUIXCLI.SYSTEM_CONFIG).write_text("(operating-system)\n",
 +                                           encoding="ascii")
-+    calls = collect_commands_and_realtime(manager, monkeypatch)
++    commands = collect_commands(manager, monkeypatch)
 +
 +    assert not manager.upgrade_internal(remove_obsolete=True)
 +
-+    assert calls == [([
++    assert commands == [[
 +        "env",
-+        *GUIXCLI.TIME_MACHINE_ENVIRONMENT,
++        *GUIXCLI.GUIX_ENVIRONMENT,
 +        guix,
-+        "time-machine",
-+        f"--branch={GUIXCLI.TIME_MACHINE_BRANCH}",
-+        "--",
 +        "system",
 +        "reconfigure",
 +        "--no-bootloader",
 +        GUIXCLI.SYSTEM_CONFIG,
-+    ], True)]
++    ]]
++
++
++def test_upgrade_streams_and_captures_reconfigure_output(
++        tmp_path, monkeypatch):
++    manager, guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    Path(GUIXCLI.SYSTEM_CONFIG).write_text("(operating-system)\n",
++                                           encoding="ascii")
++    commands = collect_commands(manager, monkeypatch)
++
++    assert not manager.upgrade_internal(remove_obsolete=True)
++
++    assert commands == [[
++        "env",
++        *GUIXCLI.GUIX_ENVIRONMENT,
++        guix,
++        "system",
++        "reconfigure",
++        "--no-bootloader",
++        GUIXCLI.SYSTEM_CONFIG,
++    ]]
++
++
++def test_guix_reconfigure_failure_is_not_retried(
++        tmp_path, monkeypatch):
++    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    calls = []
++
++    def run_guix_once(command):
++        calls.append(command)
++        return ProcessResult(
++            EXIT.ERR,
++            err="guix system: error: failed to load '/etc/config.scm'\n",
++        )
++
++    monkeypatch.setattr(manager, "_run_guix_once", run_guix_once)
++
++    Path(GUIXCLI.SYSTEM_CONFIG).write_text("(operating-system)\n",
++                                           encoding="ascii")
++
++    result = manager.upgrade_internal(remove_obsolete=False)
++
++    assert result.code == EXIT.ERR
++    assert len(calls) == 1
 +
 +
 +def test_upgrade_reports_silent_guix_failure(tmp_path, monkeypatch):
@@ -723,10 +960,10 @@ index 0000000..793a94c
 +    Path(GUIXCLI.SYSTEM_CONFIG).write_text("(operating-system)\n",
 +                                           encoding="ascii")
 +
-+    def run_cmd(command, realtime=True):
++    def run_guix_once(command):
 +        return ProcessResult(EXIT.ERR)
 +
-+    monkeypatch.setattr(manager, "run_cmd", run_cmd)
++    monkeypatch.setattr(manager, "_run_guix_once", run_guix_once)
 +
 +    result = manager.upgrade_internal(remove_obsolete=False)
 +
@@ -747,7 +984,7 @@ index 0000000..793a94c
 +
 +    assert commands == [[
 +        "env",
-+        *GUIXCLI.TIME_MACHINE_ENVIRONMENT,
++        *GUIXCLI.GUIX_ENVIRONMENT,
 +        "http_proxy=http://127.0.0.1:8082/",
 +        "https_proxy=http://127.0.0.1:8082/",
 +        "HTTP_PROXY=http://127.0.0.1:8082/",
@@ -757,9 +994,6 @@ index 0000000..793a94c
 +        "no_proxy=127.0.0.1,localhost",
 +        "NO_PROXY=127.0.0.1,localhost",
 +        guix,
-+        "time-machine",
-+        f"--branch={GUIXCLI.TIME_MACHINE_BRANCH}",
-+        "--",
 +        "system",
 +        "reconfigure",
 +        "--no-bootloader",
@@ -782,10 +1016,10 @@ index 0000000..793a94c
 +    Path(GUIXCLI.SYSTEM_CONFIG).write_text("(operating-system)\n",
 +                                           encoding="ascii")
 +
-+    def run_cmd(command, realtime=True):
++    def run_guix_once(command):
 +        return ProcessResult(EXIT.ERR_VM_UPDATE, err="failed")
 +
-+    monkeypatch.setattr(manager, "run_cmd", run_cmd)
++    monkeypatch.setattr(manager, "_run_guix_once", run_guix_once)
 +
 +    result = manager.upgrade_internal(remove_obsolete=False)
 +
@@ -799,9 +1033,18 @@ index 0000000..793a94c
 +    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
 +
 +    assert manager.get_action(remove_obsolete=True) == [
-+        "time-machine",
-+        f"--branch={GUIXCLI.TIME_MACHINE_BRANCH}",
-+        "--",
++        "system",
++        "reconfigure",
++        "--no-bootloader",
++        GUIXCLI.SYSTEM_CONFIG,
++    ]
++
++
++def test_get_action_ignores_installed_channels_file(tmp_path, monkeypatch):
++    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    Path(GUIXCLI.CHANNELS_FILE).write_text("(list)\n", encoding="ascii")
++
++    assert manager.get_action(remove_obsolete=True) == [
 +        "system",
 +        "reconfigure",
 +        "--no-bootloader",
@@ -958,11 +1201,8 @@ index 0000000..793a94c
 +    assert code == EXIT.OK
 +    assert commands == [[
 +        "env",
-+        *GUIXCLI.TIME_MACHINE_ENVIRONMENT,
++        *GUIXCLI.GUIX_ENVIRONMENT,
 +        guix,
-+        "time-machine",
-+        f"--branch={GUIXCLI.TIME_MACHINE_BRANCH}",
-+        "--",
 +        "system",
 +        "reconfigure",
 +        "--no-bootloader",

@@ -55,7 +55,8 @@ mke2fs -q -t ext4 -d "$image_tree" "$image"
 
 check_template_rpm() {
     local template_name="$1"
-    local appmenu_entry="$2"
+    shift
+    local appmenu_entries=("$@")
     local extract_dir="$work_dir/extract-$template_name"
     local extracted_image_dir="$work_dir/extracted-image-$template_name"
     local combined_tar="$work_dir/$template_name-root.tar"
@@ -92,7 +93,9 @@ check_template_rpm() {
     grep -qx 'virt-mode=pvh' "$template_dir/template.conf"
     grep -qx 'qrexec=1' "$template_dir/template.conf"
     grep -qx 'gui=1' "$template_dir/template.conf"
-    grep -qx "$appmenu_entry" "$template_dir/whitelisted-appmenus.list"
+    for appmenu_entry in "${appmenu_entries[@]}"; do
+        grep -qx "$appmenu_entry" "$template_dir/whitelisted-appmenus.list"
+    done
     cmp -s "$template_dir/whitelisted-appmenus.list" \
         "$template_dir/vm-whitelisted-appmenus.list"
     cmp -s "$template_dir/whitelisted-appmenus.list" \
@@ -117,5 +120,9 @@ check_template_rpm() {
     printf 'native template RPM layout check passed: %s\n' "$rpm_file"
 }
 
-check_template_rpm guix xfce4-terminal.desktop
+check_template_rpm guix \
+    org.gnome.Evince.desktop \
+    org.xfce.mousepad.desktop \
+    thunar.desktop \
+    xfce4-terminal.desktop
 check_template_rpm guix-minimal xterm.desktop

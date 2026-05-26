@@ -8,7 +8,8 @@ agent startup are mapped to Shepherd services.
 There are two native variants, mirroring the normal/minimal split used by
 official Qubes templates:
 
-- `normal`: Qubes GUI support, Xorg, and `xfce4-terminal`.
+- `normal`: Qubes GUI support, Xorg, `xfce4-terminal`, and a small desktop
+  baseline with a file manager, text editor, and document viewer.
 - `minimal`: Qubes GUI support, Xorg, and `xterm`.
 
 A secondary fallback path can clone an existing Debian/Fedora template and
@@ -92,8 +93,14 @@ Inspect each root image before importing it into dom0:
 ```sh
 ./scripts/inspect-native-rootfs.sh \
   --image root.img \
+  --expect-command evince \
+  --expect-command mousepad \
+  --expect-command thunar \
   --expect-command xfce4-terminal \
   --expect-command Xorg \
+  --expect-desktop org.gnome.Evince.desktop \
+  --expect-desktop org.xfce.mousepad.desktop \
+  --expect-desktop thunar.desktop \
   --expect-desktop xfce4-terminal.desktop
 
 ./scripts/inspect-native-rootfs.sh \
@@ -121,11 +128,12 @@ The package payload follows Qubes Template Manager layout under
 `/var/lib/qubes/vm-templates/NAME/`: split `root.img.part.NN` files,
 `template.conf`, appmenu allowlists, app directories, and Qubes template image
 ghosts.  Packages advertise `qrexec=1`, `gui=1`, and `virt-mode=pvh`.  The
-normal package defaults to `xfce4-terminal.desktop` in the appmenu allowlists;
-the minimal package defaults to `xterm.desktop`.  The packager preserves the
-root image size by default so `qvm-template` installs the same Builder-sized
-root volume.  Use `--shrink` only for local artifact-size experiments where the
-installed root volume size is not part of the result.
+normal package defaults to the document viewer, text editor, file manager, and
+terminal desktop entries in the appmenu allowlists; the minimal package defaults
+to `xterm.desktop`.  The packager preserves the root image size by default so
+`qvm-template` installs the same Builder-sized root volume.  Use `--shrink` only
+for local artifact-size experiments where the installed root volume size is not
+part of the result.
 The package source payload is world-readable because `qvm-template-postprocess`
 executes `qvm-appmenus` as the dom0 user while reading the extracted appmenu
 allowlists from a temporary directory.
@@ -155,8 +163,14 @@ and `vm_qrexec_gui` modules, which exercise the tested template directly:
 ```sh
 ./scripts/test-native-guix-template-dom0.sh \
   --template guix-native-test \
+  --expect-command evince \
+  --expect-command mousepad \
+  --expect-command thunar \
   --expect-command xfce4-terminal \
   --expect-command Xorg \
+  --expect-desktop org.gnome.Evince.desktop \
+  --expect-desktop org.xfce.mousepad.desktop \
+  --expect-desktop thunar.desktop \
   --expect-desktop xfce4-terminal.desktop \
   --run-system-tests
 ```
@@ -189,8 +203,8 @@ openQA installed, a completed nested Qubes dom0 qcow2, and a Guix `root.img`,
 schedule the normal direct-image job with:
 
 ```sh
-GUIX_EXPECT_COMMANDS='xfce4-terminal Xorg' \
-GUIX_EXPECT_DESKTOPS='xfce4-terminal.desktop' \
+GUIX_EXPECT_COMMANDS='evince mousepad thunar xfce4-terminal Xorg' \
+GUIX_EXPECT_DESKTOPS='org.gnome.Evince.desktop org.xfce.mousepad.desktop thunar.desktop xfce4-terminal.desktop' \
   ./scripts/setup-openqa-guix-template-test.sh --wait
 ```
 
@@ -220,8 +234,8 @@ generated package, including Qubes Template Manager post-install handling:
 ```sh
 GUIX_INSTALL_MODE=rpm \
 QUBES_OPENQA_GUIX_TEMPLATE_RPM=dist/qubes-template-guix-20260509-1.noarch.rpm \
-GUIX_EXPECT_COMMANDS='xfce4-terminal Xorg' \
-GUIX_EXPECT_DESKTOPS='xfce4-terminal.desktop' \
+GUIX_EXPECT_COMMANDS='evince mousepad thunar xfce4-terminal Xorg' \
+GUIX_EXPECT_DESKTOPS='org.gnome.Evince.desktop org.xfce.mousepad.desktop thunar.desktop xfce4-terminal.desktop' \
   ./scripts/setup-openqa-guix-template-test.sh --wait
 ```
 
@@ -319,18 +333,20 @@ configuration separately:
 ./scripts/test-guix-update-proxy-config-dom0.sh --template guix
 ```
 
-That check confirms the Qubes service flag, generated `guix` wrapper, and
-`guix-daemon` proxy environment.  Disposable nested-dom0/openQA environments
-can also run a deterministic Guix client download through the stock Qubes
-default update-target policy by creating a temporary `sys-net` stub:
+That check confirms the Qubes service flag, absence of the old global `guix`
+wrapper/profile hook, and that `guix-daemon` is not forced through the local
+updates proxy during ordinary use.  Disposable
+nested-dom0/openQA environments can also run a deterministic Guix client
+download through the stock Qubes default update-target policy by creating a
+temporary `sys-net` stub:
 
 ```sh
 ./scripts/test-guix-update-proxy-stub-download-dom0.sh --template guix
 ```
 
-That controlled stub check exercises the generated Guix client wrapper and
-Qubes `qubes.UpdatesProxy` forwarding without depending on public network
-availability; RPM-mode openQA job 41 passed this gate for a rebuilt
+That controlled stub check exercises Qubes `qubes.UpdatesProxy` forwarding
+without depending on public network availability; RPM-mode openQA job 41
+passed this gate for a rebuilt
 `guix-minimal` RPM and verified that the source TemplateVM had no direct
 default route.  A release candidate should still run a real Guix update or
 download command through the Qubes proxy before submission:
@@ -342,14 +358,15 @@ download command through the Qubes proxy before submission:
 ```
 
 The download check first sends a raw HTTP or HTTPS CONNECT request through the
-local Qubes proxy at `127.0.0.1:8082`, then runs `guix download` through the
-generated wrapper.  It depends on dom0 allowing `qubes.UpdatesProxy` from the
-TemplateVM to an update-proxy target with working Internet access.  On standard
-Qubes policy this normally means the default `sys-net` update target must exist
-and be usable.  The openQA harness stages the real-network script only when
-`GUIX_RUN_PROXY_DOWNLOAD_TEST=1` is set, so ordinary local RPM smoke does not
-silently depend on public network availability.  The controlled stub gate is
-separate and opt-in through `GUIX_RUN_PROXY_STUB_DOWNLOAD_TEST=1`.
+local Qubes proxy at `127.0.0.1:8082`, then runs a Guix download path with an
+explicit proxy environment for that update operation.  It depends on dom0
+allowing `qubes.UpdatesProxy` from the TemplateVM to an update-proxy target
+with working Internet access.  On standard Qubes policy this normally means the
+default `sys-net` update target must exist and be usable.  The openQA harness
+stages the real-network script only when `GUIX_RUN_PROXY_DOWNLOAD_TEST=1` is set, so
+ordinary local RPM smoke does not silently depend on public network
+availability.  The controlled stub gate is separate and opt-in through
+`GUIX_RUN_PROXY_STUB_DOWNLOAD_TEST=1`.
 
 If dom0 has the matching `qubes-core-admin-linux` Guix vmupdate backend
 installed, test Qubes' centralized updater path separately:
@@ -361,9 +378,14 @@ installed, test Qubes' centralized updater path separately:
 That check runs `qubes-vm-update --targets guix --force-update` and fails if
 dom0's updater still rejects Guix as an unsupported distribution.  In openQA it
 is opt-in through `GUIX_RUN_CENTRAL_VMUPDATE_TEST=1` because it requires the
-dom0 updater patch and a working update-proxy target.  Set
-`GUIX_CENTRAL_VMUPDATE_PROXY_PROBE_URL` to override the raw proxy probe URL;
-the default is the public Guix Git endpoint.
+dom0 updater patch and a working update-proxy target.  With
+`GUIX_BOOTSTRAP_UPDATE_TARGET=1`, the openQA harness defaults
+`QUBES_OPENQA_UPDATE_TARGET_NETWORK_MODE=nat`: it adds a dom0-owned USB
+QEMU user-network uplink and bridges a temporary `sys-net` to that slirp-backed
+uplink, avoiding Qubes' PCI quarantine path for the nested QEMU NIC.  Set
+`QUBES_OPENQA_UPDATE_TARGET_NETWORK_MODE=pci` or `bridge` to exercise those
+backends explicitly.  Set `GUIX_CENTRAL_VMUPDATE_PROXY_PROBE_URL` to override
+the raw proxy probe URL; the default is the public Guix Git endpoint.
 
 ## Local Checks
 
@@ -373,23 +395,31 @@ These checks run in a normal VM and do not require dom0 or Guix:
 make check
 ```
 
-`make check` runs contract checks only.  It verifies that public scripts reject
-missing required option values before doing work, that the native rootfs
-builder rejects release builds without pinned Guix channels before image or
-mount work, executes the Builder environment/layout hooks that do not require a
-Guix system build against a temporary install tree, packages tiny normal and
-minimal ext4 root images through the Builder v2 RPM adapter, validates the
-generated `qvm-template` metadata, then builds and extracts template RPMs
-through the real packager, verifies the Qubes Template Manager payload layout,
-and reassembles the split root image.  These checks exercise script behavior,
-generated artifacts, and externally visible package contracts, not source-code
-or patch-shape pattern matching.
-The public validation path intentionally excludes source-only tests that check
-whether a patch looks right instead of exercising behavior.
+`make check` runs local contract and guard checks.  It verifies that public
+scripts reject missing or invalid required option values before doing work, that
+the native rootfs builder rejects release builds without pinned Guix channels
+before image or mount work, executes the Builder environment/layout hooks that
+do not require a Guix system build against a temporary install tree, packages
+tiny normal and minimal ext4 root images through the Builder v2 RPM adapter,
+validates the generated `qvm-template` metadata, then builds and extracts
+template RPMs through the real packager, verifies the Qubes Template Manager
+payload layout, and reassembles the split root image.
+
+The default local suite also includes targeted source guards for failure modes
+that are otherwise easy to miss before a live Qubes/openQA run: the AppVM
+persistence smoke driver must keep the `/home`, `/rw`, `/usr/local`, and
+volatile `/var/guix` restart assertions in the right lifecycle order; the
+openQA module must continue staging and hard-failing the real dom0 drivers,
+update-proxy drivers, central vmupdate driver, update-target bootstrap helper,
+and optional core-admin Guix vmupdate backend; the custom openQA Perl modules
+must parse with local stubs; the Shepherd startup chain must preserve the
+`/rw` mount, bind-dirs, qrexec, GUI, and feature-advertisement ordering; and
+generated Guile helper scripts must include the required `!#` meta-switch
+terminator.
 
 `make check` fails if the tools required for those package-contract checks are
-missing.  It intentionally does not include text-only source or patch-shape
-checks as substitute evidence for a working template.
+missing.  The source guards are regression checks only; they are not substitute
+evidence for a working template.
 
 If Guix is available, run the Guix record contract check as a separate gate:
 

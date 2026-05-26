@@ -59,18 +59,24 @@ if [ "${GUIX_FAKE_UPDATE_MODE:-ok}" = "log-only" ]; then
     : "${QUBES_GUIX_UPDATES_LOG_DIR:?}"
     mkdir -p "$QUBES_GUIX_UPDATES_LOG_DIR"
     {
-        printf 'guix:out: Refreshing Guix channel metadata from master.\n'
-        printf 'guix:out: Reconfiguring Guix System from /etc/config.scm using master.\n'
+        printf 'guix:out: Skipping separate Guix refresh; Guix System reconfigure uses the installed system Guix; release channel reference is /etc/guix/channels.scm.\n'
+        printf 'guix:out: Reconfiguring Guix System from /etc/config.scm using the installed system Guix. Release channel reference: /etc/guix/channels.scm.\n'
         printf 'guix:out: Reconfigured Guix System.\n'
         printf 'guix:out: Updated packages:\n'
+        printf 'guix:out: guix-system /gnu/store/old-system -> /gnu/store/new-system\n'
     } >"$QUBES_GUIX_UPDATES_LOG_DIR/update-guix.log"
     exit 0
 fi
-printf 'Refreshing Guix channel metadata from master.\n'
-if [ "${GUIX_FAKE_UPDATE_MODE:-ok}" != "missing-reconfigure" ]; then
-    printf 'Reconfiguring Guix System from /etc/config.scm using master.\n'
+printf 'Skipping separate Guix refresh; Guix System reconfigure uses the installed system Guix; release channel reference is /etc/guix/channels.scm.\n'
+if [ "${GUIX_FAKE_UPDATE_MODE:-ok}" = "noop" ]; then
+    printf 'Guix System already matches /etc/config.scm and /etc/guix/channels.scm; skipping reconfigure.\n'
+    printf 'Updated packages:\n'
+    printf 'guix-system /gnu/store/current-system\n'
+elif [ "${GUIX_FAKE_UPDATE_MODE:-ok}" != "missing-reconfigure" ]; then
+    printf 'Reconfiguring Guix System from /etc/config.scm using the installed system Guix. Release channel reference: /etc/guix/channels.scm.\n'
     printf 'Reconfigured Guix System.\n'
     printf 'Updated packages:\n'
+    printf 'guix-system /gnu/store/old-system -> /gnu/store/new-system\n'
 fi
 if [ "${GUIX_FAKE_UPDATE_MODE:-ok}" = "fail" ]; then
     printf 'fake Guix backend failure detail\n' >&2
@@ -93,7 +99,7 @@ env PATH="$fake_bin:$PATH" GUIX_FAKE_STATE="$state_dir" \
 grep -Fx -- '--force-update' "$state_dir/qubes-vm-update.args" >/dev/null
 grep -Fx -- '--force-upgrade' "$state_dir/qubes-vm-update.args" >/dev/null
 grep -Fx -- '--show-output' "$state_dir/qubes-vm-update.args" >/dev/null
-grep -Fx -- '--no-progress' "$state_dir/qubes-vm-update.args" >/dev/null
+grep -Fx -- '--just-print-progress' "$state_dir/qubes-vm-update.args" >/dev/null
 grep -Fx -- '--no-cleanup' "$state_dir/qubes-vm-update.args" >/dev/null
 grep -F -- 'https://example.invalid/guix.git' \
     "$state_dir/qvm-run.args" >/dev/null
@@ -112,6 +118,15 @@ env PATH="$fake_bin:$PATH" GUIX_FAKE_STATE="$state_dir" \
 grep -F 'central Guix qubes-vm-update check passed: guix' \
     "$workdir/log-only.out" >/dev/null
 
+env PATH="$fake_bin:$PATH" GUIX_FAKE_STATE="$state_dir" \
+    GUIX_FAKE_UPDATE_MODE=noop \
+    "$repo_root/scripts/test-guix-central-vmupdate-dom0.sh" \
+    --template guix --timeout 120 --log-dir "$workdir/logs-noop" \
+    >"$workdir/noop.out" 2>&1
+
+grep -F 'central Guix qubes-vm-update check passed: guix' \
+    "$workdir/noop.out" >/dev/null
+
 set +e
 env PATH="$fake_bin:$PATH" GUIX_FAKE_STATE="$state_dir" \
     GUIX_FAKE_UPDATE_MODE=missing-reconfigure \
@@ -125,7 +140,7 @@ set -e
     printf 'central vmupdate harness accepted missing reconfigure marker\n' >&2
     exit 1
 }
-grep -F 'did not show Guix system reconfigure' \
+grep -F 'did not show Guix system reconfigure or no-op proof' \
     "$workdir/missing-reconfigure.out" >/dev/null || {
         printf 'missing useful reconfigure-marker failure:\n' >&2
         cat "$workdir/missing-reconfigure.out" >&2
@@ -157,7 +172,6 @@ grep -F 'raw proxy probe exit status: 1' \
         cat "$workdir/preflight-failure.out" >&2
         exit 1
     }
-
 set +e
 env PATH="$fake_bin:$PATH" GUIX_FAKE_STATE="$state_dir" \
     GUIX_FAKE_UPDATE_MODE=fail \

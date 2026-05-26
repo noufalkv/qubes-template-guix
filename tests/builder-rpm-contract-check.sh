@@ -46,8 +46,9 @@ release="200001020304"
 check_adapter_rpm() {
     local template_name="$1"
     local template_flavor="$2"
-    local appmenu_entry="$3"
-    local marker="$4"
+    local marker="$3"
+    shift 3
+    local appmenu_entries=("$@")
     local artifacts="$work_dir/artifacts-$template_name"
     local image_tree="$work_dir/image-tree-$template_name"
     local root_image="$artifacts/qubeized_images/$template_name/root.img"
@@ -92,7 +93,9 @@ check_adapter_rpm() {
     grep -qx 'virt-mode=pvh' "$template_dir/template.conf"
     grep -qx 'qrexec=1' "$template_dir/template.conf"
     grep -qx 'gui=1' "$template_dir/template.conf"
-    grep -qx "$appmenu_entry" "$template_dir/whitelisted-appmenus.list"
+    for appmenu_entry in "${appmenu_entries[@]}"; do
+        grep -qx "$appmenu_entry" "$template_dir/whitelisted-appmenus.list"
+    done
     [ ! -e "$template_dir/root.img" ]
     [ ! -e "$template_dir/private.img" ]
     [ ! -e "$template_dir/volatile.img" ]
@@ -108,5 +111,9 @@ check_adapter_rpm() {
     printf 'Builder RPM contract check passed: %s\n' "$rpm_file"
 }
 
-check_adapter_rpm guix "" xfce4-terminal.desktop "normal Builder adapter root"
-check_adapter_rpm guix-minimal minimal xterm.desktop "minimal Builder adapter root"
+check_adapter_rpm guix "" "normal Builder adapter root" \
+    org.gnome.Evince.desktop \
+    org.xfce.mousepad.desktop \
+    thunar.desktop \
+    xfce4-terminal.desktop
+check_adapter_rpm guix-minimal minimal "minimal Builder adapter root" xterm.desktop
