@@ -33,8 +33,8 @@ Options:
   --split-size SIZE   Split size for root.img.part.NN. Default: 1900M
   --gui 0|1           Advertise GUI support status. Default: 1.
   --appmenu-entry ID  Add a desktop-file ID to Qubes appmenu allowlists.
-                      Defaults to a small desktop baseline for normal names
-                      and xterm.desktop for names ending in -minimal.
+                      Defaults to desktop files shipped by the template
+                      packages.
   --shrink            Minimize the ext4 root image before packaging.
   --no-shrink         Preserve the ext4 root image size. This is the default.
   -h, --help          Show this help.

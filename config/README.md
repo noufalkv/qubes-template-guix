@@ -21,8 +21,7 @@ They are review surfaces only, not acceptance or publication approval.
 
 ## Files
 
-- `channels.scm`: pinned Guix channel used by release-quality rootfs builds and
-  installed into the template as `/etc/guix/channels.scm`.
+- `channels.scm`: pinned Guix channel used by release-quality rootfs builds.
 - `template.env.example`: local environment defaults for template build helpers.
 - `qubes-builderv2-guix.example.patch`: sketch for
   `QubesOS/qubes-builderv2`.  It adds a `vm-guix` distribution family and points
@@ -35,9 +34,8 @@ They are review surfaces only, not acceptance or publication approval.
 - `qubes-core-admin-linux-guix-vmupdate.example.patch`: sketch for
   `QubesOS/qubes-core-admin-linux`.  It adds a Guix backend to the existing
   `qubes-vm-update` agent path so dom0's centralized updater can call
-  `guix time-machine --branch=master -- describe` for refresh and
-  `guix time-machine --branch=master -- system reconfigure /etc/config.scm`
-  for the update action through the normal Qubes updates-proxy environment.
+  the installed system Guix for `/etc/config.scm` reconfiguration through the
+  normal Qubes updates-proxy environment.
   It reports both the Guix System generation and per-output system profile
   manifest entries to the shared updater summary path.
 
@@ -111,9 +109,10 @@ backend, parsed system-profile package metadata for dom0, and logged Guix
 stderr through the normal `update-guix.log` path.  A direct backend probe in
 the guest printed clear `name:output -> version store-path` records.  It still
 is not a substitute for a passing `qubes-vm-update --targets guix` run in a
-real Qubes dom0 with a working Internet-capable update-proxy target; the remote
-nested setup had only `dom0` and `guix`, and `guix time-machine --branch=master`
-failed with `Git error: unexpected EOF`.
+real Qubes dom0 with a working Internet-capable update-proxy target.  That
+older backend attempted a separate Guix refresh in the nested setup and failed
+with `Git error: unexpected EOF`; the current sketch avoids that extra fetch
+and lets the installed system Guix perform the `/etc/config.scm` reconfigure.
 
 ## Submission Notes
 

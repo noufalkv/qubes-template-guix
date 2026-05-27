@@ -22,10 +22,7 @@ not yet a publishable Qubes community template.
 ## Review Chunks
 
 - Native Guix implementation:
-  `native/modules/qubes/packages/qubes-vm.scm`,
-  `native/modules/qubes/services/qubes-vm.scm`,
-  `native/modules/qubes/systems/guix-template.scm`, `native/qubes-guix.scm`,
-  and `native/qubes-guix-minimal.scm`.
+  `config.scm`.
 - Image and RPM tooling:
   `scripts/build-native-rootfs.sh`, `scripts/inspect-native-rootfs.sh`,
   `scripts/test-native-rootfs-activation.sh`, and
@@ -55,22 +52,9 @@ not yet a publishable Qubes community template.
 make check
 ```
 
-Run the Guix record gate on a Guix-capable builder:
-
-```sh
-make guix-system-contract-check
-```
-
-`make check` runs contract checks only: public script missing-value handling is
-executed, the native rootfs builder's pinned-channel failure path is executed
-before image/mount work, Builder hooks are executed against a temporary install
-tree, and normal/minimal template RPMs are built, extracted, checked for Qubes
-Template Manager layout, and reassembled.
-`make guix-system-contract-check` requires Guix and instantiates the actual
-normal/minimal operating-system records to check Qubes-visible defaults such as
-`/dev/xvdc1` swap, the standard `user` account and Qubes group membership,
-default privileged programs, passwordless sudo, required Qubes services, and
-`meminfo-writer` defaults.
+`make check` runs local artifact checks only: normal/minimal template RPMs are
+built through the Builder RPM adapter and the native packager, extracted,
+checked for Qubes Template Manager layout, and reassembled.
 
 No source-only checker is part of the repository test suite or reviewer
 evidence path.  Tests that grep source or compare patch shape should not be

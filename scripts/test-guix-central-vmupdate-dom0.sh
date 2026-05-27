@@ -4,7 +4,7 @@ set -euo pipefail
 
 template_name="${TEMPLATE_NAME:-guix}"
 update_timeout="${GUIX_CENTRAL_VMUPDATE_TIMEOUT:-3600}"
-proxy_probe_url="${GUIX_CENTRAL_VMUPDATE_PROXY_PROBE_URL:-https://git.savannah.gnu.org/git/guix.git}"
+proxy_probe_url="${GUIX_CENTRAL_VMUPDATE_PROXY_PROBE_URL:-https://codeberg.org/guix/guix.git}"
 log_dir=""
 qubes_update_log_dir="${QUBES_GUIX_UPDATES_LOG_DIR:-/var/log/qubes/qubes-update}"
 qubes_legacy_log_dir="${QUBES_GUIX_LEGACY_UPDATE_LOG_DIR:-/var/log/qubes}"
@@ -25,7 +25,7 @@ Options:
       --timeout SECONDS     Timeout for qubes-vm-update. Default: 3600.
       --proxy-probe-url URL URL to probe through the raw Qubes updates proxy
                             before running qubes-vm-update. Default:
-                            https://git.savannah.gnu.org/git/guix.git.
+                            https://codeberg.org/guix/guix.git.
   -l, --log-dir DIR         Directory for copied logs. Default:
                             /tmp/qubes-guix-central-vmupdate-TEMPLATE.PID.
   -h, --help                Show this help.
@@ -415,7 +415,6 @@ dump_raw_proxy_probe_failure() {
 
 test -e /run/current-system
 test -r /etc/config.scm
-test -r /etc/guix/channels.scm
 test -x /usr/bin/python3
 test -x /usr/lib/qubes/upgrades-installed-check
 test -x /usr/lib/qubes/upgrades-status-notify
@@ -471,12 +470,12 @@ if logs_have_regex \
     fail_with_logs "qubes-vm-update log shows unsupported Guix or update-proxy failure" 1
 fi
 
-logs_have_fixed 'Skipping separate Guix refresh; Guix System reconfigure uses the installed system Guix; release channel reference is /etc/guix/channels.scm.' ||
+logs_have_fixed 'Skipping separate Guix refresh; Guix System reconfigure uses the installed system Guix and /etc/config.scm.' ||
     fail_with_logs "qubes-vm-update log did not show Guix refresh handoff" 1
-if logs_have_fixed 'Guix System already matches /etc/config.scm and /etc/guix/channels.scm; skipping reconfigure.'; then
+if logs_have_fixed 'Guix System already matches /etc/config.scm; skipping reconfigure.'; then
     :
 else
-    logs_have_fixed 'Reconfiguring Guix System from /etc/config.scm using the installed system Guix. Release channel reference: /etc/guix/channels.scm.' ||
+    logs_have_fixed 'Reconfiguring Guix System from /etc/config.scm using the installed system Guix.' ||
         fail_with_logs "qubes-vm-update log did not show Guix system reconfigure or no-op proof" 1
     logs_have_fixed 'Reconfigured Guix System.' ||
         fail_with_logs "qubes-vm-update log did not show successful Guix system reconfigure" 1

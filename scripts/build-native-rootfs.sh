@@ -15,6 +15,9 @@ build_succeeded=0
 external_mount=0
 default_channels_file="$repo_root/config/channels.scm"
 guix_bin="${GUIX:-guix}"
+pull_work_dir=""
+prepared_guix_channel_args=()
+git_config_file=""
 PATH="$PATH:/usr/sbin:/sbin"
 export PATH
 
@@ -26,7 +29,7 @@ Builds a native Guix System root image for Qubes.
 
 Options:
   --variant NAME    Template variant: normal or minimal. Default: normal
-  --config FILE     Guix operating-system file. Default depends on variant.
+  --config FILE     Guix operating-system file. Default: ./config.scm.
   --output FILE     Output ext4 image. Default: root.img or root-minimal.img
   --size SIZE       Image size passed to truncate. Default: 20G, matching the
                     current Qubes builder template-root-size default.
@@ -44,10 +47,34 @@ Environment:
   GUIX_BRANCH       Explicit developer override used only when no channels file
                     is available. Release builds should not use this.
   GUIX_PULL_BEFORE_BUILD
-                    Run guix pull before building and use the pulled
-                    ~/.config/guix/current/bin/guix. Default: 1.
+                    Run guix pull on the builder and use the pulled Guix
+                    for this build only.
+                    Default: 1.
+  GUIX_CHANNEL_AUTHENTICATION
+                    Set to 0/no/false/off to disable Guix channel
+                    authentication. Default: 1.
+  GUIX_CHANNEL_CHECKOUT
+                    Optional path for the cached Guix Git checkout.
+  GUIX_PULL_PROFILE
+                    Optional profile for the pulled builder Guix. Default is
+                    a temporary build-scoped profile.
   GUIX              Guix command to refresh/use. Default: guix.
 EOF
+}
+
+configure_guix_channel_rewrite() {
+    local url="$1"
+    local checkout="$2"
+    local checkout_real local_url
+
+    ensure_pull_work_dir
+    checkout_real="$(cd "$checkout" && pwd -P)"
+    local_url="file://$checkout_real"
+    git_config_file="$pull_work_dir/gitconfig"
+
+    git config --file "$git_config_file" \
+        "url.$local_url.insteadOf" "$url"
+    export GIT_CONFIG_GLOBAL="$git_config_file"
 }
 
 die() {
@@ -57,6 +84,22 @@ die() {
 
 need() {
     command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
+}
+
+git_fetch_channel() {
+    local checkout_dir="$1"
+    shift
+
+    GIT_HTTP_VERSION=HTTP/1.1 \
+        git -C "$checkout_dir" -c http.version=HTTP/1.1 fetch "$@" ||
+        git -C "$checkout_dir" fetch "$@"
+}
+
+channel_authentication_enabled() {
+    case "${GUIX_CHANNEL_AUTHENTICATION:-1}" in
+        0|no|false|off) return 1 ;;
+        *) return 0 ;;
+    esac
 }
 
 require_arg() {
@@ -73,7 +116,9 @@ set_guix_system_command() {
             guix_system_command=("$guix_bin" system)
             ;;
         *)
-            if [ -n "${GUIX_CHANNELS_FILE:-}" ]; then
+            if [ "${#prepared_guix_channel_args[@]}" -gt 0 ]; then
+                guix_system_command=("$guix_bin" time-machine "${prepared_guix_channel_args[@]}" -- system)
+            elif [ -n "${GUIX_CHANNELS_FILE:-}" ]; then
                 [ -r "$GUIX_CHANNELS_FILE" ] ||
                     die "GUIX_CHANNELS_FILE is not readable: $GUIX_CHANNELS_FILE"
                 guix_channels_file="$GUIX_CHANNELS_FILE"
@@ -90,8 +135,137 @@ set_guix_system_command() {
     esac
 }
 
+ensure_pull_work_dir() {
+    if [ -z "$pull_work_dir" ]; then
+        pull_work_dir="$(mktemp -d "$repo_root/work.guix-pull.XXXXXX")"
+    fi
+}
+
+read_guix_channel_field() {
+    local channels_file="$1"
+    local field="$2"
+
+    "$guix_bin" repl -q -- /dev/stdin "$channels_file" "$field" <<'GUILE'
+(use-modules (guix channels) (ice-9 match) (srfi srfi-1))
+
+(match (cdr (command-line))
+  ((file field)
+   (define channels
+     (call-with-input-file file
+       (lambda (port) (eval (read port) (current-module)))))
+   (define channel
+     (or (find (lambda (channel) (eq? 'guix (channel-name channel)))
+               channels)
+         (car channels)))
+   (display
+    (match field
+      ("url" (channel-url channel))
+      ("branch" (or (channel-branch channel) ""))
+      ("commit" (or (channel-commit channel) ""))
+      (_ (exit 1)))))
+  (_ (exit 1)))
+GUILE
+}
+
+default_guix_channel_checkout() {
+    if [ -n "${GUIX_CHANNEL_CHECKOUT:-}" ]; then
+        printf '%s\n' "$GUIX_CHANNEL_CHECKOUT"
+    elif [ -n "${XDG_CACHE_HOME:-}" ]; then
+        printf '%s\n' "$XDG_CACHE_HOME/qubes-template-guix/guix"
+    elif [ -n "${HOME:-}" ]; then
+        printf '%s\n' "$HOME/.cache/qubes-template-guix/guix"
+    else
+        printf '%s\n' "/tmp/qubes-template-guix/guix"
+    fi
+}
+
+prepare_git_backed_channel_args() {
+    local channels_file="$1"
+    local url branch commit checkout_dir
+    local authenticate=0
+
+    need git
+    url="$(read_guix_channel_field "$channels_file" url)"
+    branch="$(read_guix_channel_field "$channels_file" branch 2>/dev/null ||
+        printf '%s\n' master)"
+    commit="$(read_guix_channel_field "$channels_file" commit 2>/dev/null ||
+        true)"
+
+    case "$url" in
+        file://*|/*)
+            if channel_authentication_enabled; then
+                prepared_guix_channel_args=(-C "$channels_file")
+                return 0
+            fi
+            prepared_guix_channel_args=(--no-channel-files "--url=$url")
+            prepared_guix_channel_args+=(--disable-authentication)
+            [ -z "$branch" ] ||
+                prepared_guix_channel_args+=("--branch=$branch")
+            [ -z "$commit" ] ||
+                prepared_guix_channel_args+=("--commit=$commit")
+            return 0
+            ;;
+    esac
+
+    if channel_authentication_enabled; then
+        authenticate=1
+    fi
+
+    checkout_dir="$(default_guix_channel_checkout)"
+    mkdir -p "$(dirname -- "$checkout_dir")"
+
+    if [ -d "$checkout_dir/.git" ] &&
+        [ "$(git -C "$checkout_dir" config --get remote.origin.promisor || true)" = true ]; then
+        rm -rf "$checkout_dir"
+    fi
+
+    if [ -d "$checkout_dir/.git" ]; then
+        git -C "$checkout_dir" remote set-url origin "$url"
+    else
+        mkdir -p "$checkout_dir"
+        git -C "$checkout_dir" init
+        git -C "$checkout_dir" remote add origin "$url"
+    fi
+
+    if [ "$authenticate" -eq 1 ]; then
+        if [ "$(git -C "$checkout_dir" rev-parse --is-shallow-repository)" = true ]; then
+            git_fetch_channel "$checkout_dir" --unshallow origin "$branch"
+        else
+            git_fetch_channel "$checkout_dir" --tags --prune origin "$branch"
+        fi
+    elif [ -n "$commit" ]; then
+        git_fetch_channel "$checkout_dir" --depth=1 origin "$commit"
+    else
+        git_fetch_channel "$checkout_dir" --depth=1 origin "$branch"
+    fi
+
+    if [ -n "$commit" ]; then
+        git -C "$checkout_dir" checkout --detach "$commit"
+        [ -z "$branch" ] ||
+            git -C "$checkout_dir" update-ref "refs/heads/$branch" "$commit"
+    elif [ "$authenticate" -eq 1 ]; then
+        git -C "$checkout_dir" checkout -B "$branch" "origin/$branch"
+    else
+        git -C "$checkout_dir" checkout -B "$branch" FETCH_HEAD
+    fi
+
+    configure_guix_channel_rewrite "$url" "$checkout_dir"
+    if [ "$authenticate" -eq 1 ]; then
+        prepared_guix_channel_args=(-C "$channels_file")
+        return 0
+    fi
+
+    prepared_guix_channel_args=(--no-channel-files "--url=$url")
+    prepared_guix_channel_args+=(--disable-authentication)
+    [ -z "$branch" ] ||
+        prepared_guix_channel_args+=("--branch=$branch")
+    [ -z "$commit" ] ||
+        prepared_guix_channel_args+=("--commit=$commit")
+}
+
 refresh_guix_checkout() {
-    local current_guix current_guix_dir
+    local current_guix current_guix_dir pull_channels_file pull_profile
+    local pull_args=()
 
     case "${GUIX_PULL_BEFORE_BUILD:-1}" in
         0|no|false|off)
@@ -99,23 +273,31 @@ refresh_guix_checkout() {
             ;;
     esac
 
-    if [ -n "$guix_channels_file" ]; then
-        printf 'refreshing Guix checkout with: %s pull --channels=%s\n' \
-            "$guix_bin" "$guix_channels_file" >&2
-        "$guix_bin" pull --channels="$guix_channels_file"
-    else
-        printf 'refreshing Guix checkout with: %s pull\n' "$guix_bin" >&2
-        "$guix_bin" pull
+    pull_channels_file="$guix_channels_file"
+    if [ -n "$pull_channels_file" ]; then
+        prepare_git_backed_channel_args "$pull_channels_file"
+        pull_args=("${prepared_guix_channel_args[@]}")
     fi
 
-    if [ -n "${GUIX_CURRENT:-}" ]; then
-        current_guix="$GUIX_CURRENT/bin/guix"
-    elif [ -n "${HOME:-}" ]; then
-        current_guix="$HOME/.config/guix/current/bin/guix"
+    if [ -n "${GUIX_PULL_PROFILE:-}" ]; then
+        pull_profile="$GUIX_PULL_PROFILE"
     else
-        current_guix=""
+        ensure_pull_work_dir
+        pull_profile="$pull_work_dir/current"
     fi
 
+    if [ "${#pull_args[@]}" -gt 0 ]; then
+        printf 'refreshing builder Guix with: %s pull -p %s --allow-downgrades %s\n' \
+            "$guix_bin" "$pull_profile" "${pull_args[*]}" >&2
+        "$guix_bin" pull -p "$pull_profile" --allow-downgrades \
+            "${pull_args[@]}"
+    else
+        printf 'refreshing builder Guix with: %s pull -p %s --allow-downgrades\n' \
+            "$guix_bin" "$pull_profile" >&2
+        "$guix_bin" pull -p "$pull_profile" --allow-downgrades
+    fi
+
+    current_guix="$pull_profile/bin/guix"
     if [ -n "$current_guix" ] && [ -x "$current_guix" ]; then
         current_guix_dir="$(dirname -- "$current_guix")"
         PATH="$current_guix_dir:$PATH"
@@ -129,147 +311,20 @@ refresh_guix_checkout() {
 }
 
 write_installed_config() {
-    local tmp_config module
-
-    tmp_config="$(mktemp)"
-    {
-        printf '%s\n' \
-            ';; Self-contained native GNU Guix System Qubes TemplateVM config.' \
-            ';; Generated by scripts/build-native-rootfs.sh so the installed' \
-            ';; template can run: guix system reconfigure /etc/config.scm' \
-            ';; This file is intentionally flat: it does not import the local' \
-            ';; (qubes ...) source modules from the build tree.'
-        cat <<'EOF'
-
-(use-modules
-  ((guix licenses) #:prefix license:)
-  (guix build-system copy)
-  (guix build-system gnu)
-  (guix build-system trivial)
-  (guix gexp)
-  (guix git-download)
-  (guix modules)
-  (guix packages)
-  (guix records)
-  (gnu)
-  (gnu bootloader)
-  (gnu packages admin)
-  (gnu packages autotools)
-  (gnu packages base)
-  (gnu packages bash)
-  (gnu packages benchmark)
-  (gnu packages certs)
-  (gnu packages commencement)
-  (gnu packages compression)
-  (gnu packages curl)
-  (gnu packages dns)
-  (gnu packages elf)
-  (gnu packages freedesktop)
-  (gnu packages gawk)
-  (gnu packages glib)
-  (gnu packages gnome)
-  (gnu packages gtk)
-  (gnu packages guile)
-  (gnu packages haskell-xyz)
-  (gnu packages icu4c)
-  (gnu packages image)
-  (gnu packages libffi)
-  (gnu packages libunistring)
-  (gnu packages linux)
-  (gnu packages networking)
-  (gnu packages nss)
-  (gnu packages package-management)
-  (gnu packages pciutils)
-  (gnu packages pkg-config)
-  (gnu packages pulseaudio)
-  (gnu packages python)
-  (gnu packages python-build)
-  (gnu packages python-xyz)
-  (gnu packages rpm)
-  (gnu packages version-control)
-  (gnu packages virtualization)
-  (gnu packages xfce)
-  (gnu packages xdisorg)
-  (gnu packages xorg)
-  (gnu services)
-  (gnu services base)
-  (gnu services dbus)
-  (gnu services shepherd)
-  (gnu services sysctl)
-  (gnu system nss)
-  (gnu system pam)
-  (gnu system privilege)
-  (ice-9 textual-ports)
-  (srfi srfi-1))
-
-(define %qvm-template-repo-query-guix
-  (plain-file
-   "qvm-template-repo-query-guix"
-   (string-append
-EOF
-        awk '
-          function escape_scheme_string(text) {
-            gsub(/\\/, "\\\\", text)
-            gsub(/"/, "\\\"", text)
-            return text
-          }
-          { printf "   \"%s\\n\"\n", escape_scheme_string($0) }
-        ' "$repo_root/native/modules/qubes/files/qvm-template-repo-query-guix"
-        cat <<'EOF'
-   )
-   ))
-EOF
-        for module in \
-            "$repo_root/native/modules/qubes/packages/qubes-vm.scm" \
-            "$repo_root/native/modules/qubes/services/qubes-vm.scm" \
-            "$repo_root/native/modules/qubes/systems/guix-template.scm"
-        do
-            printf '\n;;; begin %s\n' "${module#"$repo_root/"}"
-            awk '
-              function paren_delta(line, i, c, delta) {
-                delta = 0
-                for (i = 1; i <= length(line); i++) {
-                  c = substr(line, i, 1)
-                  if (c == "(") delta++
-                  else if (c == ")") delta--
-                }
-                return delta
-              }
-              skipping {
-                depth += paren_delta($0)
-                if (depth <= 0) skipping = 0
-                next
-              }
-              /^\(define-module / ||
-              /^\(define %qvm-template-repo-query-guix/ {
-                skipping = 1
-                depth = paren_delta($0)
-                if (depth <= 0) skipping = 0
-                next
-              }
-              { sub(/[[:space:]]+$/, ""); print }
-            ' "$module"
-        done
-        printf '\n;;; begin %s\n' "${config#"$repo_root/"}"
-        sed '/^(use-modules (qubes systems guix-template))/d; s/[[:space:]]*$//' "$config"
-    } >"$tmp_config"
-
-    sudo install -m 0644 "$tmp_config" "$mount_dir/etc/config.scm"
-    rm -f "$tmp_config"
+    sudo install -m 0644 "$config" "$mount_dir/etc/config.scm"
+    printf '%s\n' "$variant" |
+        sudo tee "$mount_dir/etc/qubes-guix-template-variant" >/dev/null
+    sudo chmod 0644 "$mount_dir/etc/qubes-guix-template-variant"
 }
 
-write_installed_channels() {
-    local channels_file
-
-    if [ -n "${GUIX_CHANNELS_FILE:-}" ]; then
-        channels_file="$GUIX_CHANNELS_FILE"
-    else
-        channels_file="$default_channels_file"
-    fi
-
-    [ -r "$channels_file" ] || return 0
-    sudo install -d -m 0755 "$mount_dir/etc/guix"
-    sudo install -m 0644 "$channels_file" "$mount_dir/etc/guix/channels.scm"
+remove_runtime_guix_state() {
+    sudo rm -f "$mount_dir/etc/guix/channels.scm"
+    sudo rm -f "$mount_dir/root/.config/guix/current"
+    sudo rm -f "$mount_dir/home/user/.config/guix/current"
+    sudo find "$mount_dir/var/guix/profiles/per-user" \
+        -mindepth 2 -maxdepth 2 \
+        \( -name 'current-guix' -o -name 'current-guix-*-link' \) \
+        -exec rm -f {} + 2>/dev/null || true
 }
 
 cleanup() {
@@ -283,6 +338,9 @@ cleanup() {
     fi
     if [ "$build_succeeded" -eq 0 ] && [ -n "$build_image" ] && [ -e "$build_image" ]; then
         rm -f "$build_image"
+    fi
+    if [ -n "$pull_work_dir" ] && [ -d "$pull_work_dir" ]; then
+        rm -rf "$pull_work_dir"
     fi
 }
 trap cleanup EXIT
@@ -331,11 +389,11 @@ done
 
 case "$variant" in
     normal)
-        : "${config:=$repo_root/native/qubes-guix.scm}"
+        : "${config:=$repo_root/config.scm}"
         : "${output:=$repo_root/root.img}"
         ;;
     minimal)
-        : "${config:=$repo_root/native/qubes-guix-minimal.scm}"
+        : "${config:=$repo_root/config.scm}"
         : "${output:=$repo_root/root-minimal.img}"
         ;;
     *)
@@ -374,14 +432,14 @@ if [ -z "$install_dir" ]; then
     sudo mount -o loop "$build_image" "$mount_dir"
 fi
 
-sudo "${guix_system_command[@]}" init --no-bootloader \
-    -L "$repo_root/native/modules" "$config" "$mount_dir"
+sudo env "QUBES_GUIX_TEMPLATE_VARIANT=$variant" \
+    "${guix_system_command[@]}" init --no-bootloader "$config" "$mount_dir"
 sudo test -x "$mount_dir/var/guix/profiles/system/profile/bin/sh" ||
     die "Guix system profile does not provide bin/sh"
 sudo test -x "$mount_dir/var/guix/profiles/system/profile/bin/guile" ||
     die "Guix system profile does not provide bin/guile"
+remove_runtime_guix_state
 write_installed_config
-write_installed_channels
 
 sudo mkdir -p "$mount_dir/sbin" "$mount_dir/bin" "$mount_dir/lib/modules" "$mount_dir/var/run" "$mount_dir/run/qubes" "$mount_dir/run/qubes-service"
 if ! sudo test "$mount_dir/var/run" -ef "$mount_dir/run" 2>/dev/null; then

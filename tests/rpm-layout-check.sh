@@ -90,11 +90,12 @@ check_template_rpm() {
 
     template_dir="$extract_dir/var/lib/qubes/vm-templates/$template_name"
     [ -d "$template_dir" ]
-    grep -qx 'virt-mode=pvh' "$template_dir/template.conf"
-    grep -qx 'qrexec=1' "$template_dir/template.conf"
-    grep -qx 'gui=1' "$template_dir/template.conf"
+    require_template_conf "$template_dir/template.conf" virt-mode pvh
+    require_template_conf "$template_dir/template.conf" qrexec 1
+    require_template_conf "$template_dir/template.conf" gui 1
     for appmenu_entry in "${appmenu_entries[@]}"; do
-        grep -qx "$appmenu_entry" "$template_dir/whitelisted-appmenus.list"
+        require_appmenu_entry \
+            "$template_dir/whitelisted-appmenus.list" "$appmenu_entry"
     done
     cmp -s "$template_dir/whitelisted-appmenus.list" \
         "$template_dir/vm-whitelisted-appmenus.list"
@@ -118,6 +119,54 @@ check_template_rpm() {
     [ "$test_marker" = 'guix rpm layout test' ]
 
     printf 'native template RPM layout check passed: %s\n' "$rpm_file"
+}
+
+template_conf_value() {
+    local conf_file="$1"
+    local key="$2"
+    local line conf_key conf_value
+
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+            *=*)
+                conf_key="${line%%=*}"
+                conf_value="${line#*=}"
+                [ "$conf_key" = "$key" ] || continue
+                printf '%s\n' "$conf_value"
+                return 0
+                ;;
+        esac
+    done < "$conf_file"
+
+    return 1
+}
+
+require_template_conf() {
+    local conf_file="$1"
+    local key="$2"
+    local expected="$3"
+    local actual
+
+    actual="$(template_conf_value "$conf_file" "$key" || true)"
+    [ "$actual" = "$expected" ] || {
+        printf 'unexpected %s in %s: expected %s, got %s\n' \
+            "$key" "$conf_file" "$expected" "${actual:-<missing>}" >&2
+        exit 1
+    }
+}
+
+require_appmenu_entry() {
+    local appmenus_file="$1"
+    local expected="$2"
+    local entry
+
+    while IFS= read -r entry || [ -n "$entry" ]; do
+        [ "$entry" = "$expected" ] || continue
+        return 0
+    done < "$appmenus_file"
+
+    printf 'missing appmenu entry in %s: %s\n' "$appmenus_file" "$expected" >&2
+    exit 1
 }
 
 check_template_rpm guix \

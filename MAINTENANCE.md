@@ -52,8 +52,7 @@ publication or ask Qubes maintainers to hide/remove it until maintenance resumes
 
 Template releases are built from pinned inputs:
 
-- Qubes VM components are pinned in
-  `native/modules/qubes/packages/qubes-vm.scm` by upstream tag, commit, and
+- Qubes VM components are pinned in `config.scm` by upstream tag, commit, and
   recursive Guix hash.
 - The Guix channel used by release builds is pinned in `config/channels.scm`.
 - The release-config and Builder v2 integration sketches are in `config/`.
@@ -75,19 +74,23 @@ For each Qubes R4.3 component bump:
 3. Recompute the Guix recursive hash for that source.
 4. Load the Guix modules on a system with Guix installed so package versions
    are checked against the pinned table rather than duplicated manually.
-5. Run `make check`, then rebuild and test both variants before publishing.
+5. Run the local executable checks with `make check`, then rebuild and test both
+   variants before publishing.
 
 Version strings passed to Qubes component builds are derived from the pinned
 source table.  Maintainers should not hand-edit duplicate package versions.
 
 ## Updating Guix
 
-The template installs `config/channels.scm` into `/etc/guix/channels.scm` so
-the release channel is visible inside the TemplateVM.  The release process for a
-new Guix base should be:
+`config/channels.scm` pins the Guix checkout used to generate template root
+images.  The installed TemplateVM keeps normal user/root `guix pull` state
+unpinned.  The release process for a new Guix base should be:
 
 1. update `config/channels.scm` to the desired Guix commit;
-2. run `guix time-machine -C config/channels.scm -- describe`;
+2. build with the default `GUIX_PULL_BEFORE_BUILD=1` path so
+   `scripts/build-native-rootfs.sh` refreshes a cached Guix Git checkout with
+   command-line `git`, then runs authenticated `guix pull` into a temporary
+   build profile from that local checkout;
 3. rebuild `guix` and `guix-minimal` root images;
 4. inspect and activate both images;
 5. package both RPMs;
@@ -107,8 +110,8 @@ Guix update operations that must use the Qubes proxy should run with an
 explicit `http_proxy`/`https_proxy` environment when `updates-proxy-setup` is
 enabled.  The `qubes-core-admin-linux` RFC backend keeps central updates
 system-only:
-refresh uses `guix time-machine --branch=master -- describe`, and upgrade uses
-`guix time-machine --branch=master -- system reconfigure /etc/config.scm`
+refresh is intentionally a no-op, and upgrade uses the installed system Guix
+for `guix system reconfigure /etc/config.scm`
 instead of updating root or user Guix profiles as package-manager state.  The
 backend reports the current Guix System generation and per-output
 `/run/current-system/profile` manifest entries to the normal Qubes updater
@@ -160,7 +163,7 @@ Each security rebuild should record:
 Before asking Qubes to merge release-config entries, collect fresh evidence from
 a clean tree:
 
-- `make check`;
+- `make check` as local executable build/package evidence;
 - Guix module load with Guix available;
 - `./scripts/check-qubes-pins.sh`;
 - normal and minimal rootfs builds;

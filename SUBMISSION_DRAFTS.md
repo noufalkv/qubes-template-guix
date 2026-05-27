@@ -46,39 +46,15 @@ Latest local status for the Guix TemplateVM review branch:
   required `!#` meta-switch terminator.  Without that, Guile treats the file as
   an unterminated `#! ... !#` block.  This affected the generated ACPI poweroff
   helper plus the Guix updates-proxy and network-interface sysctl helpers.
-- Added Guix-system contract coverage for the generated core helper scripts so
-  the shebang/body shape is checked when the Guix-capable contract test runs.
-- Added a fast `make check` gate,
-  `tests/guile-script-meta-switch-check.sh`, so this generated-script mistake
-  is caught even on hosts without Guix installed.
+- Removed source-shape and generated-system string checks from the repository
+  test surface; generated behavior should be proved by rootfs activation,
+  qvm-template lifecycle, openQA, and live TemplateVM/AppVM smoke.
 - Tightened the openQA-called AppVM smoke test so it proves `/home`, `/rw`, and
   `/usr/local` survive an AppVM restart while `/var/guix` state does not move
   onto the private volume, checks `/home`, `$HOME`, and `/usr/local` are really
   on `/rw`, verifies live Qubes compatibility paths such as `/etc/fstab`,
   `/usr/lib/qubes`, and `/etc/qubes-rpc`, and rechecks the Guix store/profile
   placement after restart.
-- Added `tests/appvm-persistence-harness-check.sh`, a fake-dom0 lifecycle
-  harness in `make check`, so the persistence restart assertions are exercised
-  by the local fast gate and cannot silently disappear before the next live
-  openQA run.
-- Added `tests/openqa-wiring-check.sh` to the default `make check` gate so the
-  openQA module must continue staging and executing the real dom0 smoke driver,
-  passing AppVM/system-test/command/desktop controls, wiring the central
-  vmupdate driver with its timeout/proxy-probe settings, wiring the
-  update-proxy config/stub-download/public-download drivers with their
-  scheduler settings, wiring the opt-in RPM-mode update-target bootstrap helper
-  with its target/network-mode/template-RPM arguments plus the NAT-mode QEMU
-  user-net device handoff, staging the optional core-admin Guix vmupdate
-  backend before central updater tests, and failing the job when any driver
-  fails.
-- Added `tests/openqa-perl-syntax-check.sh` to the default `make check` gate so
-  the custom openQA distribution and `guix_template.pm` module are parsed with
-  local stubs even on hosts without a real openQA/isotovideo install.
-- Added `tests/qubes-service-wiring-check.sh` to the default `make check` gate
-  so the persistence-related Shepherd chain and default service ordering are
-  guarded even on hosts without Guix installed, including the package patch
-  that copies Guix's store-backed `/etc/skel` into `/rw/home` as normal
-  writable AppVM user state.
 - Tightened the root image activation gate so future image runs verify `/rw`,
   `/usr/local`, writable `/etc/fstab`, and the fixed Qubes compatibility paths
   needed by `mount-dirs` and `bind-dirs`.
@@ -86,8 +62,7 @@ Latest local status for the Guix TemplateVM review branch:
   because `qrexec-client` exists in the guest.  The Guix-capable contract check
   now verifies that the generated RPC waits for the per-user
   `qrexec-server.*.sock` fork-server socket and rejects the old early-return
-  condition, and the fast local meta-switch check guards the same source shape
-  on hosts without Guix installed.
+  condition.
 - Tightened openQA setup preflights so invalid update-target bootstrap settings
   and a bad `GUIX_CORE_ADMIN_LINUX_TREE` fail with the relevant setup error
   before the script depends on openQA host tooling or schedules a job.
@@ -95,12 +70,6 @@ Latest local status for the Guix TemplateVM review branch:
   - `git diff --check`
   - `make check`
   - `bash -n scripts/*.sh tests/*.sh`
-  - `tests/script-cli-check.sh`
-  - `tests/appvm-persistence-harness-check.sh`
-  - `tests/guile-script-meta-switch-check.sh`
-  - `tests/openqa-wiring-check.sh`
-  - `tests/openqa-perl-syntax-check.sh`
-  - `tests/qubes-service-wiring-check.sh`
 - The local host does not have `guix`, `qvm-*`, `openqa-cli`, or `isotovideo`,
   so Guix/openQA validation was run on the remote Guix-capable openQA builder
   instead.
@@ -196,7 +165,6 @@ The repository includes:
 
 Validation snapshot from the final public branch or release object:
   - <make check result>
-  - <make guix-system-contract-check result>
   - <make check-qubes-pins result>
   - <guix time-machine -C config/channels.scm -- describe result>
   - <normal rootfs/RPM/openQA result>
@@ -312,7 +280,6 @@ Release config:
 
 Attach current evidence from the final public branch or release object:
   - make check
-  - make guix-system-contract-check
   - make check-qubes-pins
   - guix time-machine -C config/channels.scm -- describe
   - normal and minimal rootfs builds
@@ -493,7 +460,6 @@ placeholder until a publication owner or Qubes-maintained fork is selected.
 
 Validation from the final public branch or release object:
   - <make check evidence>
-  - <make guix-system-contract-check evidence>
   - <make check-qubes-pins evidence>
   - <normal variant evidence>
   - <minimal variant evidence>

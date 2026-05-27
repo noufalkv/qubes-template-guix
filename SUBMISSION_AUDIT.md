@@ -2,8 +2,8 @@
 
 This is the human-review checklist for deciding whether the repository is ready
 to ask Qubes maintainers for upstream review.  It is intentionally stricter than
-`make check`: local tests are evidence, not proof that the upstream process is
-complete.
+`make check`: local executable checks are evidence, not proof that the upstream
+process is complete.
 
 ## Objective Mapping
 
@@ -17,19 +17,19 @@ complete.
 | Low review burden | `REVIEWER_GUIDE.md`, `REVIEW_NOTES.md` review order, review matrix, non-goals | Present, with remaining gates called out |
 | Security-review framing | `SECURITY.md`, `ADAPTATION_INVENTORY.md`, `REVIEW_NOTES.md` | Guest trust boundaries and review-sensitive adaptations are documented; nested-dom0 smoke, dynamic memory-pressure evidence, default update-target proxy evidence, RPM-mode openQA evidence, runtime evidence of generated Guix proxy configuration, and controlled Guix client proxy-download evidence exist; real Internet update-target Guix proxy use and final publication reruns remain |
 | GenAI-assisted contribution handling | `UPSTREAMING.md`, `REVIEW_NOTES.md` | Present as a disclosure requirement; release ownership must be settled before publication |
-| GNU Guix System alignment | `UPSTREAMING.md`, `ADAPTATION_INVENTORY.md`, `native/modules/qubes/` | Guix package definitions, operating-system records, Shepherd service types, pinned channels, immutable source hashes, and named phases are used; mutable state is limited to Qubes runtime compatibility needs |
+| GNU Guix System alignment | `UPSTREAMING.md`, `ADAPTATION_INVENTORY.md`, `config.scm` | Guix package definitions, operating-system records, Shepherd service types, pinned channels, immutable source hashes, and named phases are used; mutable state is limited to Qubes runtime compatibility needs |
 | Non-obvious compatibility changes explained | `REVIEW_NOTES.md`, `ADAPTATION_INVENTORY.md` | Present |
 | Maintainer/update story | `MAINTENANCE.md`, `UPSTREAMING.md` | Present as a policy artifact, including handoff/removal policy for an unmaintained community template; release-owner identity is deferred |
 | Contribution workflow | `CONTRIBUTING.md`, `PATCH_SERIES.md` | Review hygiene, publication signing preflight, testing, placeholder, release evidence, and multi-repo flow rules documented |
 | Submission handoff | `SUBMISSION_DRAFTS.md`, `PATCH_SERIES.md` | Drafts present; placeholders and final evidence must be replaced before use |
 | Generated artifact hygiene | `.gitignore`, `git ls-files`, `git status --short` | Generated images, RPMs, tarballs, caches, dist output, and current test work directories are ignored; no generated artifacts are tracked |
 | Tracked-file publication hygiene | `git grep`, `git ls-files` | A tracked-file scan on May 18, 2026 found no GitHub credential, cloud-provider setup, provider instance or zone, generated RPM/image/dist/work artifact, or host-local path.  Remaining intentional hits are the hygiene-command example in `CONTRIBUTING.md` and standard Qubes in-guest user-home diagnostic log paths. |
-| Immutable Qubes source pins and hashes | `native/modules/qubes/packages/qubes-vm.scm` | Present |
+| Immutable Qubes source pins and hashes | `config.scm` | Present |
 | Pin freshness check | `scripts/check-qubes-pins.sh`, `make check-qubes-pins`, `VALIDATION.md` | Present; passed locally again on May 19, 2026 after the centralized update proof hardening; current output includes `qubes-core-agent-linux v4.3.43` and all pinned Qubes VM component tags matched |
-| Guix channel reproducibility | `config/channels.scm`, installed `/etc/guix/channels.scm`, `VALIDATION.md` | Present; `guix time-machine -- describe` passed on a remote Guix builder, and the rootfs builder now fails instead of defaulting to an unpinned branch when no pinned channels file is available |
+| Guix channel reproducibility | `config/channels.scm`, `VALIDATION.md` | Present; `guix time-machine -- describe` passed on a remote Guix builder, and the rootfs builder now fails instead of defaulting to an unpinned branch when no pinned channels file is available.  The pin is not installed as user/root channel state. |
 | Template RPM format | `scripts/package-native-template-rpm.sh`, `tests/rpm-layout-check.sh` | Locally tested for normal and minimal variants |
-| Executable build contracts | `tests/script-cli-check.sh`, `tests/build-native-rootfs-policy-check.sh`, `tests/builder-hook-contract-check.sh`, `tests/builder-adapter-contract-check.sh`, `tests/builder-rpm-contract-check.sh`, `tests/central-vmupdate-harness-check.sh`, `tests/rpm-layout-check.sh`, `make check` | Present; local run passes and exercises public script missing-value handling, the pinned-channel rootfs-builder policy, Builder hook outputs, Builder adapter root-image metadata, Builder adapter RPM output, central vmupdate harness behavior, and real template RPM layout |
-| Guix system record contracts | `tests/guix-system-contract-check.scm`, `make guix-system-contract-check`, `VALIDATION.md` | Present; remote Guix run instantiates normal/minimal systems and verifies swap, the standard Qubes user account and groups, privileged-programs, passwordless sudo, Qubes services including the updates-proxy forwarder, and `meminfo-writer` defaults |
+| Executable build contracts | `tests/builder-rpm-contract-check.sh`, `tests/rpm-layout-check.sh`, `make check` | Present; local run builds template RPM artifacts through the Builder RPM adapter and native packager, validates qvm-template metadata, extracts the payload, and reassembles the split root image |
+| Runtime and generated-system contracts | `scripts/test-native-rootfs-activation.sh`, `scripts/test-template-rpm-lifecycle-dom0.sh`, `openqa/`, `VALIDATION.md` | Present as recorded evidence; final publication reruns still need fresh rootfs builds, TemplateVM/AppVM smoke, qvm-template lifecycle, and openQA |
 | Builder v2 content-script shape | `builder-v2-template/`, `scripts/build-native-rootfs.sh --install-dir` | Present as a reviewable component shape |
 | Existing template precedent mapping | `TEMPLATE_PRECEDENTS.md`, `builder-v2-template/` | Guix hook mapping is documented against the Qubes template-builder model |
 | Builder v2 multi-repo change | `config/README.md`, `config/qubes-builderv2-guix.example.patch`, QubesOS/qubes-builderv2#245 | Draft RFC PR opened; the branch is resquashed into one signed review commit at `f9ec921`, Qubes code-signing is green, the four focused Guix distribution/template-plugin tests pass locally, and upstream GitLab CI is green at the May 19 check; the change is not accepted upstream |
@@ -44,12 +44,12 @@ complete.
 | --- | --- | --- |
 | Easily reviewable by humans | `README.md`, `REVIEWER_GUIDE.md`, `REVIEW_NOTES.md`, `ADAPTATION_INVENTORY.md`, this audit | Review path, scope, non-goals, and adaptation rationale are documented |
 | Conform to Qubes maintainer expectations | `UPSTREAMING.md`, `REVIEW_NOTES.md`, `COPYING`, `config/README.md` | Expected contribution process is mapped; acceptance still requires external review |
-| Preserve GNU Guix System principles | `UPSTREAMING.md`, `native/modules/qubes/`, `config/channels.scm` | Native implementation is declarative Guix package/service/system code with pinned channels and source hashes; mutable state is scoped to Qubes compatibility |
+| Preserve GNU Guix System principles | `UPSTREAMING.md`, `config.scm`, `config/channels.scm` | Native implementation is declarative Guix package/service/system code with pinned channels and source hashes; mutable state is scoped to Qubes compatibility |
 | Inspect maintainer expectations online | `UPSTREAMING.md`, `REVIEW_NOTES.md` | Targeted review captured and spot-refreshed against comparable NixOS, Alpine `vmupdate`, Flatpak update-proxy, UpdateVM/update-proxy setting and service-state issues, and Builder-environment issue/PR material; exhaustive review of every Qubes issue/PR remains unclaimed |
 | Upstream process may span multiple repos | `config/qubes-builderv2-guix.example.patch`, `config/qubes-release-configs-guix.example.patch`, `config/qubes-core-admin-linux-guix-vmupdate.example.patch`, `config/README.md` | Builder v2, release-config, and central updater targets are separated and named |
 | Clear commit history | `git log --oneline`, `PATCH_SERIES.md` | Clean review branch present; `PATCH_SERIES.md` now has a one-to-one subject map against `git log --reverse`; publication signing is deferred |
 | Every non-obvious change explained | `REVIEW_NOTES.md`, `ADAPTATION_INVENTORY.md`, `MAINTENANCE.md` | Package phases, VM-side component package splits, services, update model, 20G root image sizing, installed reconfiguration inputs, generated `/sbin/init` entrypoint, dom0 root-image import helper safety boundary, openQA host setup scope, nested-dom0 system-test default-NetVM compatibility hook, no-op bootloader closure handling, normal/minimal appmenu split, the root-owned Xorg/default-user `-ac` access-control caveat, and review-sensitive choices are documented |
-| Tests should exercise real contracts | `tests/script-cli-check.sh`, `tests/build-native-rootfs-policy-check.sh`, `tests/builder-hook-contract-check.sh`, `tests/builder-adapter-contract-check.sh`, `tests/builder-rpm-contract-check.sh`, `tests/central-vmupdate-harness-check.sh`, `tests/rpm-layout-check.sh`, `tests/guix-system-contract-check.scm`, `VALIDATION.md` | Default local checks execute public script missing-value behavior, the native rootfs builder's pinned-channel failure path, Builder environment/layout hooks that do not require a Guix system build, Builder adapter appmenu/template metadata, generated images through the Builder RPM adapter, central vmupdate harness flag/log-marker behavior, RPM layout extraction/reassembly, and RPM lifecycle metadata; the Guix-only gate instantiates real system records and checks Qubes-visible defaults; missing RPM/image/Guix tooling is a hard failure for the relevant gate, not a false pass |
+| Checks should exercise real contracts | `tests/builder-rpm-contract-check.sh`, `tests/rpm-layout-check.sh`, rootfs activation, qvm-template lifecycle, openQA, and `VALIDATION.md` | Default local checks build and unpack RPM artifacts instead of scanning source. Runtime evidence comes from rootfs activation, qvm-template lifecycle, openQA, and live TemplateVM/AppVM smoke. |
 
 ## Current Completion Audit
 
@@ -61,7 +61,7 @@ deliverables:
 - Clear separation of local implementation, Builder v2 changes, and
   release-config changes.
 - Rationale for every non-obvious Guix/Qubes compatibility decision.
-- Contract tests that exercise build or packaging behavior and externally
+- Executable checks that exercise build or packaging behavior and externally
   visible metadata.
 - An explicit list of remaining gates that cannot honestly be claimed yet.
 
@@ -71,11 +71,11 @@ Inspected evidence in the current tree:
 | --- | --- |
 | Clean review branch history | `git log --oneline --decorate --max-count=5` shows one scoped local review commit on `upstream-review`; `PATCH_SERIES.md` maps that commit to review purpose. |
 | Signing/release ownership state | `CONTRIBUTING.md` now separates RFC review from publication signing.  The template branch is signed with the one-shot contribution key, the release-config RFC head was amended to remove maintainer metadata from the review sketch, and the latest checked Qubes code-signing status was green on the three RFC PR heads.  Release ownership, maintainer review, and publication approval remain unresolved gates. |
-| Default tests exercise build contracts | `make check` runs `tests/script-cli-check.sh`, `tests/build-native-rootfs-policy-check.sh`, `tests/builder-hook-contract-check.sh`, `tests/builder-adapter-contract-check.sh`, `tests/builder-rpm-contract-check.sh`, `tests/central-vmupdate-harness-check.sh`, and `tests/rpm-layout-check.sh`. |
-| Test inventory is contract-backed | The tracked test suite is limited to public script CLI behavior, native rootfs policy, Builder hook, Builder RPM contract, central vmupdate harness behavior, RPM layout, and Guix system contract checks; these tests execute code, build package artifacts, extract payloads, validate external template contracts, or instantiate real Guix system records. |
+| Default checks exercise build contracts | `make check` runs `tests/builder-rpm-contract-check.sh` and `tests/rpm-layout-check.sh`. |
+| Check inventory is contract-backed | The default local suite is limited to RPM artifact generation, metadata validation, payload extraction, and root-image reassembly. Runtime confidence still comes from rootfs activation, qvm-template lifecycle, openQA, and live TemplateVM/AppVM smoke. |
 | Working tree clean | The review branches contain only tracked review commits; local untracked artifacts such as `czf` and `.coverage` are intentionally left untracked and are not part of the review branches. |
 | Generated artifacts stay out of review | `.gitignore` covers root images, RPMs, tarballs, cache/dist output, and current test work directories; `git ls-files` does not list generated RPM/image artifacts. |
-| License/SPDX hygiene | `COPYING` is tracked; code and build entry points under `Makefile*`, `scripts/`, `tests/`, `native/`, `builder-v2-template/`, and `config/*.scm` carry SPDX headers, excluding data-only appmenu allowlists and `template.conf`. |
+| License/SPDX hygiene | `COPYING` is tracked; code and build entry points under `Makefile*`, `scripts/`, `tests/`, `builder-v2-template/`, `config.scm`, and `config/*.scm` carry SPDX headers, excluding data-only appmenu allowlists and `template.conf`. |
 | Placeholder hygiene | `rg '<[A-Z][A-Z0-9_]*>'` finds placeholders only in draft/config/review-process files: `config/`, `SUBMISSION_DRAFTS.md`, `MAINTENANCE.md`, `UPSTREAMING.md`, and `CONTRIBUTING.md`. |
 | Qubes source pins are fresh | Current local `./scripts/check-qubes-pins.sh` run passed for all pinned Qubes VM components on May 19, 2026. |
 | Prompt-to-artifact checklist exists | This file maps objective phrases to artifacts and marks incomplete external gates. |
@@ -86,8 +86,8 @@ Inspected evidence in the current tree:
 | Guix System alignment is explicit | `UPSTREAMING.md` explains how the implementation stays in Guix package definitions, operating-system records, Shepherd services, pinned channels, immutable source hashes, and named phases while limiting mutable runtime state to Qubes compatibility requirements. |
 | Contributor workflow is explicit | `CONTRIBUTING.md` lists required checks, release evidence, review rules, and multi-repo ordering. |
 | Auxiliary helpers are mapped | `REVIEW_NOTES.md` names the openQA loader glue, dom0 postinstall diagnostic helper, and foreign-template installer as support tools outside the native release artifact. |
-| Local tests cover real contracts | `make check` passed locally on May 19, 2026 after the centralized update proof hardening.  An earlier clean remote clone passed at review head `d106c27`; that remote Guix-only evidence is retained as prior evidence, not claimed as a current-head rerun.  The local suite runs `tests/script-cli-check.sh`, `tests/build-native-rootfs-policy-check.sh`, `tests/builder-hook-contract-check.sh`, `tests/builder-adapter-contract-check.sh`, `tests/builder-rpm-contract-check.sh`, `tests/central-vmupdate-harness-check.sh`, and `tests/rpm-layout-check.sh`.  These execute missing-value handling in public scripts, the rootfs builder pinned-channel failure path before image/mount work, Builder environment/layout hooks that do not require a Guix system build, Builder adapter root-image appmenu/template artifacts, generated normal and minimal root images through the Builder adapter, central vmupdate harness flags, probe-URL propagation, and log-marker rejection with fake dom0 commands, and normal plus minimal template RPM layout extraction/reassembly. |
-| Guix system contracts are executable | `make guix-system-contract-check` passed on the remote Guix builder; it instantiates both variants and checks `/dev/xvdc1` swap, the standard Qubes user account and groups, default privileged programs, passwordless sudo, required Qubes services including the updates-proxy forwarder, and `meminfo-writer` defaults. |
+| Local checks cover real artifacts | `make check` passed locally on May 26, 2026 after the KISS cleanup removed fake Qubes command harnesses, parser-only openQA stubs, source-shape guards, mocked Builder adapter checks, source-extracted repo-query helper checks, and generated-system string checks. The current local suite runs `tests/builder-rpm-contract-check.sh` and `tests/rpm-layout-check.sh`, which build normal/minimal RPM artifacts, validate qvm-template metadata, extract the payload, and reassemble the root image. |
+| Runtime contracts require runtime gates | Rootfs activation, qvm-template lifecycle, openQA, and live TemplateVM/AppVM smoke are the gates that prove the generated system behavior. |
 | Builder v2 sketch has focused tests | A clean recheck clone with the checked-in `config/qubes-builderv2-guix.example.patch` applied passed the four Guix distribution/template-plugin tests: `4 passed`.  The checked-in neutral-header example patch also passed `git diff --check HEAD`. |
 | Release-config sketch parses after apply | A clean recheck clone with the checked-in `config/qubes-release-configs-guix.example.patch` applied parsed the resulting R4.3 community template YAML and confirmed `builder-guix`, `guix`, and `guix-minimal`.  The checked-in neutral-header example patch also passed `git diff --check HEAD`. |
 | Central updater sketch has focused tests | The active `qubes-core-admin-linux` PR branch passed `./run-tests.sh` with `PYTHONPATH` pointing at a matching `qubes-core-admin-client` checkout: `52 passed, 1 warning`, including the Guix vmupdate backend tests, proxy-environment coverage, time-machine refresh/reconfigure commands, realtime streaming for those commands, Guix manifest-column preservation before Qubes output sanitization, vmupdate-scoped temporary time-machine state, per-output system profile package metadata, dom0-visible package summary output, shared `PROGRESS_REPORTING` contract, and parser fallback edge cases added after Codecov flagged missing patch coverage. |
@@ -106,17 +106,14 @@ are removed.
 
 ## Latest Evidence
 
-Verification evidence includes the local artifact-contract suite, the remote
-Guix system-contract check, and the targeted Builder/release-config sketch
-checks.  The pinned-channel rootfs-builder policy is covered by the local
-`tests/build-native-rootfs-policy-check.sh` gate and the recorded missing-file
-policy check in `VALIDATION.md`:
+Verification evidence includes the local artifact suite, runtime/openQA
+records, and the targeted Builder/release-config sketch checks.  The
+pinned-channel rootfs-builder policy still needs current runtime-build evidence
+after the checkout-backed refresh simplification:
 
 ```sh
 make check
 make check-qubes-pins
-# on the Guix-capable remote review builder
-make guix-system-contract-check
 PYTHONPATH=<qubes-builderv2 checkout> python -m pytest <qubes-builderv2 checkout>/tests/test_objects.py::test_dist_non_default_arch <qubes-builderv2 checkout>/tests/test_objects.py::test_dist_family <qubes-builderv2 checkout>/tests/test_objects.py::test_template_plugin_supports_guix <qubes-builderv2 checkout>/tests/test_objects.py::test_template_plugin_guix_parameters
 # release-config YAML validation in a clean qubes-release-configs checkout; see VALIDATION.md
 PYTHONPATH=../qubes-core-admin-client:. ./run-tests.sh
@@ -161,22 +158,21 @@ Most recent review-state refresh on May 19, 2026:
   command example in `CONTRIBUTING.md`.
 - The split `qubes-builder-guix` review component remains one signed commit at
   `d864b22` and previously passed `make check`.
-- A clean remote clone at review head `d106c27` passed `make check` and
-  `make guix-system-contract-check`; the local shell used for the latest audit
-  did not have `guix` in `PATH`, so that Guix-only contract check was not
-  refreshed locally after the latest documentation and openQA harness
-  amendments.
+- A clean remote clone at review head `d106c27` passed the then-current
+  artifact checks. Later cleanup removed the Guix-only system-record/string
+  checker from the repository test surface; generated-system behavior should be
+  validated through rootfs activation, qvm-template lifecycle, openQA, and live
+  VM smoke.
 
 These current-head checks are local review evidence only.  They do not replace
-the recorded Guix system-record run, nested-dom0/openQA runtime evidence, or
-the still-missing publication reruns.
+nested-dom0/openQA runtime evidence or the still-missing publication reruns.
 
 No source-only checker is present or counted here as validation evidence.
 Static source-shape and patch-shape scripts are intentionally excluded from the
 repository test suite, `make` targets, validation logs, and upstream patch
 series.  Formatting, parser-only, inventory, and pin-freshness commands are
 manual maintainer chores or provenance checks; they are not substitutes for
-artifact, Guix system-record, dom0, or openQA evidence and should not be
+ artifact, rootfs activation, dom0, or openQA evidence and should not be
 submitted as upstream tests.
 
 The review source tree was also copied to the remote Guix builder as
@@ -187,9 +183,8 @@ the live Qubes GitHub tags, and the pinned Guix channel resolved with
 An earlier synced review tree also loaded both `normal` and `minimal`
 operating-system variants with real Guix on the remote Guix builder and printed the
 expected `qubes-vm-core` package version, `4.3.42`.  That was the then-pinned
-component version; the current pin is `4.3.43`.  The newer
-`make guix-system-contract-check` gate is the current executable Scheme service
-graph check.  A later rebuilt-image boot test in RPM-mode openQA job 27 also
+component version; the current pin is `4.3.43`. A later rebuilt-image boot
+test in RPM-mode openQA job 27 also
 verified the generated Guix client wrapper, updates-proxy forwarder, and
 `guix-daemon` service state for `guix-minimal`.  Later job 129 proved the
 central `guix time-machine` and system reconfigure path through the Qubes proxy

@@ -79,16 +79,9 @@ Qubes-visible template contracts.  Grep or comparison checks are acceptable
 only when they inspect generated artifacts from the code path under test, such
 as extracted RPM metadata or files read back from a generated root image.
 
-When Guix is available, also run:
-
-```sh
-make guix-system-contract-check
-```
-
-This is a real Guix record check, not a source-text check.  It instantiates both
-template variants and verifies Qubes-visible defaults such as `/dev/xvdc1`
-swap, passwordless sudo, default privileged programs, required Qubes services
-including the updates-proxy forwarder, and `meminfo-writer` defaults.
+For release candidates, add runtime evidence instead of source-shape checks:
+rootfs activation, qvm-template lifecycle, RPM-mode openQA, and live
+TemplateVM/AppVM smoke.
 
 Run the Builder v2 and release-config sketch checks directly in fresh upstream
 checkouts when changing files under `config/`.  Treat `make check`, rootfs

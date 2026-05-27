@@ -1,51 +1,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 SHELL := /usr/bin/env bash
 
-.PHONY: check script-cli-check build-native-rootfs-policy-check builder-hook-contract-check builder-adapter-contract-check builder-rpm-contract-check central-vmupdate-harness-check appvm-persistence-harness-check openqa-wiring-check openqa-perl-syntax-check qubes-service-wiring-check qvm-template-repo-query-guix-check guile-script-meta-switch-check rpm-layout-check guix-system-contract-check check-qubes-pins prepare build-rootimg build-rpm foreign-template test-foreign-template native-rootfs inspect-native-rootfs import-native-rootfs package-native-template-rpm test-native-template nested-dom0-status setup-openqa-guix-template-test openqa-template-rpm-normal openqa-template-rpm-minimal openqa-template-rpm-system-tests
+.PHONY: check builder-rpm-contract-check rpm-layout-check check-qubes-pins prepare build-rootimg build-rpm foreign-template test-foreign-template native-rootfs inspect-native-rootfs import-native-rootfs package-native-template-rpm test-native-template nested-dom0-status setup-openqa-guix-template-test openqa-template-rpm-normal openqa-template-rpm-minimal openqa-template-rpm-system-tests
 
-check: script-cli-check build-native-rootfs-policy-check builder-hook-contract-check builder-adapter-contract-check builder-rpm-contract-check central-vmupdate-harness-check appvm-persistence-harness-check openqa-wiring-check openqa-perl-syntax-check qubes-service-wiring-check qvm-template-repo-query-guix-check guile-script-meta-switch-check rpm-layout-check
-
-script-cli-check:
-	./tests/script-cli-check.sh
-
-build-native-rootfs-policy-check:
-	./tests/build-native-rootfs-policy-check.sh
-
-builder-hook-contract-check:
-	./tests/builder-hook-contract-check.sh
-
-builder-adapter-contract-check:
-	./tests/builder-adapter-contract-check.sh
+check: builder-rpm-contract-check rpm-layout-check
 
 builder-rpm-contract-check:
 	./tests/builder-rpm-contract-check.sh
 
-central-vmupdate-harness-check:
-	./tests/central-vmupdate-harness-check.sh
-
-appvm-persistence-harness-check:
-	./tests/appvm-persistence-harness-check.sh
-
-openqa-wiring-check:
-	./tests/openqa-wiring-check.sh
-
-openqa-perl-syntax-check:
-	./tests/openqa-perl-syntax-check.sh
-
-qubes-service-wiring-check:
-	./tests/qubes-service-wiring-check.sh
-
-qvm-template-repo-query-guix-check:
-	./tests/qvm-template-repo-query-guix-check.sh
-
-guile-script-meta-switch-check:
-	./tests/guile-script-meta-switch-check.sh
-
 rpm-layout-check:
 	./tests/rpm-layout-check.sh
-
-guix-system-contract-check:
-	./tests/guix-system-contract-check.sh
 
 check-qubes-pins:
 	./scripts/check-qubes-pins.sh

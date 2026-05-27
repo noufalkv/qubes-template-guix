@@ -34,7 +34,7 @@ system construction to Guix.
 | --- | --- | --- |
 | `00_prepare.sh` | Prepare the install root and early template state before package installation. | `builder-v2-template/00_prepare.sh` creates the install root and delegates rootfs setup state to `scripts/build-native-rootfs.sh --install-dir`. |
 | `01_install_core.sh` | Install base operating-system components. | `builder-v2-template/01_install_core.sh` selects the normal or minimal Guix system from Builder's `TEMPLATE_FLAVOR`/`TEMPLATE_NAME`, labels the mounted ext4 root as `guix-root` when possible, and runs `scripts/build-native-rootfs.sh --install-dir` to materialize the Guix operating-system closure into the Builder install root. |
-| `02_install_groups.sh` | Install the user-facing package groups for the selected template flavor. | Present as a compatibility boundary.  Package membership is selected by the Guix system variant used by `01_install_core.sh` and is expressed in `native/qubes-guix.scm`, `native/qubes-guix-minimal.scm`, and `qubes-variant-packages`. |
+| `02_install_groups.sh` | Install the user-facing package groups for the selected template flavor. | Present as a compatibility boundary.  Package membership is selected by the Guix system variant used by `01_install_core.sh` and is expressed in `config.scm` through `qubes-variant-packages`. |
 | `04_install_qubes.sh` | Install Qubes VM packages and configure Qubes storage/runtime integration. | `builder-v2-template/04_install_qubes.sh` creates `/home` and `/usr/local` in the mounted image before Builder's generic Qubes layout step.  The Qubes packages and services themselves are already part of the Guix system closure installed by `01_install_core.sh`. |
 | `09_cleanup.sh` | Remove build-time/cache state and finalize the image. | `builder-v2-template/09_cleanup.sh` syncs the mounted image at the reviewable cleanup boundary while Guix keeps package closures immutable and reproducible. |
 
@@ -69,28 +69,13 @@ mapping.
 
 ## Validation Tied To This Mapping
 
-- `tests/script-cli-check.sh` executes public build/package/runtime validation
-  scripts with missing required option values and verifies useful failure
-  messages before external commands or side effects.
-- `tests/build-native-rootfs-policy-check.sh` executes the native rootfs
-  builder's pinned-channel failure path and verifies that release builds do not
-  proceed to image or mount work without `config/channels.scm`.
-- `tests/builder-hook-contract-check.sh` executes the Builder environment and
-  layout hooks that do not require a Guix system build against a temporary
-  install tree.
-- `tests/builder-adapter-contract-check.sh` executes the local Builder adapter
-  root-image path with a fake rootfs builder and validates the appmenu and
-  template metadata artifacts.
 - `tests/builder-rpm-contract-check.sh` feeds generated root images through
   the Builder v2 RPM adapter and validates the resulting template RPM metadata
   and payload.
 - `tests/rpm-layout-check.sh` builds and extracts normal and minimal template
   RPM layouts.
-- `tests/guix-system-contract-check.scm` instantiates the normal and minimal
-  Guix `operating-system` records and checks Qubes-visible defaults: standard
-  swap, the standard `user` account and Qubes group membership, default
-  privileged programs, passwordless sudo, required Qubes services, and
-  `meminfo-writer` defaults.
+- Rootfs activation, qvm-template lifecycle, openQA, and live TemplateVM/AppVM
+  smoke are the runtime gates for generated Guix system behavior.
 - `VALIDATION.md` records patch application against fresh Builder v2 and
   release-config checkouts, focused Builder v2 distribution tests, and
   release-config YAML validation.

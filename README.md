@@ -62,14 +62,25 @@ For a heavier substitute/build smoke test:
 
 The native tree contains:
 
-- `native/qubes-guix.scm`: normal TemplateVM variant.
-- `native/qubes-guix-minimal.scm`: minimal TemplateVM variant.
-- `native/modules/qubes/systems/guix-template.scm`: shared operating-system
-  definition for both variants.
-- `native/modules/qubes/packages/qubes-vm.scm`: first-pass Guix package
-  definitions for the Qubes VM-side components.
-- `native/modules/qubes/services/qubes-vm.scm`: Shepherd service definitions
-  for QubesDB, qrexec, persistence, and GUI agent wiring.
+- `config.scm`: the single self-contained Guix System configuration.  It
+  contains the Qubes VM-side package definitions, Shepherd services, and the
+  normal/minimal TemplateVM operating-system variants.
+- `config/channels.scm`: the pinned Guix channel used for release-quality
+  builds.  The pin is a template-generation input, not a per-user or root
+  `guix pull` profile pin inside the installed template.
+- `scripts/build-native-rootfs.sh`: the rootfs builder.  It selects the normal
+  or minimal variant through `QUBES_GUIX_TEMPLATE_VARIANT` and installs the same
+  `config.scm` into the template as `/etc/config.scm`.
+
+By default the rootfs builder refreshes the pinned Guix input before building:
+it updates a Guix Git checkout with command-line `git`, then uses a
+build-scoped Git URL rewrite so authenticated `guix pull` and `guix
+time-machine` keep the official channel URL while reading that local checkout.
+That avoids relying on Guix/libgit2 for the large HTTPS fetch and does not
+install root or user `current-guix` profile state into the template.  The
+default path authenticates and uses the pinned commit from
+`config/channels.scm`; set `GUIX_CHANNEL_AUTHENTICATION=0` only for local
+debugging.
 
 Both variants are intentionally lean.  They keep the runtime needed for Qubes
 VM integration and GUI application forwarding, but omit ssh, DHCP, default
@@ -395,44 +406,16 @@ These checks run in a normal VM and do not require dom0 or Guix:
 make check
 ```
 
-`make check` runs local contract and guard checks.  It verifies that public
-scripts reject missing or invalid required option values before doing work, that
-the native rootfs builder rejects release builds without pinned Guix channels
-before image or mount work, executes the Builder environment/layout hooks that
-do not require a Guix system build against a temporary install tree, packages
-tiny normal and minimal ext4 root images through the Builder v2 RPM adapter,
-validates the generated `qvm-template` metadata, then builds and extracts
-template RPMs through the real packager, verifies the Qubes Template Manager
-payload layout, and reassembles the split root image.
-
-The default local suite also includes targeted source guards for failure modes
-that are otherwise easy to miss before a live Qubes/openQA run: the AppVM
-persistence smoke driver must keep the `/home`, `/rw`, `/usr/local`, and
-volatile `/var/guix` restart assertions in the right lifecycle order; the
-openQA module must continue staging and hard-failing the real dom0 drivers,
-update-proxy drivers, central vmupdate driver, update-target bootstrap helper,
-and optional core-admin Guix vmupdate backend; the custom openQA Perl modules
-must parse with local stubs; the Shepherd startup chain must preserve the
-`/rw` mount, bind-dirs, qrexec, GUI, and feature-advertisement ordering; and
-generated Guile helper scripts must include the required `!#` meta-switch
-terminator.
+`make check` runs local artifact checks.  It executes the Builder
+RPM adapter against generated normal and minimal ext4 root images, validates
+the generated `qvm-template` metadata, then builds and extracts template RPMs
+through the real packager, verifies the Qubes Template Manager payload layout,
+and reassembles the split root image.
 
 `make check` fails if the tools required for those package-contract checks are
-missing.  The source guards are regression checks only; they are not substitute
-evidence for a working template.
-
-If Guix is available, run the Guix record contract check as a separate gate:
-
-```sh
-make guix-system-contract-check
-```
-
-That check instantiates the actual normal and minimal `operating-system`
-records and verifies Qubes-visible defaults that should not drift silently:
-standard `/dev/xvdc1` swap, the standard `user` account and Qubes group
-membership, Guix default privileged programs, passwordless `wheel` and `user`
-sudo, and required Qubes services including QubesDB, qrexec, GUI, updates
-proxy, and `meminfo-writer`.
+missing.  It is still local build evidence only; a publishable candidate needs
+fresh rootfs builds, RPMs, `qvm-template` lifecycle coverage, openQA, and live
+TemplateVM/AppVM smoke evidence.
 
 The runtime-focused root image check is
 `scripts/test-native-rootfs-activation.sh`.  It mounts a writable copy of the

@@ -52,10 +52,8 @@ index 0000000..5b12c2d
 +# USA.
 +
 +import os
-+import re
 +import selectors
 +import shlex
-+import shutil
 +import subprocess
 +import sys
 +from typing import Dict, List, Optional
@@ -68,8 +66,6 @@ index 0000000..5b12c2d
 +class GUIXCLI(PackageManager):
 +    PROGRESS_REPORTING = False
 +
-+    TIME_MACHINE_BRANCH = "master"
-+    CHANNELS_FILE = "/etc/guix/channels.scm"
 +    SYSTEM_CONFIG = "/etc/config.scm"
 +    CURRENT_SYSTEM = "/run/current-system"
 +    CURRENT_CONFIGURATION = "/run/current-system/configuration.scm"
@@ -88,8 +84,6 @@ index 0000000..5b12c2d
 +        "guix-system": CURRENT_SYSTEM,
 +    }
 +    GUIX_CANDIDATES = (
-+        "/root/.config/guix/current/bin/guix",
-+        "/var/guix/profiles/per-user/root/current-guix/bin/guix",
 +        "/run/current-system/profile/bin/guix",
 +    )
 +
@@ -103,10 +97,6 @@ index 0000000..5b12c2d
 +        for path in candidates:
 +            if os.access(path, os.X_OK):
 +                return path
-+
-+        path = shutil.which("guix")
-+        if path is not None:
-+            return path
 +
 +        raise RuntimeError("Package manager not found!")
 +
@@ -207,8 +197,7 @@ index 0000000..5b12c2d
 +        """
 +        print(
 +            "Skipping separate Guix refresh; Guix System reconfigure uses "
-+            f"the installed system Guix; release channel reference is "
-+            f"{self._time_machine_source_description()}.",
++            f"the installed system Guix and {self.SYSTEM_CONFIG}.",
 +            flush=True,
 +        )
 +        return ProcessResult()
@@ -335,18 +324,6 @@ index 0000000..5b12c2d
 +
 +        return None
 +
-+    def _time_machine_source_args(self) -> List[str]:
-+        if os.path.exists(self.CHANNELS_FILE):
-+            return ["-C", self.CHANNELS_FILE]
-+
-+        return [f"--branch={self.TIME_MACHINE_BRANCH}"]
-+
-+    def _time_machine_source_description(self) -> str:
-+        if os.path.exists(self.CHANNELS_FILE):
-+            return self.CHANNELS_FILE
-+
-+        return self.TIME_MACHINE_BRANCH
-+
 +    @staticmethod
 +    def _read_text_file(path: str) -> Optional[str]:
 +        try:
@@ -357,35 +334,17 @@ index 0000000..5b12c2d
 +        except UnicodeDecodeError:
 +            return None
 +
-+    @staticmethod
-+    def _channel_commit(text: Optional[str]) -> Optional[str]:
-+        if text is None:
-+            return None
-+        match = re.search(r'\(commit\s+"([^"]+)"\)', text)
-+        if match is None:
-+            return None
-+        return match.group(1)
-+
-+    def _current_generation_matches_pinned_inputs(self) -> bool:
++    def _current_generation_matches_config(self) -> bool:
 +        """
 +        Detect the common Guix TemplateVM no-op update case cheaply.
 +
-+        The native template is built from a pinned channels.scm and a generated
-+        self-contained /etc/config.scm that embeds the original small system
-+        definition.  If the running generation provenance already carries the
-+        same Guix channel commit, and that original system definition is still
-+        embedded in /etc/config.scm, a central updater run has no new input to
-+        apply.  Avoiding a full no-op reconfigure matters because Guix graph
-+        evaluation can take tens of minutes in nested openQA.
++        The native template installs a self-contained /etc/config.scm.  If the
++        running generation configuration is still embedded in that file, a
++        central updater run has no new system definition to apply.  Avoiding a
++        full no-op reconfigure matters because Guix graph evaluation can take
++        tens of minutes in nested openQA.
 +        """
 +        if not os.path.exists(self.CURRENT_SYSTEM):
-+            return False
-+
-+        configured_channels = self._read_text_file(self.CHANNELS_FILE)
-+        current_provenance = self._read_text_file(self.CURRENT_PROVENANCE)
-+        configured_commit = self._channel_commit(configured_channels)
-+        current_commit = self._channel_commit(current_provenance)
-+        if configured_commit is None or configured_commit != current_commit:
 +            return False
 +
 +        system_config = self._read_text_file(self.SYSTEM_CONFIG)
@@ -422,11 +381,10 @@ index 0000000..5b12c2d
 +                EXIT.ERR_VM_UPDATE,
 +                err=f"missing Guix system configuration: {self.SYSTEM_CONFIG}")
 +
-+        if self._current_generation_matches_pinned_inputs():
++        if self._current_generation_matches_config():
 +            print(
-+                f"Guix System already matches {self.SYSTEM_CONFIG} and "
-+                f"{self._time_machine_source_description()}; skipping "
-+                "reconfigure.",
++                f"Guix System already matches {self.SYSTEM_CONFIG}; "
++                "skipping reconfigure.",
 +                flush=True,
 +            )
 +            print(
@@ -438,8 +396,7 @@ index 0000000..5b12c2d
 +        cmd = [self.package_manager, *self.get_action(remove_obsolete)]
 +        print(
 +            f"Reconfiguring Guix System from {self.SYSTEM_CONFIG} "
-+            f"using the installed system Guix. Release channel reference: "
-+            f"{self._time_machine_source_description()}.",
++            f"using the installed system Guix.",
 +            flush=True,
 +        )
 +        result = self._run_guix(cmd)
@@ -525,7 +482,6 @@ index 0000000..8d8a8b0
 +# USA.
 +
 +import logging
-+import shutil
 +import sys
 +from pathlib import Path
 +
@@ -559,8 +515,6 @@ index 0000000..8d8a8b0
 +    monkeypatch.setattr(GUIXCLI, "SERVICE_DIR", str(service_dir))
 +    monkeypatch.setattr(GUIXCLI, "SYSTEM_CONFIG",
 +                        str(tmp_path / "config.scm"))
-+    monkeypatch.setattr(GUIXCLI, "CHANNELS_FILE",
-+                        str(tmp_path / "channels.scm"))
 +    monkeypatch.setattr(GUIXCLI, "CURRENT_SYSTEM",
 +                        str(tmp_path / "run" / "current-system"))
 +    monkeypatch.setattr(GUIXCLI, "CURRENT_CONFIGURATION",
@@ -650,17 +604,8 @@ index 0000000..8d8a8b0
 +    assert "Guix" in str(exc_info.value)
 +
 +
-+def test_find_guix_uses_path_fallback(tmp_path, monkeypatch):
++def test_find_guix_fails_without_system_guix(tmp_path, monkeypatch):
 +    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
-+    fallback = make_executable(tmp_path / "path" / "guix")
-+    monkeypatch.setattr(shutil, "which", lambda name: fallback)
-+
-+    assert manager._find_guix(()) == fallback
-+
-+
-+def test_find_guix_fails_without_candidates_or_path(tmp_path, monkeypatch):
-+    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
-+    monkeypatch.setattr(shutil, "which", lambda name: None)
 +
 +    with pytest.raises(RuntimeError) as exc_info:
 +        manager._find_guix(())
@@ -707,22 +652,6 @@ index 0000000..8d8a8b0
 +    )
 +
 +
-+def test_refresh_reports_installed_channels_file(
-+        tmp_path, monkeypatch, capsys):
-+    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
-+    Path(GUIXCLI.CHANNELS_FILE).write_text("(list)\n", encoding="ascii")
-+    commands = collect_commands(manager, monkeypatch)
-+
-+    assert not manager.refresh(hard_fail=True)
-+
-+    assert commands == []
-+    assert (
-+        f"Skipping separate Guix refresh; Guix System reconfigure uses "
-+        f"the installed system Guix; release channel reference is "
-+        f"{GUIXCLI.CHANNELS_FILE}."
-+    ) in capsys.readouterr().out
-+
-+
 +def test_refresh_does_not_touch_root_guix_checkout(
 +        tmp_path, monkeypatch):
 +    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
@@ -762,8 +691,7 @@ index 0000000..8d8a8b0
 +
 +def write_current_generation_inputs(
 +        tmp_path, current_source="(operating-system)\n",
-+        configured_source=None, configured_commit="abc123",
-+        current_commit="abc123"):
++        configured_source=None):
 +    if configured_source is None:
 +        configured_source = (
 +            ";; generated wrapper\n"
@@ -771,21 +699,12 @@ index 0000000..8d8a8b0
 +        )
 +    Path(GUIXCLI.SYSTEM_CONFIG).write_text(configured_source,
 +                                           encoding="ascii")
-+    Path(GUIXCLI.CHANNELS_FILE).write_text(
-+        f"(list (channel (name 'guix) "
-+        f"(commit \"{configured_commit}\")))\n",
-+        encoding="ascii",
-+    )
 +    Path(GUIXCLI.CURRENT_SYSTEM).mkdir(parents=True, exist_ok=True)
 +    Path(GUIXCLI.CURRENT_CONFIGURATION).write_text(current_source,
 +                                                   encoding="ascii")
-+    Path(GUIXCLI.CURRENT_PROVENANCE).write_text(
-+        f'(provenance (channels (channel (commit "{current_commit}"))))\n',
-+        encoding="ascii",
-+    )
 +
 +
-+def test_upgrade_skips_reconfigure_when_current_generation_matches_inputs(
++def test_upgrade_skips_reconfigure_when_current_generation_matches_config(
 +        tmp_path, monkeypatch, capsys):
 +    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
 +    write_current_generation_inputs(tmp_path)
@@ -796,29 +715,21 @@ index 0000000..8d8a8b0
 +    assert commands == []
 +    out = capsys.readouterr().out
 +    assert (
-+        f"Guix System already matches {GUIXCLI.SYSTEM_CONFIG} and "
-+        f"{GUIXCLI.CHANNELS_FILE}; skipping reconfigure."
++        f"Guix System already matches {GUIXCLI.SYSTEM_CONFIG}; "
++        "skipping reconfigure."
 +    ) in out
 +    assert f"guix-system {Path(GUIXCLI.CURRENT_SYSTEM).resolve()}" in out
 +
 +
-+def test_upgrade_reconfigures_when_current_generation_commit_differs(
++def test_upgrade_skips_reconfigure_without_channel_pin(
 +        tmp_path, monkeypatch):
-+    manager, guix, _service_dir = make_manager(tmp_path, monkeypatch)
-+    write_current_generation_inputs(tmp_path, current_commit="old")
++    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
++    write_current_generation_inputs(tmp_path)
 +    commands = collect_commands(manager, monkeypatch)
 +
 +    assert not manager.upgrade_internal(remove_obsolete=True)
 +
-+    assert commands == [[
-+        "env",
-+        *GUIXCLI.GUIX_ENVIRONMENT,
-+        guix,
-+        "system",
-+        "reconfigure",
-+        "--no-bootloader",
-+        GUIXCLI.SYSTEM_CONFIG,
-+    ]]
++    assert commands == []
 +
 +
 +def test_upgrade_reconfigures_when_current_generation_source_differs(
@@ -871,7 +782,6 @@ index 0000000..8d8a8b0
 +    manager, guix, _service_dir = make_manager(tmp_path, monkeypatch)
 +    Path(GUIXCLI.SYSTEM_CONFIG).write_text("(operating-system)\n",
 +                                           encoding="ascii")
-+    Path(GUIXCLI.CHANNELS_FILE).write_text("(list)\n", encoding="ascii")
 +    commands = collect_commands(manager, monkeypatch)
 +
 +    assert not manager.upgrade_internal(remove_obsolete=True)
@@ -888,11 +798,10 @@ index 0000000..8d8a8b0
 +    out = capsys.readouterr().out
 +    assert "Reconfiguring Guix System" in out
 +    assert "using the installed system Guix" in out
-+    assert f"Release channel reference: {GUIXCLI.CHANNELS_FILE}" in out
 +    assert "Reconfigured Guix System." in out
 +
 +
-+def test_upgrade_direct_reconfigure_without_channels_file(
++def test_upgrade_direct_reconfigure_from_system_config(
 +        tmp_path, monkeypatch):
 +    manager, guix, _service_dir = make_manager(tmp_path, monkeypatch)
 +    Path(GUIXCLI.SYSTEM_CONFIG).write_text("(operating-system)\n",
@@ -1031,18 +940,6 @@ index 0000000..8d8a8b0
 +
 +def test_get_action_reports_reconfigure_command(tmp_path, monkeypatch):
 +    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
-+
-+    assert manager.get_action(remove_obsolete=True) == [
-+        "system",
-+        "reconfigure",
-+        "--no-bootloader",
-+        GUIXCLI.SYSTEM_CONFIG,
-+    ]
-+
-+
-+def test_get_action_ignores_installed_channels_file(tmp_path, monkeypatch):
-+    manager, _guix, _service_dir = make_manager(tmp_path, monkeypatch)
-+    Path(GUIXCLI.CHANNELS_FILE).write_text("(list)\n", encoding="ascii")
 +
 +    assert manager.get_action(remove_obsolete=True) == [
 +        "system",

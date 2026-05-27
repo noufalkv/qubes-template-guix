@@ -352,7 +352,7 @@ sub install_core_admin_guix_backend {
         'package_manager = importlib.import_module("source.common.package_manager")',
         'assert hasattr(package_manager, "AgentType")',
         'guix_cli = importlib.import_module("source.guix.guix_cli")',
-        'assert guix_cli.GUIXCLI.CHANNELS_FILE == "/etc/guix/channels.scm"',
+        'assert guix_cli.GUIXCLI.SYSTEM_CONFIG == "/etc/config.scm"',
         'assert "/run/qubes/bin/guix" not in guix_cli.GUIXCLI.GUIX_CANDIDATES',
         'print(f"patched full core-admin Guix vmupdate agent: {agent_dir}")',
         'PY');

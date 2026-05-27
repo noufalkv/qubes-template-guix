@@ -54,24 +54,12 @@ The local artifact contract check for this clean review branch is:
 make check
 ```
 
-The Guix system contract check runs on a Guix-capable builder; final
-publication reruns are still required:
-
-```sh
-make guix-system-contract-check
-```
-
-The default check suite executes the Builder hooks against a temporary
-install tree and builds/extracts real template RPM layout tests for both `guix`
-and `guix-minimal`.  It fails when required RPM/image tooling is missing; the
-upstream-facing test story is based on generated artifacts and Qubes-visible
-contracts, not text-only source inspection.  Do not carry source-only or
-patch-shape tests in the upstream patch series.
-The Guix system contract check is separate because it requires Guix in `PATH`.
-It instantiates both operating-system variants and verifies Qubes-visible
-defaults that reviewers asked to preserve: `/dev/xvdc1` swap, the standard
-`user` account and Qubes group membership, default privileged programs,
-passwordless sudo, required Qubes services, and `meminfo-writer` defaults.
+The default check suite builds and extracts real template RPM layout tests for
+both `guix` and `guix-minimal`.  It fails when required RPM/image tooling is
+missing; the upstream-facing test story is based on generated artifacts,
+rootfs activation, qvm-template lifecycle, openQA, and live VM behavior, not
+text-only source inspection.  Do not carry source-only or patch-shape tests in
+the upstream patch series.
 
 Qubes VM component sources are pinned to immutable upstream commits and Guix
 recursive content hashes.  The pinned R4.3 components are:
@@ -85,15 +73,14 @@ recursive content hashes.  The pinned R4.3 components are:
 - `qubes-gui-agent-linux` `v4.3.16`
 
 The root image build defaults to `config/channels.scm`, which pins the Guix
-channel commit used for release-quality builds.  Builders can still override
-the channel with `GUIX_CHANNELS_FILE`, or bypass time-machine with
-`GUIX_TIME_MACHINE=0` for local development.
-The selected channel file is also installed as `/etc/guix/channels.scm` inside
-the template, giving users a visible release-build channel reference without
-baking an imperative per-user `guix pull` profile into the image.
-The pinned channel currently resolves on the remote Guix builder with
-`guix time-machine -C config/channels.scm -- describe`; see `VALIDATION.md` for
-the exact commit output.
+channel commit used for release-quality builds.  The builder refreshes a local
+Git checkout with command-line Git first, then runs Guix from that checkout so
+the build does not depend on Guix/libgit2 fetching the large Guix repository
+over HTTPS.  Builders can still override the channel with `GUIX_CHANNELS_FILE`,
+or bypass time-machine with `GUIX_TIME_MACHINE=0` for local development.
+The selected channel file is a template-generation input only.  It is not
+installed as a user/root `guix pull` pin inside the template.
+The pinned channel and live VM HTTPS evidence are recorded in `VALIDATION.md`.
 
 Maintainers can check whether the Qubes VM component pins are still current for
 their pinned release series with:
@@ -150,9 +137,9 @@ Release-quality builds use immutable Qubes source commits and recursive Guix
 hashes, plus `config/channels.scm` for the Guix channel.  The installed
 `/etc/config.scm` keeps later `guix system reconfigure /etc/config.scm` work
 self-contained instead of relying on a builder checkout.  The Qubes
-central-updater RFC path uses `guix time-machine --branch=master -- system
-reconfigure /etc/config.scm`, so vmupdate changes the Guix System generation
-rather than root's Guix checkout/profile.
+central-updater RFC path uses the installed system Guix to reconfigure
+`/etc/config.scm`, so vmupdate changes the Guix System generation rather than
+root's Guix checkout/profile.
 
 Mutable runtime state is limited to Qubes integration points that must be
 mutable in a TemplateVM/AppVM, such as `/rw`, `/home`, `/usr/local`, Qubes
@@ -270,7 +257,6 @@ request or issue has been exhaustively reviewed.
   `qvm-template`.
   Local response: `config/`, `builder-v2-template/`,
   `scripts/package-native-template-rpm.sh`,
-  `tests/build-native-rootfs-policy-check.sh`, and
   `tests/rpm-layout-check.sh` make the Guix builder inputs, pinned-channel
   release-build policy, and resulting RPM contract inspectable.
 - Qubes Forum, "How to make a template":
@@ -292,8 +278,8 @@ request or issue has been exhaustively reviewed.
   standard template hooks, package the Qubes VM agents, and prove qrexec plus GUI
   readiness.
   Local response: `builder-v2-template/` implements the standard hook shape;
-  `native/modules/qubes/packages/qubes-vm.scm` packages the VM agents; and
-  `VALIDATION.md` separates build, `qvm-template` lifecycle,
+  `config.scm` packages the VM agents; and `VALIDATION.md` separates build,
+  `qvm-template` lifecycle,
   RPM-mode openQA, update-proxy, and dynamic memory-pressure evidence from
   final publication reruns.  The RPM-mode openQA path now has a passing
   rebuilt minimal job for the Guix-specific daemon/client proxy verifier and a
@@ -303,8 +289,8 @@ request or issue has been exhaustively reviewed.
   central-updater proof: it passed RPM import, TemplateVM/AppVM smoke,
   generated Guix proxy configuration, standard Debian `sys-net` update-target
   bootstrap, raw `qubes.UpdatesProxy` probing, and a full `qubes-vm-update`
-  path that ran `guix time-machine --branch=master`, reconfigured
-  `/etc/config.scm`, emitted package metadata, and exited the update agent with
+  path that ran the Guix backend, reconfigured `/etc/config.scm`, emitted
+  package metadata, and exited the update agent with
   status 0.  OpenQA job 133 reran the same path with the corrected log harness
   and longer openQA job limit; it reached Guix through the Qubes update proxy
   but failed refresh on a transient upstream Git HTTP 504, which is logged as an
@@ -360,11 +346,11 @@ request or issue has been exhaustively reviewed.
   `config/qubes-core-admin-linux-guix-vmupdate.example.patch` keep those
   expectations visible instead of hiding them behind a local RPM build.  The
   vmupdate sketch is intentionally in the Qubes central updater path: it adds a
-  Guix backend for `guix time-machine --branch=master -- describe` refresh and
-  `guix time-machine --branch=master -- system reconfigure /etc/config.scm`
-  through the Qubes updates-proxy environment, with per-output system profile
-  manifest entries reported to dom0 through the normal updater package-summary
-  format after preserving manifest columns before Qubes output sanitization.
+  Guix backend that treats refresh as a no-op and runs the installed system Guix
+  for `guix system reconfigure /etc/config.scm` through the Qubes updates-proxy
+  environment, with per-output system profile manifest entries reported to dom0
+  through the normal updater package-summary format after preserving manifest
+  columns before Qubes output sanitization.
   The reconfigure path is anchored on `/etc/config.scm`, not on per-update
   user-supplied command text.
 - Comparable update/proxy PRs:
@@ -485,8 +471,8 @@ then substitute the accepted owner URL in release config.
   Sources use `git-fetch`, explicit commits, and recursive Guix hashes.
 - Runtime Guix configuration is self-contained in `/etc/config.scm` inside the
   template image.
-- The release channel pin is installed in `/etc/guix/channels.scm` instead of
-  baking an imperative `guix pull` profile into the image.
+- The release channel pin stays in `config/channels.scm` for template
+  generation instead of becoming user/root package-manager state.
 - Qubes swap is declared with Guix `swap-devices` for `/dev/xvdc1`.
 - PAM entries are provided through `pam-root-service-type`, not package-time
   mutation of `/etc/pam.d`.

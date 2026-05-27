@@ -15,8 +15,7 @@ environment.
    - Guix package and Shepherd service definitions for the Qubes VM-side stack.
    - Native rootfs, qvm-template RPM, and Builder adapter scripts.
    - openQA scheduling and dom0 smoke-test helpers.
-   - Contract tests for script CLIs, rootfs policy, Builder hooks, RPM layout,
-     and the centralized vmupdate harness.
+   - Executable RPM artifact checks plus runtime/openQA validation harnesses.
    - Adaptation inventory and reviewer guide.
    - Maintenance, security, contribution, and upstreaming notes.
    - Validation and submission audit records.

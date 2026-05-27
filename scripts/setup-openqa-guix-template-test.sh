@@ -47,7 +47,7 @@ guix_proxy_download_url="${GUIX_PROXY_DOWNLOAD_URL:-https://guix.gnu.org/}"
 guix_proxy_stub_download_url="${GUIX_PROXY_STUB_DOWNLOAD_URL:-http://qubes-guix-test/}"
 guix_proxy_download_timeout="${GUIX_PROXY_DOWNLOAD_TIMEOUT:-240}"
 guix_central_vmupdate_timeout="${GUIX_CENTRAL_VMUPDATE_TIMEOUT:-3600}"
-guix_central_vmupdate_proxy_probe_url="${GUIX_CENTRAL_VMUPDATE_PROXY_PROBE_URL:-https://git.savannah.gnu.org/git/guix.git}"
+guix_central_vmupdate_proxy_probe_url="${GUIX_CENTRAL_VMUPDATE_PROXY_PROBE_URL:-https://codeberg.org/guix/guix.git}"
 guix_vmupdate_qrexec_timeout="${GUIX_VMUPDATE_QREXEC_TIMEOUT:-600}"
 guix_vmupdate_service_vm_timeout="${GUIX_VMUPDATE_SERVICE_VM_TIMEOUT:-300}"
 core_admin_linux_tree="${GUIX_CORE_ADMIN_LINUX_TREE:-}"
@@ -908,7 +908,8 @@ secret = $client_secret
 key = $client_key
 secret = $client_secret
 EOF
-if getent group _openqa-worker >/dev/null 2>&1; then
+if id -nG _openqa-worker 2>/dev/null | tr ' ' '\n' |
+    grep -qx _openqa-worker; then
     sudo chown root:_openqa-worker /etc/openqa/client.conf
     sudo chmod 0640 /etc/openqa/client.conf
 else

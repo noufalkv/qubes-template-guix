@@ -28,3 +28,6 @@
 /dist/
 /.cache/
 /logs/
+/.last-remote-sync
+# CocoIndex Code (ccc)
+/.cocoindex_code/
