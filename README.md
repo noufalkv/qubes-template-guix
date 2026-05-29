@@ -175,10 +175,11 @@ That command records source-pin freshness.  It is not runtime evidence.
 
 ## Runtime and Integration Validation
 
-Runtime and integration validation is performed outside this repository using
-Qubes OS's existing openQA test infrastructure.  This repository provides the
-Guix channel, the template build path, and local artifact validation
-(`make check`) only; it does not ship a bespoke dom0/openQA test harness.
+Runtime and integration validation for this template is delegated to Qubes
+OS's existing openQA test infrastructure; it is run there rather than from this
+repository.  This repository provides the Guix channel, the template build
+path, and local artifact validation (`make check`) only; it does not ship a
+bespoke dom0/openQA test harness.
 
 Local tooling that needs no dom0:
 

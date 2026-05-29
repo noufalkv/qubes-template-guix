@@ -78,8 +78,8 @@ content-script route.
 
 Template generation is independent of any test harness.  `scripts/build-template-rpm.sh`
 builds the root image, inspects the expected variant contents, runs rootfs
-activation, and packages the RPM.  Integration testing uses Qubes OS's existing
-openQA suite, which is external to this repository.
+activation, and packages the RPM.  Integration testing is delegated to Qubes
+OS's existing openQA suite, which is external to this repository.
 
 ## Guix Alignment
 
@@ -96,8 +96,8 @@ Important boundaries:
 - no custom appmenu desktop files except the `xterm` entry needed because Guix
   does not provide one;
 - no root/user `current-guix` profile pin installed into the image;
-- no bespoke openQA/dom0 test harness is shipped; integration testing uses
-  Qubes' existing suite;
+- no bespoke openQA/dom0 test harness is shipped; integration testing is
+  delegated to Qubes' existing suite;
 - no overlay implementation has been added, and no overlay design is decided.
 
 `ADAPTATION_INVENTORY.md` maps the non-obvious Guix/Qubes adaptations to files,

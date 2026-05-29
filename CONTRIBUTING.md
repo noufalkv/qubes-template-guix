@@ -44,7 +44,7 @@ make check
 ```
 
 Validation evidence must exercise generated artifacts, Guix system records,
-or qvm-template behavior.  Integration testing is performed externally using
+or qvm-template behavior.  Integration testing is delegated to
 Qubes OS's existing openQA infrastructure.
 
 Run the Builder v2 and release-config sketch checks against fresh upstream

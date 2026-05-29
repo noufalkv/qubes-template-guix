@@ -21,7 +21,7 @@ assumptions to Guix System and Shepherd.
 
 ## Validation Infrastructure Scope
 
-Integration testing is performed using Qubes OS's existing openQA
+Integration testing is delegated to Qubes OS's existing openQA
 infrastructure, which is outside this repository's trust boundary and review
 scope.  Local build and artifact validation scripts are not installed into the
 TemplateVM image, do not add a new dom0 service, and should not be treated as

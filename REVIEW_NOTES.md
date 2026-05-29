@@ -42,7 +42,7 @@ Non-goals for the first review:
 | Qubes release-config sketch | QubesOS/qubes-release-configs#19 (RFC) | Draft only; publication owner and metadata remain gates |
 | Central updater sketch | QubesOS/qubes-core-admin-linux#211 (RFC) | Draft only; needs fresh central-update runtime evidence |
 | Template RPM contract | `scripts/package-native-template-rpm.sh`, `tests/template-rpm-payload-check.sh` | Local artifact checks exercise generated RPM payloads |
-| Runtime integration | `modules/qubes/packages.scm`, `config/qubes-system.tmpl`, `VALIDATION.md` | Integration testing uses Qubes' existing openQA suite (external); runtime reruns required before publication |
+| Runtime integration | `modules/qubes/packages.scm`, `config/qubes-system.tmpl`, `VALIDATION.md` | Delegated to Qubes' existing openQA suite (external); runtime reruns required before publication |
 | Maintenance story | `MAINTENANCE.md` | Policy documented; publication owner deferred |
 | Security framing | `SECURITY.md`, `ADAPTATION_INVENTORY.md` | Present |
 
@@ -62,8 +62,8 @@ Non-goals for the first review:
 4. Builder content scripts:
    `builder-v2-template/`.
 5. Integration testing:
-   integration and openQA validation is performed externally using Qubes OS's
-   existing openQA suite; no bespoke harness is shipped in this repository.
+   integration and openQA validation is delegated to Qubes OS's existing openQA
+   suite and run there; no bespoke harness is shipped in this repository.
 6. Process documents:
    `UPSTREAMING.md`, `MAINTENANCE.md`, `SECURITY.md`,
    `ADAPTATION_INVENTORY.md`, and `VALIDATION.md`.
@@ -87,9 +87,9 @@ Non-goals for the first review:
 - The template RPM is a Qubes Template Manager payload, not a normal RPM:
   split root image parts, `template.conf`, appmenu allowlists, ghost volumes,
   and a `%pre` guard against direct package-manager installation.
-- Integration testing uses Qubes OS's existing openQA suite, which is external
-  to this repository.  Template generation does not depend on any bespoke
-  openQA harness.
+- Integration testing is delegated to Qubes OS's existing openQA suite, which
+  is external to this repository.  Template generation does not depend on any
+  bespoke openQA harness.
 - Qubes compatibility links under `/usr`, `/etc/qubes-rpc`, `/usr/lib/qubes`,
   `/run/qubes-service`, and `/var/run/qubes-service-environment` are
   deliberate because upstream Qubes VM tools use fixed FHS-style paths.

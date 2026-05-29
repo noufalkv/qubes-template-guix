@@ -70,7 +70,7 @@ of truth for current evidence.
 - The adaptations above should remain small and Guix-specific.  If an upstream
   Qubes release removes the need for one, drop the local adaptation rather than
   carrying it forward.
-- Integration testing uses Qubes OS's existing openQA suite, which is external
-  to this repository.
+- Integration testing is delegated to Qubes OS's existing openQA suite, which
+  is external to this repository.
 - `VALIDATION.md` is the source of truth for which adaptations have live
   TemplateVM/AppVM evidence and which are still only build or rootfs evidence.
