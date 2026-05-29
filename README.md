@@ -33,7 +33,6 @@ This is a reviewable prototype, not a published Qubes community template.
 | `scripts/build-native-rootfs.sh` | Build or install a Guix root filesystem. |
 | `scripts/build-template-rpm.sh` | Build a root image, inspect it, activate it, and package a qvm-template RPM. |
 | `scripts/package-native-template-rpm.sh` | Package an existing root image as a Qubes Template Manager RPM. |
-| `scripts/run-openqa-template-rpm.sh` | Schedule openQA against an existing template RPM. |
 | `VALIDATION.md` | Current artifact/runtime evidence and missing gates. |
 | `REVIEW_NOTES.md` | Maintainer-facing review map. |
 | `ADAPTATION_INVENTORY.md` | Non-obvious Guix/Qubes adaptations and rationale. |
@@ -174,41 +173,24 @@ make check-qubes-pins
 
 That command records source-pin freshness.  It is not runtime evidence.
 
-## Runtime Gates
+## Runtime and Integration Validation
 
-Install and smoke a generated RPM in a dom0 review environment:
+Runtime and integration validation is performed outside this repository using
+Qubes OS's existing openQA test infrastructure.  This repository provides the
+Guix channel, the template build path, and local artifact validation
+(`make check`) only; it does not ship a bespoke dom0/openQA test harness.
 
-```sh
-./scripts/test-template-rpm-lifecycle-dom0.sh \
-  --rpm /path/to/qubes-template-guix-4.3.0-RELEASE.noarch.rpm \
-  --replace-existing \
-  --run-smoke
-```
+Local tooling that needs no dom0:
 
-Schedule RPM-mode openQA against existing artifacts from an already configured
-openQA host:
+- `scripts/build-template-rpm.sh` builds the root image, inspects it, runs
+  writable-root activation, and packages the RPM.
+- `scripts/inspect-native-rootfs.sh` checks the expected profile payload,
+  Qubes compatibility paths, variant commands, and desktop entries.
+- `scripts/test-native-rootfs-activation.sh` is a local writable-root
+  activation check; it is not an integration test.
 
-```sh
-./scripts/run-openqa-template-rpm.sh \
-  --variant normal \
-  --template-rpm dist/qubes-template-guix-4.3.0-RELEASE.noarch.rpm \
-  --qubes-disk /path/to/qubes-r4.3-dom0.qcow2 \
-  --wait
-
-./scripts/run-openqa-template-rpm.sh \
-  --variant minimal \
-  --template-rpm dist/qubes-template-guix-minimal-4.3.0-RELEASE.noarch.rpm \
-  --qubes-disk /path/to/qubes-r4.3-dom0.qcow2 \
-  --wait
-```
-
-Set `GUIX_RUN_PROXY_PULL_TEST=1` for an RPM-mode openQA run that must exercise
-`guix pull` through the Qubes updates proxy.  The pull uses a temporary guest
-profile and the official Guix channel URL; it does not install root or user
-Guix channel state.
-
-`VALIDATION.md` owns the full gate list and records which runtime evidence is
-current for the exact source state under review.
+See `VALIDATION.md` for the current evidence gates and which classes of
+evidence are still open.
 
 ## Builder V2 Review Shape
 
@@ -221,13 +203,11 @@ make prepare build-rpm
 
 `builder-v2-template/` exposes the standard content-script layout.  Upstream
 Builder v2 still needs accepted `dist: guix` support or an accepted component
-wiring that points at these scripts.  The draft sketch is
-`config/qubes-builderv2-guix.example.patch`.
-
-Release-config and central-updater sketches live in:
-
-- `config/qubes-release-configs-guix.example.patch`;
-- `config/qubes-core-admin-linux-guix-vmupdate.example.patch`.
+wiring that points at these scripts.  Upstream Builder v2 / release-config /
+central-updater integration is tracked as separate Qubes RFCs:
+QubesOS/qubes-builderv2#245, QubesOS/qubes-core-admin-linux#211, and
+QubesOS/qubes-release-configs#19.  Their patches are regenerated from accepted
+upstream branches rather than vendored here.
 
 ## Review Order
 

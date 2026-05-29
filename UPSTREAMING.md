@@ -7,13 +7,11 @@ community template.
 The upstream shape is deliberately split:
 
 - this repository contains the Guix System definition, rootfs/RPM build path,
-  Builder-shaped hooks, openQA harness, and review evidence;
-- `config/qubes-builderv2-guix.example.patch` sketches the Builder v2 support
-  needed for `dist: guix`;
-- `config/qubes-core-admin-linux-guix-vmupdate.example.patch` sketches the
-  central updater backend for Guix;
-- `config/qubes-release-configs-guix.example.patch` sketches the R4.3
-  `templates-community-testing` release-config entry.
+  Builder-shaped hooks, and review evidence;
+- upstream Builder v2 / release-config / central-updater integration is tracked
+  as separate Qubes RFCs; their patches are regenerated from accepted upstream
+  branches rather than vendored here (QubesOS/qubes-builderv2#245,
+  QubesOS/qubes-core-admin-linux#211, QubesOS/qubes-release-configs#19).
 
 The RFC PRs are review surfaces only:
 QubesOS/qubes-builderv2#245, QubesOS/qubes-core-admin-linux#211, and
@@ -78,11 +76,10 @@ still needs accepted `dist: guix` support or release-config wiring that points
 at this component.  The checked-in Builder patch sketch takes the
 content-script route.
 
-Template generation is independent from local openQA.  `scripts/build-template-rpm.sh`
+Template generation is independent of any test harness.  `scripts/build-template-rpm.sh`
 builds the root image, inspects the expected variant contents, runs rootfs
-activation, and packages the RPM.  `scripts/run-openqa-template-rpm.sh` stages
-an already-built RPM into an existing openQA host and schedules the RPM-mode
-job; `--wait` polls the job result without adding a separate log-watcher layer.
+activation, and packages the RPM.  Integration testing uses Qubes OS's existing
+openQA suite, which is external to this repository.
 
 ## Guix Alignment
 
@@ -99,7 +96,8 @@ Important boundaries:
 - no custom appmenu desktop files except the `xterm` entry needed because Guix
   does not provide one;
 - no root/user `current-guix` profile pin installed into the image;
-- no local openQA dependency in the template generation path;
+- no bespoke openQA/dom0 test harness is shipped; integration testing uses
+  Qubes' existing suite;
 - no overlay implementation has been added, and no overlay design is decided.
 
 `ADAPTATION_INVENTORY.md` maps the non-obvious Guix/Qubes adaptations to files,

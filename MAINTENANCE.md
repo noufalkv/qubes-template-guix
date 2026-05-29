@@ -125,9 +125,10 @@ network policy.  The implementation provides a Guix-facing forwarder to
 `qubes.UpdatesProxy` and keeps `guix-daemon` unproxied for ordinary AppVM use.
 Guix update operations that must use the Qubes proxy should run with an
 explicit `http_proxy`/`https_proxy` environment when `updates-proxy-setup` is
-enabled.  `scripts/test-guix-update-proxy-dom0.sh --pull` exercises that path
-with a temporary profile and the official Guix channel, without writing root or
-user Guix pull state.  The `qubes-core-admin-linux` RFC backend keeps central
+enabled.  The in-template `guix pull` through the Qubes updates proxy is
+validated using Qubes' existing openQA and integration infrastructure, not a
+repo-shipped script; it exercises a temporary profile against the official Guix
+channel URL without writing root or user Guix pull state.  The `qubes-core-admin-linux` RFC backend keeps central
 updates system-only: refresh is intentionally a no-op, and upgrade uses the
 installed system Guix for
 `guix system -L /etc/qubes-guix-channel/modules reconfigure --no-bootloader --allow-downgrades /etc/config.scm`

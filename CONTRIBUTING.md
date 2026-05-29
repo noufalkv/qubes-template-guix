@@ -44,39 +44,18 @@ make check
 ```
 
 Validation evidence must exercise generated artifacts, Guix system records,
-qvm-template behavior, dom0 behavior, or openQA.
+or qvm-template behavior.  Integration testing is performed externally using
+Qubes OS's existing openQA infrastructure.
 
-Run the Builder v2 and release-config sketch checks directly in fresh upstream
-checkouts when changing files under `config/`.  For release candidates, add
-runtime evidence: rootfs activation, qvm-template lifecycle, RPM-mode openQA,
-and live TemplateVM/AppVM smoke.
+Run the Builder v2 and release-config sketch checks against fresh upstream
+checkouts when changing files under `config/`.  Upstream RFC patches are
+regenerated from accepted upstream branches and are not vendored in this
+repository.  For release candidates, add runtime evidence: rootfs activation,
+qvm-template lifecycle, and live TemplateVM/AppVM smoke.
 
 When changing pinned Qubes sources, run `./scripts/check-qubes-pins.sh`
 directly and document the result as source-pin information only.  It is not a
 template behavior test.
-
-For the Builder v2 sketch:
-
-```sh
-rm -rf /tmp/qubes-builderv2-test
-git clone --depth 1 https://github.com/QubesOS/qubes-builderv2.git \
-  /tmp/qubes-builderv2-test
-git -C /tmp/qubes-builderv2-test apply \
-  "$PWD/config/qubes-builderv2-guix.example.patch"
-cd /tmp/qubes-builderv2-test
-PYTHONPATH="$PWD" \
-  python -m pytest \
-    tests/test_objects.py::test_dist_non_default_arch \
-    tests/test_objects.py::test_dist_family \
-    tests/test_objects.py::test_template_plugin_supports_guix \
-    tests/test_objects.py::test_template_plugin_guix_parameters
-```
-
-For the release-config sketch, apply
-`config/qubes-release-configs-guix.example.patch` to a fresh
-`qubes-release-configs` checkout and parse the resulting R4.3 community
-template YAML.  Record the command and result in `VALIDATION.md` only when
-review discussion relies on it.
 
 ## Release Evidence
 
@@ -89,8 +68,6 @@ there instead of copying partial checklists into review comments.
 
 - Explain every non-obvious Guix/Qubes adaptation in `ADAPTATION_INVENTORY.md`
   or `SECURITY.md`.
-- Keep openQA-specific behavior in the dedicated `guix_template.pm` job unless
-  a reviewer asks for integration with the broader upstream openQA suite.
 - Do not replace standard Qubes behavior with Guix-specific policy unless the
   reason is documented and covered by validation.
 - Keep placeholders such as `<OWNER>`, `<REPOSITORY>`, and `<NAME>` only in

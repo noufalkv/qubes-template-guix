@@ -12,10 +12,10 @@ not yet a publishable Qubes community template.
    Shepherd services.  It lists each non-obvious Guix/Qubes adaptation, why it
    exists, and what currently validates it.
 3. Read `VALIDATION.md` before relying on any validation claim.  It separates
-   local contract checks, pin/provenance notes, dom0/openQA evidence, and
-   unpassed release gates.
-4. Read `UPSTREAMING.md` and `config/README.md` for the multi-repo Builder v2
-   and release-config path.
+   local contract checks, pin/provenance notes, local artifact and externally-run
+   Qubes openQA evidence, and unpassed release gates.
+4. Read `UPSTREAMING.md` and `config/README.md` for the upstream Builder v2
+   and release-config RFC path.
 
 ## Review Chunks
 
@@ -27,17 +27,12 @@ not yet a publishable Qubes community template.
   `scripts/test-native-rootfs-activation.sh`, and
   `scripts/package-native-template-rpm.sh`.
 - Builder and release-config sketches:
-  `builder-v2-template/`, `config/README.md`,
-  `config/qubes-builderv2-guix.example.patch`, and
-  `config/qubes-release-configs-guix.example.patch`.
-- Central Qubes updater sketch:
-  `config/qubes-core-admin-linux-guix-vmupdate.example.patch`.
-- Runtime and release harnesses:
-  `scripts/test-template-rpm-lifecycle-dom0.sh`,
-  `scripts/test-native-guix-template-dom0.sh`,
-  `scripts/test-guix-update-proxy-dom0.sh`,
-  `scripts/test-guix-central-vmupdate-dom0.sh`,
-  `scripts/test-memory-balloon-dom0.sh`, and `openqa/qubesos/`.
+  `builder-v2-template/` and `config/README.md`.
+  Upstream Builder v2 / release-config / central-updater integration is tracked
+  as separate Qubes RFCs (QubesOS/qubes-builderv2#245,
+  QubesOS/qubes-core-admin-linux#211, QubesOS/qubes-release-configs#19);
+  patches are regenerated from accepted upstream branches and are not vendored
+  here.
 
 ## Review Evidence
 
@@ -49,14 +44,15 @@ make check
 built through the Builder RPM adapter and the native packager, extracted,
 checked for Qubes Template Manager layout, and reassembled.
 
-Reviewer evidence should come from artifacts, rootfs activation, dom0 behavior,
-and openQA output.
+Local artifact and rootfs activation evidence comes from this repository.
+Dom0/openQA integration evidence is produced externally via Qubes' own openQA
+suite.
 
 ## Do Not Claim Yet
 
 - Qubes has not accepted the Builder v2, release-config, or core-admin Linux
   Guix sketches.
 - Release-owner metadata is not present.
-- Final branch/tag RPM-mode openQA and central-update evidence have not been
-  rerun.
+- Integration/openQA evidence from Qubes' own suite has not been rerun against
+  the final branch/tag.
 - Qubes maintainers have not reviewed or accepted the template.

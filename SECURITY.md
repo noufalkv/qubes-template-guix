@@ -21,17 +21,13 @@ assumptions to Guix System and Shepherd.
 
 ## Validation Infrastructure Scope
 
-openQA and dom0 smoke scripts are development and release validation
-infrastructure.  They are not installed into the TemplateVM image, do not add a
-new dom0 service, and should not be treated as part of the runtime trusted
-computing base of a published Guix template.  They still need ordinary review
-before use on a build host because they copy artifacts and run dom0-side test
-commands.
-
-`scripts/run-openqa-template-rpm.sh` assumes an existing openQA host.  It copies
-the local Guix test files into the Qubes openQA test tree, refreshes mutable HDD
-assets, and schedules an RPM-mode job, but it does not create API credentials,
-rewrite worker configuration, or restart openQA services.
+Integration testing is performed using Qubes OS's existing openQA
+infrastructure, which is outside this repository's trust boundary and review
+scope.  Local build and artifact validation scripts are not installed into the
+TemplateVM image, do not add a new dom0 service, and should not be treated as
+part of the runtime trusted computing base of a published Guix template.  They
+still need ordinary review before use on a build host because they copy
+artifacts and run local test commands.
 
 ## Source Integrity
 
