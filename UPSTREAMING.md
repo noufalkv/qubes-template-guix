@@ -23,7 +23,7 @@ publish the template.
 ## Current Local State
 
 This repository is a Guix channel.  `.guix-channel` declares the channel
-metadata, `qubes/vm.scm` contains the Qubes VM package and service module, and
+metadata, `modules/qubes/packages.scm` contains the Qubes VM package and service module, and
 `config/qubes-system.tmpl` is the operating-system template rendered per variant
 by `scripts/render-config.sh` and installed as `/etc/config.scm`.  The image also
 installs the channel module under `/etc/qubes-guix-channel` for later

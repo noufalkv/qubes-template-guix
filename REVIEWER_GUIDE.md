@@ -20,7 +20,7 @@ not yet a publishable Qubes community template.
 ## Review Chunks
 
 - Native Guix implementation:
-  `.guix-channel`, `qubes/vm.scm`, `config/qubes-system.tmpl`, and
+  `.guix-channel`, `modules/qubes/packages.scm`, `config/qubes-system.tmpl`, and
   `scripts/render-config.sh`.
 - Image and RPM tooling:
   `scripts/build-native-rootfs.sh`, `scripts/inspect-native-rootfs.sh`,

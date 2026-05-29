@@ -3,7 +3,7 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-packages_file="$repo_root/qubes/vm.scm"
+packages_file="$repo_root/modules/qubes/packages.scm"
 
 need() {
     command -v "$1" >/dev/null 2>&1 || {

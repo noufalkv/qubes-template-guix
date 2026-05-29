@@ -14,11 +14,10 @@
 
 (use-modules (gnu)
              (gnu bootloader)
-             (gnu packages bash)
+             (gnu bootloader grub)
              (gnu services)
              (gnu system nss)
              (guix channels)
-             (guix gexp)
              (qubes vm))
 
 ;; Channel this template is built from.  Declaring it in guix-configuration
@@ -28,48 +27,32 @@
 ;; track the branch; release reproducibility comes from the build-time
 ;; config/channels.scm instead.  During development this points at the GitHub
 ;; mirror; it should move to the Qubes-hosted URL for publication.
+(define %qubes-channel
+  (channel
+   (name 'qubes)
+   (url "https://github.com/noufalkv/qubes-template-guix.git")
+   (branch "main")
+   (introduction
+    (make-channel-introduction
+     "0e2aef5aca27851bd9d00b4c036f790b1c2ad979"
+     (openpgp-fingerprint
+      "9A23 32D1 567B EEB5 57BB  53DF 559B 1DC4 CA0D 77FF")))))
+
 (define %qubes-channels
-  (cons (channel
-         (name 'qubes)
-         (url "https://github.com/noufalkv/qubes-template-guix.git")
-         (branch "main"))
-        %default-channels))
-
-;; Qubes dom0 supplies the VM kernel, so this bootloader installs nothing and
-;; writes only a placeholder config.  It lives here (not in the channel module)
-;; because a bootloader record's gexp fields trip the Guile 3.0.9 ahead-of-time
-;; compiler used by "guix pull"; config files are loaded interpreted, so the
-;; record is safe here while keeping the channel modules byte-compilable.
-(define (qubes-dom0-kernel-bootloader-config _config _entries
-                                             . _rest)
-  (computed-file
-   "qubes-dom0-kernel.cfg"
-   #~(call-with-output-file #$output
-       (lambda (port)
-         (display
-          "Qubes dom0 supplies the VM kernel; no guest bootloader is installed.\n"
-          port)))
-   #:options '(#:local-build? #t
-               #:substitutable? #f)))
-
-(define qubes-dom0-kernel-bootloader
-  (bootloader
-   (name 'qubes-dom0-kernel)
-   (package bash-minimal)
-   (installer #~(lambda (_bootloader _device _mount-point) #t))
-   (configuration-file "/boot/qubes-dom0-kernel.cfg")
-   (configuration-file-generator qubes-dom0-kernel-bootloader-config)))
+  (cons %qubes-channel %default-channels))
 
 (operating-system
   (host-name (qubes-host-name '@VARIANT@))
   (timezone "Etc/UTC")
   (locale "en_US.utf8")
 
-  ;; Qubes dom0 supplies the VM kernel; a bootloader record is still required by
-  ;; the operating-system type, but images are built with --no-bootloader.
+  ;; Qubes dom0 supplies the VM kernel.  A bootloader record is still required
+  ;; by the operating-system type and is needed for "guix system init" to copy
+  ;; the full store closure, but images are built with --no-bootloader so no
+  ;; boot code is written to disk.
   (bootloader
    (bootloader-configuration
-    (bootloader qubes-dom0-kernel-bootloader)
+    (bootloader grub-bootloader)
     (targets '("/dev/xvda"))))
   (kernel qubes-dom0-kernel)
   (initrd-modules '())
@@ -111,9 +94,10 @@ user ALL=(ALL) NOPASSWD:ALL
 "))
 
   ;; Full Qubes VM service stack (identical for both variants).  The
-  ;; guix-service-type is extended so /etc/guix/channels.scm records the Qubes
-  ;; channel for "guix pull"; the system guix itself is left unchanged to avoid
-  ;; rebuilding it.
+  ;; guix-service-type is extended so the system guix knows the Qubes channel
+  ;; for reconfiguration; the build also writes /etc/guix/channels.scm into the
+  ;; image (see scripts/build-native-rootfs.sh) so "guix pull" works out of the
+  ;; box.  The system guix package itself is left unchanged to avoid rebuilds.
   (services
    (modify-services %qubes-system-services
      (guix-service-type
