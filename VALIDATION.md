@@ -100,6 +100,38 @@ checked end to end from the current source state:
   (`lib/pipewire-0.3/libpipewire-module-qubes.so`), the `30_qubes.conf`
   drop-in, the audio autostart entry, `pipewire`, and `wireplumber`.
 
+After the channel split, channel authentication, and bootloader changes, both
+variants were rebuilt and re-checked end to end on the same host on
+May 29, 2026:
+
+- The channel is now split into `modules/qubes/{packages,services,system}.scm`
+  with a `(qubes vm)` re-export umbrella; with `(directory "modules")` in
+  `.guix-channel`, all four modules byte-compile and an authenticated
+  `guix pull` of the channel (keyring branch + signed introduction commit)
+  succeeds and exposes `(qubes vm)` to a pulled config.
+- Each variant's `config.scm` is rendered from `config/qubes-system.tmpl`,
+  builds (`guix system build`), produces a root image, passes inspection and
+  writable-root activation, and is packaged into a qvm-template RPM
+  (`qubes-template-guix-4.3.0-*`, `qubes-template-guix-minimal-4.3.0-*`); the
+  final RPMs were rebuilt from these final images and pass
+  `tests/rpm-layout-check.sh`.
+- Each built image carries `/etc/guix/channels.scm` (single source in
+  `config/guix-channels.scm`; the `guix-configuration` channels duplication was
+  removed), the flat rendered `/etc/config.scm`, and the channel modules under
+  `/etc/qubes-guix-channel/modules/qubes/`.
+- The operating-system uses the stock `grub-bootloader` built with
+  `--no-bootloader` (no boot code is installed); a custom no-op bootloader was
+  found to make `guix system init` copy an empty store closure, so it was
+  dropped.
+- Runtime execution was exercised in a chroot of the final normal image:
+  `pipewire`, `wireplumber`, and `python3` run; the Qubes audio module's shared
+  libraries resolve in-image; the `qubes-pipewire-start` launcher is executable;
+  and `xterm.desktop`, `nano`, `zenity`, the qrexec autostart entry, and the
+  Thunar `uca_qubes.xml` are present.  The Guix initrd was also confirmed to
+  boot under QEMU (early-boot Guile runs and searches for the `guix-root`
+  label); a full standalone QEMU boot is not representative because the template
+  is booted by the dom0-supplied kernel and Qubes volume attachment.
+
 This is generated-artifact evidence from a working tree.  Release evidence must
 still be reproduced from the exact final public branch or tag.
 
