@@ -9,11 +9,14 @@ version="$(date -u +%Y%m%d)"
 release="1"
 output_dir="$repo_root/dist"
 split_size="1900M"
-gui_enabled="1"
-shrink_image=0
-appmenu_entries=()
-appmenu_entries_set=0
 workdir=""
+payload=""
+image_dir=""
+topdir=""
+template_dir=""
+spec=""
+template_conf=""
+rpm_path=""
 PATH="/usr/sbin:/sbin:$PATH"
 export PATH
 
@@ -25,18 +28,11 @@ Build a qvm-template-compatible RPM for the native Guix System TemplateVM.
 
 Options:
   --root-image FILE   Root image to package. Default: ./root.img
-  --name NAME         Template name. Package name becomes qubes-template-NAME.
-                      Default: guix
+  --name NAME         Template name: guix or guix-minimal. Default: guix
   --version VERSION   RPM version. Default: current UTC date as YYYYMMDD
   --release RELEASE   RPM release. Default: 1
   --output-dir DIR    Directory for the RPM. Default: ./dist
   --split-size SIZE   Split size for root.img.part.NN. Default: 1900M
-  --gui 0|1           Advertise GUI support status. Default: 1.
-  --appmenu-entry ID  Add a desktop-file ID to Qubes appmenu allowlists.
-                      Defaults to desktop files shipped by the template
-                      packages.
-  --shrink            Minimize the ext4 root image before packaging.
-  --no-shrink         Preserve the ext4 root image size. This is the default.
   -h, --help          Show this help.
 
 The generated package follows the Qubes qvm-template package layout:
@@ -59,44 +55,15 @@ require_arg() {
     [ "$#" -ge 2 ] || die "$1 requires a value"
 }
 
-validate_never_pipe() {
-    case "$1" in
-        *'|'*) die "$2 must not contain |" ;;
-    esac
-}
-
-validate_component() {
-    local value="$1"
-    local label="$2"
-
-    [ -n "$value" ] || die "$label must not be empty"
-    validate_never_pipe "$value" "$label"
-    case "$value" in
-        */*|*' '*|*$'\t'*|*$'\n'*) die "$label contains an unsupported character: $value" ;;
-    esac
-}
-
-validate_template_name() {
-    local value="$1"
-
-    validate_component "$value" "template name"
-    case "$value" in
-        [0123456789_.-]*) die "template name cannot start with hyphen, underscore, dot or numbers" ;;
-        *[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-]*) die "template name contains illegal characters: $value" ;;
-        Domain-0) die "template name cannot be Domain-0" ;;
-        none|default) die "template name cannot be none or default" ;;
-        *-dm) die "template name cannot end with -dm" ;;
-    esac
-}
-
 validate_version_field() {
     local value="$1"
     local label="$2"
 
     [ -n "$value" ] || die "$label must not be empty"
-    validate_never_pipe "$value" "$label"
     case "$value" in
-        *-*|*/*|*' '*|*$'\t'*|*$'\n'*) die "$label contains an unsupported RPM character: $value" ;;
+        *'|'*|*-*|*/*|*' '*|*$'\t'*|*$'\n'*)
+            die "$label contains an unsupported RPM character: $value"
+            ;;
     esac
 }
 
@@ -107,160 +74,98 @@ cleanup() {
 }
 trap cleanup EXIT
 
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        --root-image)
-            require_arg "$@"
-            root_image="$2"
-            shift 2
-            ;;
-        --name)
-            require_arg "$@"
-            template_name="$2"
-            shift 2
-            ;;
-        --version)
-            require_arg "$@"
-            version="$2"
-            shift 2
-            ;;
-        --release)
-            require_arg "$@"
-            release="$2"
-            shift 2
-            ;;
-        --output-dir)
-            require_arg "$@"
-            output_dir="$2"
-            shift 2
-            ;;
-        --split-size)
-            require_arg "$@"
-            split_size="$2"
-            shift 2
-            ;;
-        --gui)
-            require_arg "$@"
-            gui_enabled="$2"
-            shift 2
-            ;;
-        --appmenu-entry)
-            require_arg "$@"
-            appmenu_entries+=("$2")
-            appmenu_entries_set=1
-            shift 2
-            ;;
-        --shrink)
-            shrink_image=1
-            shift
-            ;;
-        --no-shrink)
-            shrink_image=0
-            shift
-            ;;
-        -h|--help)
-            usage
-            exit 0
-            ;;
-        *)
-            die "unknown argument: $1"
-            ;;
-    esac
-done
+parse_args() {
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --root-image)
+                require_arg "$@"
+                root_image="$2"
+                shift 2
+                ;;
+            --name)
+                require_arg "$@"
+                template_name="$2"
+                shift 2
+                ;;
+            --version)
+                require_arg "$@"
+                version="$2"
+                shift 2
+                ;;
+            --release)
+                require_arg "$@"
+                release="$2"
+                shift 2
+                ;;
+            --output-dir)
+                require_arg "$@"
+                output_dir="$2"
+                shift 2
+                ;;
+            --split-size)
+                require_arg "$@"
+                split_size="$2"
+                shift 2
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            *)
+                die "unknown argument: $1"
+                ;;
+        esac
+    done
+}
 
-case "$gui_enabled" in
-    ""|0|1) ;;
-    *) die "--gui must be 0 or 1" ;;
-esac
-validate_template_name "$template_name"
-validate_version_field "$version" "version"
-validate_version_field "$release" "release"
-if [ "${#appmenu_entries[@]}" -eq 0 ] && [ "$appmenu_entries_set" -eq 0 ]; then
-    case "$template_name" in
-        *-minimal) appmenu_entries=(xterm.desktop) ;;
-        *)
-            appmenu_entries=(
-                org.gnome.Evince.desktop
-                org.xfce.mousepad.desktop
-                thunar.desktop
-                xfce4-terminal.desktop
-            )
-            ;;
-    esac
-fi
-for appmenu_entry in "${appmenu_entries[@]}"; do
-    validate_component "$appmenu_entry" "appmenu entry"
-done
+check_requirements() {
+    template_name="$("$repo_root/scripts/template-variant.sh" "$template_name" template-name)"
+    validate_version_field "$version" "version"
+    validate_version_field "$release" "release"
 
-need awk
-need cp
-need rpmbuild
-need split
-need tar
-if [ "$shrink_image" -eq 1 ]; then
-    need du
-    need e2fsck
-    need resize2fs
-    need stat
-fi
+    need cp
+    need rpmbuild
+    need split
+    need tar
 
-[ -r "$root_image" ] || die "root image not readable: $root_image"
+    [ -r "$root_image" ] || die "root image not readable: $root_image"
+}
 
-summary="GNU Guix System Qubes template"
-description="Native GNU Guix System TemplateVM for Qubes OS with QubesDB, qrexec, and Qubes private-volume persistence support."
-validate_never_pipe "$summary" "summary"
-validate_never_pipe "$description" "description"
+prepare_workdir() {
+    workdir="$(mktemp -d "$repo_root/work.package.XXXXXX")"
+    payload="$workdir/payload"
+    image_dir="$workdir/image"
+    topdir="$workdir/rpmbuild"
+    template_dir="$payload/var/lib/qubes/vm-templates/$template_name"
+    spec="$topdir/SPECS/qubes-template-$template_name.spec"
+    template_conf="$repo_root/builder-v2-template/template.conf"
 
-workdir="$(mktemp -d "$repo_root/work.package.XXXXXX")"
-payload="$workdir/payload"
-image_dir="$workdir/image"
-topdir="$workdir/rpmbuild"
-template_dir="$payload/var/lib/qubes/vm-templates/$template_name"
-spec="$topdir/SPECS/qubes-template-$template_name.spec"
+    mkdir -p "$template_dir" "$image_dir" "$topdir/BUILD" "$topdir/BUILDROOT" \
+        "$topdir/RPMS" "$topdir/SOURCES" "$topdir/SPECS" "$topdir/SRPMS" \
+        "$topdir/rpmdb" "$output_dir"
+}
 
-mkdir -p "$template_dir" "$image_dir" "$topdir/BUILD" "$topdir/BUILDROOT" \
-    "$topdir/RPMS" "$topdir/SOURCES" "$topdir/SPECS" "$topdir/SRPMS" \
-    "$topdir/rpmdb" "$output_dir"
+stage_payload() {
+    [ -r "$template_conf" ] || die "missing template metadata: $template_conf"
 
-if ! cp --reflink=auto --sparse=always "$root_image" "$image_dir/root.img" 2>/dev/null; then
-    cp "$root_image" "$image_dir/root.img"
-fi
-cp --sparse=always "$image_dir/root.img" "$image_dir/root.img.sparse"
-mv -f "$image_dir/root.img.sparse" "$image_dir/root.img"
+    cp --reflink=auto --sparse=always "$root_image" "$image_dir/root.img"
+    tar -C "$image_dir" -Scf - root.img |
+        split -d -a 2 -b "$split_size" - "$template_dir/root.img.part."
 
-if [ "$shrink_image" -eq 1 ]; then
-    before_apparent="$(stat -c '%s' "$image_dir/root.img")"
-    before_allocated="$(du -B1 "$image_dir/root.img" | awk '{print $1}')"
-    e2fsck -fy "$image_dir/root.img" >&2
-    resize2fs -M "$image_dir/root.img" >&2
-    e2fsck -fy "$image_dir/root.img" >&2
-    if command -v fallocate >/dev/null 2>&1; then
-        fallocate -d "$image_dir/root.img" 2>/dev/null || true
-    fi
-    after_apparent="$(stat -c '%s' "$image_dir/root.img")"
-    after_allocated="$(du -B1 "$image_dir/root.img" | awk '{print $1}')"
-    printf 'root.img minimized: apparent %s -> %s bytes, allocated %s -> %s bytes\n' \
-        "$before_apparent" "$after_apparent" "$before_allocated" "$after_allocated" >&2
-fi
+    cp "$template_conf" "$template_dir/template.conf"
+    mkdir -p "$template_dir/apps" "$template_dir/apps.templates" "$template_dir/apps.tempicons"
+    : > "$template_dir/clean-volatile.img.tar"
+    "$repo_root/scripts/template-appmenus.sh" --install "$template_dir" "$template_name"
+}
 
-tar -C "$image_dir" -Scf - root.img |
-    split -d -a 2 -b "$split_size" - "$template_dir/root.img.part."
+write_spec() {
+    local description summary
 
-cat > "$template_dir/template.conf" <<EOF
-virt-mode=pvh
-qrexec=1
-EOF
-if [ -n "$gui_enabled" ]; then
-    printf 'gui=%s\n' "$gui_enabled" >> "$template_dir/template.conf"
-fi
+    summary="GNU Guix System Qubes template"
+    description="Native GNU Guix System TemplateVM for Qubes OS with QubesDB,"
+    description+=" qrexec, and Qubes private-volume persistence support."
 
-mkdir -p "$template_dir/apps" "$template_dir/apps.templates" "$template_dir/apps.tempicons"
-: > "$template_dir/clean-volatile.img.tar"
-printf '%s\n' "${appmenu_entries[@]}" > "$template_dir/whitelisted-appmenus.list"
-printf '%s\n' "${appmenu_entries[@]}" > "$template_dir/vm-whitelisted-appmenus.list"
-printf '%s\n' "${appmenu_entries[@]}" > "$template_dir/netvm-whitelisted-appmenus.list"
-
-cat > "$spec" <<EOF
+    cat > "$spec" <<EOF
 %define dest_dir /var/lib/qubes/vm-templates/$template_name
 %define _binaries_in_noarch_packages_terminate_build 0
 
@@ -310,20 +215,35 @@ rm -rf "%{buildroot}"
 %attr(0755,root,root) %dir %{dest_dir}/apps
 %attr(0755,root,root) %dir %{dest_dir}/apps.templates
 %attr(0755,root,root) %dir %{dest_dir}/apps.tempicons
-%attr(0644,root,root) %{dest_dir}/whitelisted-appmenus.list
-%attr(0644,root,root) %{dest_dir}/vm-whitelisted-appmenus.list
-%attr(0644,root,root) %{dest_dir}/netvm-whitelisted-appmenus.list
+%attr(0644,root,root) %{dest_dir}/*whitelisted-appmenus.list
 %attr(0644,root,root) %{dest_dir}/template.conf
 EOF
+}
 
-rpmbuild -bb \
-    --define "_topdir $topdir" \
-    --define "_dbpath $topdir/rpmdb" \
-    --define "_build_id_links none" \
-    "$spec" >&2
+build_rpm() {
+    rpmbuild -bb \
+        --define "_topdir $topdir" \
+        --define "_dbpath $topdir/rpmdb" \
+        --define "_build_id_links none" \
+        "$spec" >&2
 
-rpm_path="$(find "$topdir/RPMS" -type f -name "qubes-template-$template_name-*.rpm" -print -quit)"
-[ -n "$rpm_path" ] || die "rpmbuild did not produce an RPM"
-cp -f "$rpm_path" "$output_dir/"
+    rpm_path="$topdir/RPMS/noarch/qubes-template-$template_name-$version-$release.noarch.rpm"
+    [ -s "$rpm_path" ] || die "rpmbuild did not produce an RPM: $rpm_path"
+}
 
-printf '%s\n' "$output_dir/$(basename "$rpm_path")"
+publish_rpm() {
+    cp -f "$rpm_path" "$output_dir/"
+    printf '%s\n' "$output_dir/$(basename "$rpm_path")"
+}
+
+main() {
+    parse_args "$@"
+    check_requirements
+    prepare_workdir
+    stage_payload
+    write_spec
+    build_rpm
+    publish_rpm
+}
+
+main "$@"

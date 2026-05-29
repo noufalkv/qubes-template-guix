@@ -1,331 +1,175 @@
 # Qubes Guix Template
 
-This repository builds and tests a native GNU Guix System TemplateVM for Qubes
-OS.  The template root filesystem is produced by Guix, while Qubes dom0 supplies
-the VM kernel.  QubesDB, qrexec, shutdown, private-volume persistence, and GUI
-agent startup are mapped to Shepherd services.
+This repository builds a native GNU Guix System TemplateVM for Qubes OS R4.3.
+Guix builds the template root filesystem; Qubes dom0 supplies the VM kernel.
+QubesDB, qrexec, GUI/appmenus, shutdown, private-volume persistence, the update
+proxy, swap, and `meminfo-writer` are mapped to Guix packages and Shepherd
+services.
 
-There are two native variants, mirroring the normal/minimal split used by
-official Qubes templates:
+Variants:
 
-- `normal`: Qubes GUI support, Xorg, `xfce4-terminal`, and a small desktop
-  baseline with a file manager, text editor, and document viewer.
-- `minimal`: Qubes GUI support, Xorg, and `xterm`.
+- `guix`: GUI-capable template with Xorg, `xfce4-terminal`, `xterm`, Thunar,
+  Mousepad, Evince, and Qubes audio (PipeWire/WirePlumber).
+- `guix-minimal`: GUI-capable minimal template with Xorg and `xterm`.
 
-A secondary fallback path can clone an existing Debian/Fedora template and
-install GNU Guix as a foreign package manager.  That path is useful for quick
-experiments but is not the native Guix System template.
+This is a reviewable prototype, not a published Qubes community template.
+`VALIDATION.md` and `UPSTREAMING.md` list the remaining publication gates.
 
-Reviewer entry points:
+## Important Files
 
-| Need | File |
+| File | Purpose |
 | --- | --- |
-| Short first-pass reviewer guide | `REVIEWER_GUIDE.md` |
-| Publication gap and release-readiness checklist | `UPSTREAMING.md` |
-| Maintainer-oriented review map | `REVIEW_NOTES.md` |
-| Latest validation evidence and missing gates | `VALIDATION.md` |
-| Prompt-to-artifact completion audit | `SUBMISSION_AUDIT.md` |
-| Package/service adaptation rationale | `ADAPTATION_INVENTORY.md` |
-| Security-review framing | `SECURITY.md` |
-| Editable upstream submission drafts | `SUBMISSION_DRAFTS.md` |
-| Qubes template-builder precedent mapping | `TEMPLATE_PRECEDENTS.md` |
-| Maintainer, update, signing, rollback, and handoff model | `MAINTENANCE.md` |
-| Contribution workflow and required checks | `CONTRIBUTING.md` |
-| Suggested human review order | `PATCH_SERIES.md` |
+| `.guix-channel` | Channel metadata for this repository's Qubes VM package/service module. |
+| `qubes/vm.scm` | Guix channel module: Qubes VM tool packages and Shepherd services, plus the package sets and OS building blocks the template uses. |
+| `config/qubes-system.tmpl` | GNU Guix System config template; `scripts/render-config.sh` substitutes the variant and writes the per-variant `config.scm` installed as `/etc/config.scm`. |
+| `scripts/render-config.sh` | Render `config/qubes-system.tmpl` to a concrete operating-system file for a variant. |
+| `config/channels.scm` | Pinned Guix channel used only while generating template images. |
+| `builder-v2-template/` | Builder v2 content-script shape and variant appmenu allowlists. |
+| `scripts/build-native-rootfs.sh` | Build or install a Guix root filesystem. |
+| `scripts/build-template-rpm.sh` | Build a root image, inspect it, activate it, and package a qvm-template RPM. |
+| `scripts/package-native-template-rpm.sh` | Package an existing root image as a Qubes Template Manager RPM. |
+| `scripts/run-openqa-template-rpm.sh` | Schedule openQA against an existing template RPM. |
+| `VALIDATION.md` | Current artifact/runtime evidence and missing gates. |
+| `REVIEW_NOTES.md` | Maintainer-facing review map. |
+| `ADAPTATION_INVENTORY.md` | Non-obvious Guix/Qubes adaptations and rationale. |
+| `SECURITY.md` | Trust boundaries and review-sensitive behavior. |
 
-## Quick Path: Guix Inside an Existing Template
+## Build Inputs
 
-Run this from dom0:
+`scripts/build-native-rootfs.sh` refreshes the build Guix with:
 
 ```sh
-./scripts/create-foreign-guix-template-dom0.sh \
-  --base debian-13-minimal \
-  --name guix-debian-13
+guix pull -p <temporary-profile> --allow-downgrades -C config/channels.scm
 ```
 
-If the base template does not exist, omit `--base` and the script will choose
-the first available Debian/Fedora template from its known list.
+The refreshed Guix command is used only for template generation.  The generated
+template does not install the pinned channel as root or user `guix pull` state.
+The template does install this repository's channel module under
+`/etc/qubes-guix-channel` so `/etc/config.scm` can be reconfigured later without
+depending on the builder checkout.
 
-After creation, run the test script from dom0:
+`config/channels.scm` uses Guix's official Codeberg channel URL.  That is an
+upstream channel pin for the builder, not a checkout or file-channel rewrite.
+There is no unauthenticated channel fallback, channel-file override, or
+developer checkout override in the build path.
 
-```sh
-./scripts/test-foreign-guix-template-dom0.sh guix-debian-13
-```
+## Build Root Images
 
-For a heavier substitute/build smoke test:
-
-```sh
-./scripts/test-foreign-guix-template-dom0.sh --build-hello guix-debian-13
-```
-
-## Native Guix System Track
-
-The native tree contains:
-
-- `config.scm`: the single self-contained Guix System configuration.  It
-  contains the Qubes VM-side package definitions, Shepherd services, and the
-  normal/minimal TemplateVM operating-system variants.
-- `config/channels.scm`: the pinned Guix channel used for release-quality
-  builds.  The pin is a template-generation input, not a per-user or root
-  `guix pull` profile pin inside the installed template.
-- `scripts/build-native-rootfs.sh`: the rootfs builder.  It selects the normal
-  or minimal variant through `QUBES_GUIX_TEMPLATE_VARIANT` and installs the same
-  `config.scm` into the template as `/etc/config.scm`.
-
-By default the rootfs builder refreshes the pinned Guix input before building:
-it updates a Guix Git checkout with command-line `git`, then uses a
-build-scoped Git URL rewrite so authenticated `guix pull` and `guix
-time-machine` keep the official channel URL while reading that local checkout.
-That avoids relying on Guix/libgit2 for the large HTTPS fetch and does not
-install root or user `current-guix` profile state into the template.  The
-default path authenticates and uses the pinned commit from
-`config/channels.scm`; set `GUIX_CHANNEL_AUTHENTICATION=0` only for local
-debugging.
-
-Both variants are intentionally lean.  They keep the runtime needed for Qubes
-VM integration and GUI application forwarding, but omit ssh, DHCP, default
-gettys, and other non-Qubes desktop extras.  Like the standard Qubes templates,
-they keep default privileged helpers and passwordless sudo for the Qubes user.
-
-Build the normal variant on a host with Guix installed:
+Normal:
 
 ```sh
-./scripts/build-native-rootfs.sh --variant normal --output root.img
-```
-
-Build the minimal variant:
-
-```sh
-./scripts/build-native-rootfs.sh --variant minimal --output root-minimal.img
-```
-
-Inspect each root image before importing it into dom0:
-
-```sh
-./scripts/inspect-native-rootfs.sh \
-  --image root.img \
-  --expect-command evince \
-  --expect-command mousepad \
-  --expect-command thunar \
-  --expect-command xfce4-terminal \
-  --expect-command Xorg \
-  --expect-desktop org.gnome.Evince.desktop \
-  --expect-desktop org.xfce.mousepad.desktop \
-  --expect-desktop thunar.desktop \
-  --expect-desktop xfce4-terminal.desktop
-
-./scripts/inspect-native-rootfs.sh \
-  --image root-minimal.img \
-  --expect-command xterm \
-  --expect-command Xorg \
-  --expect-desktop xterm.desktop
-```
-
-Build a Qubes Template Manager compatible package:
-
-```sh
-./scripts/package-native-template-rpm.sh \
-  --root-image root.img \
-  --name guix \
-  --version 20260509
-
-./scripts/package-native-template-rpm.sh \
-  --root-image root-minimal.img \
-  --name guix-minimal \
-  --version 20260509
-```
-
-The package payload follows Qubes Template Manager layout under
-`/var/lib/qubes/vm-templates/NAME/`: split `root.img.part.NN` files,
-`template.conf`, appmenu allowlists, app directories, and Qubes template image
-ghosts.  Packages advertise `qrexec=1`, `gui=1`, and `virt-mode=pvh`.  The
-normal package defaults to the document viewer, text editor, file manager, and
-terminal desktop entries in the appmenu allowlists; the minimal package defaults
-to `xterm.desktop`.  The packager preserves the root image size by default so
-`qvm-template` installs the same Builder-sized root volume.  Use `--shrink` only
-for local artifact-size experiments where the installed root volume size is not
-part of the result.
-The package source payload is world-readable because `qvm-template-postprocess`
-executes `qvm-appmenus` as the dom0 user while reading the extracted appmenu
-allowlists from a temporary directory.
-
-For direct `qvm-volume import` testing, qvm-template metadata and appmenus are
-not set as dom0 features; the smoke test verifies behavior.  Feature metadata
-and appmenu allowlists belong to the Template Manager package payload.
-
-Import attempt, from dom0:
-
-```sh
-./scripts/import-native-rootfs-dom0.sh --image root.img --name guix-native-test
-```
-
-The native path is deliberately staged. First prove the imported TemplateVM and
-a disposable test AppVM can start, speak QubesDB, and complete qrexec calls:
-
-```sh
-./scripts/test-native-guix-template-dom0.sh --template guix-native-test
-```
-
-For deeper dom0 integration testing, the test script can run selected Qubes
-system tests using the same `QUBES_TEST_TEMPLATES` mechanism used by Qubes'
-openQA jobs.  The default `--run-system-tests` set uses Qubes' official qrexec
-and `vm_qrexec_gui` modules, which exercise the tested template directly:
-
-```sh
-./scripts/test-native-guix-template-dom0.sh \
-  --template guix-native-test \
-  --expect-command evince \
-  --expect-command mousepad \
-  --expect-command thunar \
-  --expect-command xfce4-terminal \
-  --expect-command Xorg \
-  --expect-desktop org.gnome.Evince.desktop \
-  --expect-desktop org.xfce.mousepad.desktop \
-  --expect-desktop thunar.desktop \
-  --expect-desktop xfce4-terminal.desktop \
-  --run-system-tests
-```
-
-Minimal variant smoke tests should pass `--expect-command xterm` instead of
-`xfce4-terminal`.
-
-## Nested Qubes dom0 Test VM
-
-On a bare-metal Linux host with KVM and nested VMX, this repository can build a
-throwaway Qubes dom0 VM and import the native Guix root image into it:
-
-```sh
-./scripts/qubes-nested-dom0-host.sh download
-./scripts/qubes-nested-dom0-host.sh prepare
-./scripts/qubes-nested-dom0-host.sh install
-./scripts/qubes-nested-dom0-host.sh start
-./scripts/qubes-nested-dom0-host.sh import-test
-```
-
-The helper uses the same basic QEMU shape as Qubes' openQA jobs: q35,
-`host,+vmx,+invtsc`, SCSI disk, and an e1000e NIC. Defaults are intentionally
-large enough for a nested dom0 plus test qubes: 120G disk, 32G RAM, and 8 vCPUs.
-Override them with `QUBES_NESTED_*` environment variables if needed.
-
-## openQA Test
-
-The native TemplateVM path also has a dedicated openQA harness. On a host with
-openQA installed, a completed nested Qubes dom0 qcow2, and a Guix `root.img`,
-schedule the normal direct-image job with:
-
-```sh
-GUIX_EXPECT_COMMANDS='evince mousepad thunar xfce4-terminal Xorg' \
-GUIX_EXPECT_DESKTOPS='org.gnome.Evince.desktop org.xfce.mousepad.desktop thunar.desktop xfce4-terminal.desktop' \
-  ./scripts/setup-openqa-guix-template-test.sh --wait
-```
-
-Minimal direct-image job:
-
-```sh
-QUBES_OPENQA_GUIX_ROOT_IMAGE=root-minimal.img \
-QUBES_OPENQA_GUIX_ASSET=guix-minimal-root.img \
-QUBES_OPENQA_TEMPLATE_NAME=guix-minimal-openqa-test \
-QUBES_OPENQA_APPVM_NAME=guix-minimal-openqa-test-app \
-GUIX_EXPECT_COMMANDS='xterm Xorg' \
-GUIX_EXPECT_DESKTOPS='xterm.desktop' \
-  ./scripts/setup-openqa-guix-template-test.sh --wait
-```
-
-The setup script overlays `openqa/qubesos/` onto Qubes' own openQA test suite,
-copies the nested dom0 and Guix root images into openQA's HDD asset pool,
-configures a local worker, schedules a direct `guix_template` job, and waits for
-the job when `--wait` is provided. The job boots Qubes dom0, imports the Guix
-root disk as a TemplateVM, creates a test AppVM, and runs the same qrexec,
-QubesDB, shutdown, private-volume, `/home`, and `/usr/local` persistence smoke
-tests as `scripts/test-native-guix-template-dom0.sh`.
-
-RPM-mode jobs exercise `qvm-template --yes install --nogpgcheck` against the
-generated package, including Qubes Template Manager post-install handling:
-
-```sh
-GUIX_INSTALL_MODE=rpm \
-QUBES_OPENQA_GUIX_TEMPLATE_RPM=dist/qubes-template-guix-20260509-1.noarch.rpm \
-GUIX_EXPECT_COMMANDS='evince mousepad thunar xfce4-terminal Xorg' \
-GUIX_EXPECT_DESKTOPS='org.gnome.Evince.desktop org.xfce.mousepad.desktop thunar.desktop xfce4-terminal.desktop' \
-  ./scripts/setup-openqa-guix-template-test.sh --wait
-```
-
-Set `GUIX_RUN_QUBES_SYSTEM_TESTS=1` to run the optional Qubes dom0 integration
-tests after the template smoke test.  By default this runs
-`qubes.tests.integ.qrexec:14400` and
-`qubes.tests.integ.vm_qrexec_gui:14400`, using the same modules as Qubes'
-official `system_tests_qrexec` and `system_tests_vm_qrexec_gui_pipewire`
-scenarios.  Set `GUIX_QUBES_SYSTEM_TESTS` explicitly to run broader host-level
-suites such as the full `system_tests_basic_vm_qrexec_gui` module list.
-The dom0-side script follows Qubes' openQA runner shape with
-`nose2 --plugin nose2.plugins.loader.loadtests`; if `nose2` is missing, it
-installs `python3-nose2` before running those optional tests.  Before invoking
-nose2, the serial harness sets the imported Guix template as dom0's
-`default_template` and runs the tests with root privileges, while preserving the
-normal dom0 user's home, display, and `XDG_RUNTIME_DIR`, matching the
-environment Qubes' GUI xterm-based openQA path gives to `sudo -E nose2`.  The
-serial openQA smoke harness runs that nose2 command directly with unbuffered
-output instead of wrapping it in `script(1)`, because `script(1)` can stop
-itself under the non-interactive serial pipeline before nose2 starts.  For
-nested dom0 images without a configured UpdateVM, the openQA scheduler stages a
-Fedora 41 `python3-nose2` RPM as an offline test asset and passes it to the dom0
-script.
-
-The harness refreshes the openQA HDD assets before each scheduled run. This is
-required because the nested Qubes job disables QEMU snapshots for host-CPU
-nested virtualization, making the openQA asset copy mutable during the test.
-On the openQA host, `scripts/watch-openqa-guix-job.sh` shows the latest running
-job state and streams only newly appended bytes from the live `autoinst`,
-serial, and worker logs.
-
-For an end-to-end release check that mirrors the normal and minimal package
-split, use `scripts/run-openqa-template-rpm.sh`.  It builds the selected
-Guix System root image, inspects the
-mounted image for the
-variant-specific terminal and Xorg support, runs the writable-root activation
-test described below, packages the Qubes Template Manager RPM, schedules the
-RPM-mode openQA job, and can stream the job logs:
-
-```sh
-./scripts/run-openqa-template-rpm.sh \
+./scripts/build-native-rootfs.sh \
   --variant normal \
-  --version 20260510 \
-  --release 1 \
-  --watch
-
-./scripts/run-openqa-template-rpm.sh \
-  --variant minimal \
-  --version 20260510 \
-  --release 1 \
-  --watch
+  --output root.img
 ```
 
-Equivalent Make targets are available for the two release smoke gates:
+Minimal:
 
 ```sh
-make openqa-template-rpm-normal
-make openqa-template-rpm-minimal
+./scripts/build-native-rootfs.sh \
+  --variant minimal \
+  --output root-minimal.img
 ```
 
-Those smoke gates are the default package validation path in nested test
-infrastructure: they build the real rootfs, exercise the activation script and
-PAM stacks on a writable root image, install the RPM through Qubes Template
-Manager in nested dom0, create a TemplateVM and AppVM, and verify QubesDB,
-qrexec, private-volume persistence, `/home`, `/usr/local`, shutdown, and the
-variant-specific GUI/appmenu surface.  The RPM-mode job also runs
-`scripts/test-guix-update-proxy-config-dom0.sh` against the installed TemplateVM
-so generated Guix daemon/client proxy configuration is covered by the same
-runtime smoke path.
+`scripts/build-template-rpm.sh` runs image inspection and activation before
+packaging.  To inspect a root image directly:
 
-The optional Qubes system-test modules can be run with `--run-system-tests` or
-`make openqa-template-rpm-system-tests VARIANT=normal`.  They use the same
-official `nose2 --plugin nose2.plugins.loader.loadtests` runner and module
-names described above, but they create additional test qubes.  On nested hosts
-where Qubes dom0 is already nested under KVM, those additional inner-Xen VM
-starts can fail with `libxenlight failed to create new domain`; treat that as a
-host-capability result unless the preceding RPM smoke gate also fails.
+```sh
+./scripts/inspect-native-rootfs.sh --image root.img --variant normal
+./scripts/inspect-native-rootfs.sh --image root-minimal.img --variant minimal
+```
 
-For a dom0 or nested-dom0 lifecycle check outside openQA, use:
+Run writable-root activation directly on a generated image:
+
+```sh
+./scripts/test-native-rootfs-activation.sh --image root.img
+```
+
+## Build Template RPMs
+
+Build a complete qvm-template RPM candidate without openQA:
+
+```sh
+./scripts/build-template-rpm.sh \
+  --variant normal \
+  --version 4.3.0 \
+  --release "$(date -u +%Y%m%d%H%M)"
+
+./scripts/build-template-rpm.sh \
+  --variant minimal \
+  --version 4.3.0 \
+  --release "$(date -u +%Y%m%d%H%M)"
+```
+
+Equivalent Make targets:
+
+```sh
+make template-rpm-normal
+make template-rpm-minimal
+```
+
+The RPM payload follows Qubes Template Manager layout under
+`/var/lib/qubes/vm-templates/NAME/`: split `root.img.part.NN` files,
+`template.conf`, appmenu allowlists, app directories, and template image
+ghosts.  Packages advertise `qrexec=1`, `gui=1`, and `virt-mode=pvh`.
+
+Appmenu allowlists come from:
+
+- `builder-v2-template/appmenus.list`;
+- `builder-v2-template/appmenus-minimal.list`.
+
+They should reference desktop files provided by packages.  The only generated
+desktop file is `xterm.desktop`, because Guix does not provide one.
+
+## Changing Packages
+
+Package selection lives in the channel module `qubes/vm.scm`:
+
+- shared runtime packages: `%qubes-common-packages`;
+- normal desktop packages: `%qubes-normal-desktop-packages`;
+- normal audio packages: `%qubes-normal-audio-packages`;
+- variant selection: `qubes-variant-packages`.
+
+The system definition is `config/qubes-system.tmpl`, a standard
+`operating-system` form that imports `(qubes vm)` and wires its package sets,
+services, bootloader, and privileged programs.  `scripts/render-config.sh`
+substitutes the variant token and writes the concrete `config.scm` that is
+installed as `/etc/config.scm`; the installed image also carries the channel
+module under `/etc/qubes-guix-channel`, so `guix system reconfigure
+/etc/config.scm` works later without the builder checkout.  Build-time
+evaluation uses the same module from the repository with `guix system -L .`.
+
+After adding a package with a desktop entry, add that desktop-file ID to the
+matching appmenu allowlist under `builder-v2-template/`.  Use package-provided
+desktop files and icons; add a custom desktop file only when the package has
+none, as with `xterm`.
+
+## Local Artifact Contract
+
+Run:
+
+```sh
+make check
+```
+
+This builds and extracts normal/minimal qvm-template RPM layouts through the
+Builder adapter and native packager, validates Qubes Template Manager metadata,
+and verifies the reassembled split root images against their source images.
+
+This is local artifact evidence.  It is not Qubes acceptance and does not
+replace openQA or live TemplateVM/AppVM behavior.
+
+Source freshness for pinned Qubes components is checked separately:
+
+```sh
+make check-qubes-pins
+```
+
+That command records source-pin freshness.  It is not runtime evidence.
+
+## Runtime Gates
+
+Install and smoke a generated RPM in a dom0 review environment:
 
 ```sh
 ./scripts/test-template-rpm-lifecycle-dom0.sh \
@@ -334,99 +178,56 @@ For a dom0 or nested-dom0 lifecycle check outside openQA, use:
   --run-smoke
 ```
 
-That script exercises local RPM install, reinstall, optional upgrade/downgrade
-RPMs, removal, and optional TemplateVM/AppVM smoke tests.
-
-After booting a built template, verify the Guix-specific updates-proxy
-configuration separately:
+Schedule RPM-mode openQA against existing artifacts from an already configured
+openQA host:
 
 ```sh
-./scripts/test-guix-update-proxy-config-dom0.sh --template guix
+./scripts/run-openqa-template-rpm.sh \
+  --variant normal \
+  --template-rpm dist/qubes-template-guix-4.3.0-RELEASE.noarch.rpm \
+  --qubes-disk /path/to/qubes-r4.3-dom0.qcow2 \
+  --wait
+
+./scripts/run-openqa-template-rpm.sh \
+  --variant minimal \
+  --template-rpm dist/qubes-template-guix-minimal-4.3.0-RELEASE.noarch.rpm \
+  --qubes-disk /path/to/qubes-r4.3-dom0.qcow2 \
+  --wait
 ```
 
-That check confirms the Qubes service flag, absence of the old global `guix`
-wrapper/profile hook, and that `guix-daemon` is not forced through the local
-updates proxy during ordinary use.  Disposable
-nested-dom0/openQA environments can also run a deterministic Guix client
-download through the stock Qubes default update-target policy by creating a
-temporary `sys-net` stub:
+Set `GUIX_RUN_PROXY_PULL_TEST=1` for an RPM-mode openQA run that must exercise
+`guix pull` through the Qubes updates proxy.  The pull uses a temporary guest
+profile and the official Guix channel URL; it does not install root or user
+Guix channel state.
+
+`VALIDATION.md` owns the full gate list and records which runtime evidence is
+current for the exact source state under review.
+
+## Builder V2 Review Shape
+
+The local Builder-facing targets are:
 
 ```sh
-./scripts/test-guix-update-proxy-stub-download-dom0.sh --template guix
+make prepare build-rootimg
+make prepare build-rpm
 ```
 
-That controlled stub check exercises Qubes `qubes.UpdatesProxy` forwarding
-without depending on public network availability; RPM-mode openQA job 41
-passed this gate for a rebuilt
-`guix-minimal` RPM and verified that the source TemplateVM had no direct
-default route.  A release candidate should still run a real Guix update or
-download command through the Qubes proxy before submission:
+`builder-v2-template/` exposes the standard content-script layout.  Upstream
+Builder v2 still needs accepted `dist: guix` support or an accepted component
+wiring that points at these scripts.  The draft sketch is
+`config/qubes-builderv2-guix.example.patch`.
 
-```sh
-./scripts/test-guix-update-proxy-download-dom0.sh \
-  --template guix \
-  --download-url https://guix.gnu.org/
-```
+Release-config and central-updater sketches live in:
 
-The download check first sends a raw HTTP or HTTPS CONNECT request through the
-local Qubes proxy at `127.0.0.1:8082`, then runs a Guix download path with an
-explicit proxy environment for that update operation.  It depends on dom0
-allowing `qubes.UpdatesProxy` from the TemplateVM to an update-proxy target
-with working Internet access.  On standard Qubes policy this normally means the
-default `sys-net` update target must exist and be usable.  The openQA harness
-stages the real-network script only when `GUIX_RUN_PROXY_DOWNLOAD_TEST=1` is set, so
-ordinary local RPM smoke does not silently depend on public network
-availability.  The controlled stub gate is separate and opt-in through
-`GUIX_RUN_PROXY_STUB_DOWNLOAD_TEST=1`.
+- `config/qubes-release-configs-guix.example.patch`;
+- `config/qubes-core-admin-linux-guix-vmupdate.example.patch`.
 
-If dom0 has the matching `qubes-core-admin-linux` Guix vmupdate backend
-installed, test Qubes' centralized updater path separately:
+## Review Order
 
-```sh
-./scripts/test-guix-central-vmupdate-dom0.sh --template guix
-```
+Start with:
 
-That check runs `qubes-vm-update --targets guix --force-update` and fails if
-dom0's updater still rejects Guix as an unsupported distribution.  In openQA it
-is opt-in through `GUIX_RUN_CENTRAL_VMUPDATE_TEST=1` because it requires the
-dom0 updater patch and a working update-proxy target.  With
-`GUIX_BOOTSTRAP_UPDATE_TARGET=1`, the openQA harness defaults
-`QUBES_OPENQA_UPDATE_TARGET_NETWORK_MODE=nat`: it adds a dom0-owned USB
-QEMU user-network uplink and bridges a temporary `sys-net` to that slirp-backed
-uplink, avoiding Qubes' PCI quarantine path for the nested QEMU NIC.  Set
-`QUBES_OPENQA_UPDATE_TARGET_NETWORK_MODE=pci` or `bridge` to exercise those
-backends explicitly.  Set `GUIX_CENTRAL_VMUPDATE_PROXY_PROBE_URL` to override
-the raw proxy probe URL; the default is the public Guix Git endpoint.
-
-## Local Checks
-
-These checks run in a normal VM and do not require dom0 or Guix:
-
-```sh
-make check
-```
-
-`make check` runs local artifact checks.  It executes the Builder
-RPM adapter against generated normal and minimal ext4 root images, validates
-the generated `qvm-template` metadata, then builds and extracts template RPMs
-through the real packager, verifies the Qubes Template Manager payload layout,
-and reassembles the split root image.
-
-`make check` fails if the tools required for those package-contract checks are
-missing.  It is still local build evidence only; a publishable candidate needs
-fresh rootfs builds, RPMs, `qvm-template` lifecycle coverage, openQA, and live
-TemplateVM/AppVM smoke evidence.
-
-The runtime-focused root image check is
-`scripts/test-native-rootfs-activation.sh`.  It mounts a writable copy of the
-root image, runs the generated Guix activation script in a chroot, verifies that
-generated `/etc/pam.d` and `/etc/skel` are materialized correctly, checks qrexec
-PAM with libpam, verifies that `qubes.PostInstall` is configured to run as
-root, and simulates qrexec's login-shell wrapper for `qubes.VMShell` as both
-`root` and `user`.
-
-The local checks exercise local contracts, but they are not release-quality
-validation by themselves.  A package change still needs the native rootfs
-build, root image inspection, activation test, real RPM layout test, RPM
-packaging, RPM-mode openQA install, TemplateVM and AppVM smoke tests, and the
-optional Qubes dom0 integration tests.
+1. `REVIEWER_GUIDE.md`
+2. `REVIEW_NOTES.md`
+3. `ADAPTATION_INVENTORY.md`
+4. `VALIDATION.md`
+5. `UPSTREAMING.md`

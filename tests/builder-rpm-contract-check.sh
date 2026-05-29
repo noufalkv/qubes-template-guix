@@ -6,70 +6,42 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 PATH="/usr/sbin:/sbin:$PATH"
 export PATH
 
-required_commands=(
-    cpio
-    debugfs
-    find
-    mke2fs
-    rpm
-    rpm2cpio
-    rpmbuild
-    split
-    stat
-    tar
-    truncate
-)
-
-missing=()
-for command_name in "${required_commands[@]}"; do
-    if ! command -v "$command_name" >/dev/null 2>&1; then
-        missing+=("$command_name")
-    fi
-done
-
-if [ "${#missing[@]}" -gt 0 ]; then
-    printf 'Builder RPM contract check missing required commands: %s\n' \
-        "${missing[*]}" >&2
-    exit 1
-fi
-
-work_dir="$(mktemp -d "$repo_root/work.builder-rpm.XXXXXX")"
-cleanup() {
-    rm -rf "$work_dir"
-}
-trap cleanup EXIT
-
+work_dir=""
 version="4.3.0"
 timestamp="2000-01-02T03:04Z"
 release="200001020304"
 
+cleanup() {
+    if [ -n "$work_dir" ] && [ -d "$work_dir" ]; then
+        rm -rf "$work_dir"
+    fi
+}
+trap cleanup EXIT
+
+prepare_workdir() {
+    work_dir="$(mktemp -d "$repo_root/work.builder-rpm.XXXXXX")"
+}
+
 check_adapter_rpm() {
-    local template_name="$1"
+    local requested_name="$1"
     local template_flavor="$2"
-    local marker="$3"
-    shift 3
-    local appmenu_entries=("$@")
-    local artifacts="$work_dir/artifacts-$template_name"
-    local image_tree="$work_dir/image-tree-$template_name"
+    local template_name="$3"
+    local case_name="$requested_name-${template_flavor:-default}"
+    local artifacts="$work_dir/artifacts-$case_name"
+    local image_tree="$work_dir/image-tree-$case_name"
     local root_image="$artifacts/qubeized_images/$template_name/root.img"
     local rpm_file="$artifacts/rpmbuild/RPMS/noarch/qubes-template-$template_name-$version-$release.noarch.rpm"
     local rpm_path
-    local extract_dir="$work_dir/extract-$template_name"
-    local template_dir="$extract_dir/var/lib/qubes/vm-templates/$template_name"
-    local cpio_file="$work_dir/$template_name.cpio"
-    local combined_tar="$work_dir/$template_name-root.tar"
-    local extracted_image_dir="$work_dir/extracted-image-$template_name"
-    local extracted_image="$extracted_image_dir/root.img"
-    local test_marker
 
     mkdir -p "$(dirname -- "$root_image")" "$image_tree/etc"
-    printf '%s\n' "$marker" > "$image_tree/etc/guix-builder-adapter-test"
+    printf 'Builder adapter root for %s\n' "$template_name" \
+        > "$image_tree/etc/guix-builder-adapter-test"
     truncate -s 64M "$root_image"
     mke2fs -q -t ext4 -d "$image_tree" "$root_image"
 
     rpm_path="$(env \
         ARTIFACTS_DIR="$artifacts" \
-        TEMPLATE_NAME="$template_name" \
+        TEMPLATE_NAME="$requested_name" \
         TEMPLATE_FLAVOR="$template_flavor" \
         TEMPLATE_VERSION="$version" \
         TEMPLATE_TIMESTAMP="$timestamp" \
@@ -77,92 +49,22 @@ check_adapter_rpm() {
 
     [ "$rpm_path" = "$rpm_file" ]
     [ -s "$rpm_file" ]
-    "$repo_root/scripts/test-template-rpm-lifecycle-dom0.sh" \
-        --metadata-only \
+
+    "$repo_root/tests/template-rpm-payload-check.sh" \
         --rpm "$rpm_file" \
-        --expect-template "$template_name" >/dev/null
-
-    mkdir -p "$extract_dir"
-    rpm2cpio "$rpm_file" > "$cpio_file"
-    (
-        cd "$extract_dir"
-        cpio -idm --quiet < "$cpio_file"
-    )
-
-    [ -d "$template_dir" ]
-    require_template_conf "$template_dir/template.conf" virt-mode pvh
-    require_template_conf "$template_dir/template.conf" qrexec 1
-    require_template_conf "$template_dir/template.conf" gui 1
-    for appmenu_entry in "${appmenu_entries[@]}"; do
-        require_appmenu_entry \
-            "$template_dir/whitelisted-appmenus.list" "$appmenu_entry"
-    done
-    [ ! -e "$template_dir/root.img" ]
-    [ ! -e "$template_dir/private.img" ]
-    [ ! -e "$template_dir/volatile.img" ]
-
-    cat "$template_dir"/root.img.part.* > "$combined_tar"
-    mkdir -p "$extracted_image_dir"
-    tar -C "$extracted_image_dir" -xf "$combined_tar"
-    [ "$(stat -c '%s' "$extracted_image")" = "$(stat -c '%s' "$root_image")" ]
-    test_marker="$(debugfs -R 'cat /etc/guix-builder-adapter-test' \
-        "$extracted_image" 2>/dev/null)"
-    [ "$test_marker" = "$marker" ]
+        --template "$template_name" \
+        --source-image "$root_image" \
+        --work-dir "$work_dir/payload-$case_name" >/dev/null
 
     printf 'Builder RPM contract check passed: %s\n' "$rpm_file"
 }
 
-template_conf_value() {
-    local conf_file="$1"
-    local key="$2"
-    local line conf_key conf_value
-
-    while IFS= read -r line || [ -n "$line" ]; do
-        case "$line" in
-            *=*)
-                conf_key="${line%%=*}"
-                conf_value="${line#*=}"
-                [ "$conf_key" = "$key" ] || continue
-                printf '%s\n' "$conf_value"
-                return 0
-                ;;
-        esac
-    done < "$conf_file"
-
-    return 1
+main() {
+    prepare_workdir
+    check_adapter_rpm guix "" guix
+    check_adapter_rpm guix minimal guix-minimal
+    check_adapter_rpm guix-minimal minimal guix-minimal
+    check_adapter_rpm minimal "" guix-minimal
 }
 
-require_template_conf() {
-    local conf_file="$1"
-    local key="$2"
-    local expected="$3"
-    local actual
-
-    actual="$(template_conf_value "$conf_file" "$key" || true)"
-    [ "$actual" = "$expected" ] || {
-        printf 'unexpected %s in %s: expected %s, got %s\n' \
-            "$key" "$conf_file" "$expected" "${actual:-<missing>}" >&2
-        exit 1
-    }
-}
-
-require_appmenu_entry() {
-    local appmenus_file="$1"
-    local expected="$2"
-    local entry
-
-    while IFS= read -r entry || [ -n "$entry" ]; do
-        [ "$entry" = "$expected" ] || continue
-        return 0
-    done < "$appmenus_file"
-
-    printf 'missing appmenu entry in %s: %s\n' "$appmenus_file" "$expected" >&2
-    exit 1
-}
-
-check_adapter_rpm guix "" "normal Builder adapter root" \
-    org.gnome.Evince.desktop \
-    org.xfce.mousepad.desktop \
-    thunar.desktop \
-    xfce4-terminal.desktop
-check_adapter_rpm guix-minimal minimal "minimal Builder adapter root" xterm.desktop
+main "$@"

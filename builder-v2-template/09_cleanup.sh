@@ -2,5 +2,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 
-printf '%s\n' '--> Guix 09_cleanup.sh'
-sync
+# Builder v2 calls this hook unconditionally.  The Guix build path does not
+# leave a mutable package-manager cache in the mounted image.
+:

@@ -8,6 +8,7 @@ template_name="${TEMPLATE_NAME:-guix}"
 template_version="${TEMPLATE_VERSION:-4.3.0}"
 template_timestamp="${TEMPLATE_TIMESTAMP:-$(date -u +%Y%m%d%H%M)}"
 template_flavor="${TEMPLATE_FLAVOR:-}"
+template_variant=""
 artifacts_dir="${ARTIFACTS_DIR:-$repo_root/work.builder-v2}"
 template_root_size="${TEMPLATE_ROOT_SIZE:-20G}"
 
@@ -27,60 +28,47 @@ die() {
     exit 1
 }
 
-validate_template_name() {
-    local value="$1"
-
-    [ -n "$value" ] || die "template name must not be empty"
-    case "$value" in
-        [0123456789_.-]*) die "template name cannot start with hyphen, underscore, dot or numbers" ;;
-        *[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-]*) die "template name contains illegal characters: $value" ;;
-        Domain-0) die "template name cannot be Domain-0" ;;
-        none|default) die "template name cannot be none or default" ;;
-        *-dm) die "template name cannot end with -dm" ;;
-    esac
-}
-
-variant_from_builder() {
-    case "$template_flavor:$template_name" in
-        minimal:*|*:*-minimal) printf '%s\n' minimal ;;
-        *) printf '%s\n' normal ;;
-    esac
+set_template_defaults() {
+    template_variant="$("$repo_root/scripts/template-variant.sh" \
+        "$template_name" builder-variant "$template_flavor"
+    )"
+    template_name="$("$repo_root/scripts/template-variant.sh" \
+        "$template_variant" template-name
+    )"
 }
 
 release_from_timestamp() {
-    printf '%s\n' "$template_timestamp" | tr -cd '0-9'
+    local release
+
+    release="$(printf '%s\n' "$template_timestamp" | tr -cd '0-9')"
+    [ -n "$release" ] || die "TEMPLATE_TIMESTAMP must contain digits: $template_timestamp"
+    printf '%s\n' "$release"
 }
 
 build_rootimg() {
-    local variant root_dir root_img appmenus_dir source_appmenus_dir template_conf
+    local root_dir root_img appmenus_dir template_conf
 
-    validate_template_name "$template_name"
-    variant="$(variant_from_builder)"
+    set_template_defaults
     root_dir="$artifacts_dir/qubeized_images/$template_name"
     root_img="$root_dir/root.img"
     appmenus_dir="$artifacts_dir/appmenus"
     template_conf="$artifacts_dir/template.conf"
 
-    mkdir -p "$root_dir" "$appmenus_dir" "$(dirname -- "$template_conf")"
+    mkdir -p "$root_dir" "$(dirname -- "$template_conf")"
     "$repo_root/scripts/build-native-rootfs.sh" \
-        --variant "$variant" \
+        --variant "$template_variant" \
         --output "$root_img" \
         --size "$template_root_size"
 
-    case "$variant" in
-        minimal) source_appmenus_dir="$repo_root/builder-v2-template/appmenus_guix_minimal" ;;
-        *) source_appmenus_dir="$repo_root/builder-v2-template/appmenus" ;;
-    esac
     rm -rf "$appmenus_dir"
-    cp -a "$source_appmenus_dir" "$appmenus_dir"
-
+    "$repo_root/scripts/template-appmenus.sh" --install "$appmenus_dir" "$template_variant"
     cp "$repo_root/builder-v2-template/template.conf" "$template_conf"
 }
 
 build_rpm() {
     local root_img rpm_dir release
 
-    validate_template_name "$template_name"
+    set_template_defaults
     root_img="$artifacts_dir/qubeized_images/$template_name/root.img"
     rpm_dir="$artifacts_dir/rpmbuild/RPMS/noarch"
     release="$(release_from_timestamp)"
@@ -96,9 +84,18 @@ build_rpm() {
         --output-dir "$rpm_dir"
 }
 
-case "${1:-}" in
-    build-rootimg) build_rootimg ;;
-    build-rpm) build_rpm ;;
-    -h|--help) usage ;;
-    *) usage >&2; exit 1 ;;
-esac
+main() {
+    [ "$#" -eq 1 ] || {
+        usage >&2
+        exit 1
+    }
+
+    case "${1:-}" in
+        build-rootimg) build_rootimg ;;
+        build-rpm) build_rpm ;;
+        -h|--help) usage ;;
+        *) usage >&2; exit 1 ;;
+    esac
+}
+
+main "$@"

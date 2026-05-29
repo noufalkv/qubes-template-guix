@@ -1,0 +1,8 @@
+;; SPDX-License-Identifier: GPL-3.0-or-later
+;; Authorized signers for the qubes-template-guix channel.  Guix authenticates
+;; every commit from the channel introduction onward against this list; only
+;; commits signed by a listed OpenPGP key are accepted by "guix pull".
+(authorizations
+ (version 0)
+ (("9A23 32D1 567B EEB5 57BB  53DF 559B 1DC4 CA0D 77FF"
+   (name "autonomous-ai"))))

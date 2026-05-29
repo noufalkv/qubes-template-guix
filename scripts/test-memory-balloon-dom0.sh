@@ -11,6 +11,7 @@ min_growth="${MIN_GROWTH:-128}"
 timeout_seconds="${TIMEOUT_SECONDS:-180}"
 keep_appvm=0
 replace_existing=0
+appvm_created=0
 
 usage() {
     cat <<'__QUBES_GUIX_USAGE__'
@@ -50,90 +51,17 @@ require_arg() {
     [ "$#" -ge 2 ] || die "$1 requires a value"
 }
 
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        -t|--template)
-            require_arg "$@"
-            template_name="$2"
-            shift 2
-            ;;
-        -a|--appvm)
-            require_arg "$@"
-            appvm_name="$2"
-            shift 2
-            ;;
-        -m|--memory)
-            require_arg "$@"
-            initial_memory="$2"
-            shift 2
-            ;;
-        -M|--maxmem)
-            require_arg "$@"
-            max_memory="$2"
-            shift 2
-            ;;
-        -A|--allocate)
-            require_arg "$@"
-            allocation_mb="$2"
-            shift 2
-            ;;
-        -g|--min-growth)
-            require_arg "$@"
-            min_growth="$2"
-            shift 2
-            ;;
-        -T|--timeout)
-            require_arg "$@"
-            timeout_seconds="$2"
-            shift 2
-            ;;
-        -R|--replace-existing)
-            replace_existing=1
-            shift
-            ;;
-        -k|--keep-appvm)
-            keep_appvm=1
-            shift
-            ;;
-        -h|--help)
-            usage
-            exit 0
-            ;;
-        *)
-            die "unknown argument: $1"
-            ;;
-    esac
-done
+positive_int() {
+    local name="$1"
+    local value="$2"
 
-is_uint() {
-    case "$1" in
-        ''|*[!0-9]*) return 1 ;;
-        *) return 0 ;;
+    case "$value" in
+        ''|*[!0-9]*)
+            die "$name must be a positive integer"
+            ;;
     esac
+    [ "$value" -gt 0 ] || die "$name must be greater than zero"
 }
-
-[ -n "$template_name" ] || die "empty template name"
-appvm_name="${appvm_name:-$template_name-balloon-test}"
-
-is_uint "$initial_memory" || die "--memory must be an integer"
-is_uint "$max_memory" || die "--maxmem must be an integer"
-is_uint "$allocation_mb" || die "--allocate must be an integer"
-is_uint "$min_growth" || die "--min-growth must be an integer"
-is_uint "$timeout_seconds" || die "--timeout must be an integer"
-[ "$max_memory" -gt "$initial_memory" ] ||
-    die "--maxmem must be greater than --memory"
-[ "$allocation_mb" -gt 0 ] || die "--allocate must be positive"
-[ "$min_growth" -gt 0 ] || die "--min-growth must be positive"
-
-need awk
-need qvm-create
-need qvm-ls
-need qvm-prefs
-need qvm-remove
-need qvm-run
-need qvm-shutdown
-need qvm-start
-need xl
 
 vm_exists() {
     qvm-ls --raw-list 2>/dev/null | grep -Fxq "$1"
@@ -144,45 +72,34 @@ domain_memory_mb() {
     xl list "$name" 2>/dev/null | awk -v vm="$name" '$1 == vm { print $3 }'
 }
 
-cleanup() {
-    qvm-run --pass-io --no-gui "$appvm_name" \
-        'if [ -f /tmp/qubes-guix-balloon.pid ]; then
-             kill "$(cat /tmp/qubes-guix-balloon.pid)" >/dev/null 2>&1 || true
-         fi
-         rm -f /tmp/qubes-guix-balloon.pid \
-               /tmp/qubes-guix-balloon.log \
-               /tmp/qubes-guix-balloon.scm' >/dev/null 2>&1 || true
-    if [ "$keep_appvm" -eq 0 ] && vm_exists "$appvm_name"; then
-        qvm-shutdown --wait "$appvm_name" >/dev/null 2>&1 || true
-        qvm-remove --force "$appvm_name" >/dev/null 2>&1 || true
-    fi
+run_guest() {
+    qvm-run --pass-io --no-gui "$appvm_name" "$@"
 }
-trap cleanup EXIT
 
-vm_exists "$template_name" || die "template VM does not exist: $template_name"
-[ "$(qvm-prefs "$template_name" klass 2>/dev/null || true)" = "TemplateVM" ] ||
-    die "source is not a TemplateVM: $template_name"
-
-if vm_exists "$appvm_name"; then
-    [ "$replace_existing" -eq 1 ] ||
-        die "test AppVM already exists: $appvm_name; pass --replace-existing"
-    qvm-shutdown --wait "$appvm_name" >/dev/null 2>&1 || true
-    qvm-remove --force "$appvm_name"
+guest_cleanup_balloon() {
+    cat <<'__QUBES_GUIX_GUEST__'
+if [ -f /tmp/qubes-guix-balloon.pid ]; then
+    kill "$(cat /tmp/qubes-guix-balloon.pid)" >/dev/null 2>&1 || true
 fi
+rm -f /tmp/qubes-guix-balloon.pid \
+      /tmp/qubes-guix-balloon.log \
+      /tmp/qubes-guix-balloon.scm
+__QUBES_GUIX_GUEST__
+}
 
-qvm-create -C AppVM -t "$template_name" --label red "$appvm_name"
-qvm-prefs "$appvm_name" memory "$initial_memory"
-qvm-prefs "$appvm_name" maxmem "$max_memory"
-qvm-start "$appvm_name"
+guest_meminfo_checks() {
+    cat <<'__QUBES_GUIX_GUEST__'
+test -e /run/qubes-service/meminfo-writer
+test -s /var/run/meminfo-writer.pid
+kill -0 "$(cat /var/run/meminfo-writer.pid)"
+pgrep -x meminfo-writer >/dev/null
+command -v guile >/dev/null
+__QUBES_GUIX_GUEST__
+}
 
-qvm-run --pass-io --no-gui "$appvm_name" \
-    'test -e /run/qubes-service/meminfo-writer
-     test -s /var/run/meminfo-writer.pid
-     kill -0 "$(cat /var/run/meminfo-writer.pid)"
-     pgrep -x meminfo-writer >/dev/null
-     command -v guile >/dev/null' >/dev/null
-
-pressure_command="$(cat <<'__QUBES_GUIX_BALLOON_PRESSURE__'
+guest_balloon_pressure() {
+    printf 'export ALLOCATION_MB=%q\n' "$allocation_mb"
+    cat <<'__QUBES_GUIX_GUEST__'
 cat >/tmp/qubes-guix-balloon.scm <<'__QUBES_GUIX_BALLOON_SCM__'
 (use-modules (rnrs bytevectors))
 (define allocation-mb (string->number (getenv "ALLOCATION_MB")))
@@ -194,34 +111,168 @@ cat >/tmp/qubes-guix-balloon.scm <<'__QUBES_GUIX_BALLOON_SCM__'
     (loop (+ index 4096))))
 (sleep 120)
 __QUBES_GUIX_BALLOON_SCM__
-ALLOCATION_MB="__ALLOCATION_MB__" \
-    guile /tmp/qubes-guix-balloon.scm \
+guile /tmp/qubes-guix-balloon.scm \
     >/tmp/qubes-guix-balloon.log 2>&1 &
 printf '%s\n' "$!" >/tmp/qubes-guix-balloon.pid
-__QUBES_GUIX_BALLOON_PRESSURE__
-)"
-pressure_command="${pressure_command/__ALLOCATION_MB__/$allocation_mb}"
+__QUBES_GUIX_GUEST__
+}
 
-before="$(domain_memory_mb "$appvm_name")"
-[ -n "$before" ] || die "could not read initial domain memory for $appvm_name"
+cleanup() {
+    [ "$appvm_created" -eq 1 ] || return 0
 
-qvm-run --pass-io --no-gui "$appvm_name" "$pressure_command" >/dev/null
-
-deadline=$((SECONDS + timeout_seconds))
-best="$before"
-while [ "$SECONDS" -lt "$deadline" ]; do
-    current="$(domain_memory_mb "$appvm_name")"
-    if [ -n "$current" ]; then
-        [ "$current" -gt "$best" ] && best="$current"
-        if [ $((current - before)) -ge "$min_growth" ]; then
-            printf 'memory balloon check passed: %s grew from %s MiB to %s MiB\n' \
-                "$appvm_name" "$before" "$current"
-            exit 0
-        fi
+    run_guest "$(guest_cleanup_balloon)" >/dev/null 2>&1 || true
+    if [ "$keep_appvm" -eq 0 ] && vm_exists "$appvm_name"; then
+        qvm-shutdown --wait "$appvm_name" >/dev/null 2>&1 || true
+        qvm-remove --force "$appvm_name" >/dev/null 2>&1 || true
     fi
-    sleep 5
-done
+}
 
-qvm-run --pass-io --no-gui "$appvm_name" \
-    'cat /tmp/qubes-guix-balloon.log 2>/dev/null || true' >&2 || true
-die "memory did not grow by at least $min_growth MiB for $appvm_name; before=$before best=$best"
+parse_args() {
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -t|--template)
+                require_arg "$@"
+                template_name="$2"
+                shift 2
+                ;;
+            -a|--appvm)
+                require_arg "$@"
+                appvm_name="$2"
+                shift 2
+                ;;
+            -m|--memory)
+                require_arg "$@"
+                initial_memory="$2"
+                shift 2
+                ;;
+            -M|--maxmem)
+                require_arg "$@"
+                max_memory="$2"
+                shift 2
+                ;;
+            -A|--allocate)
+                require_arg "$@"
+                allocation_mb="$2"
+                shift 2
+                ;;
+            -g|--min-growth)
+                require_arg "$@"
+                min_growth="$2"
+                shift 2
+                ;;
+            -T|--timeout)
+                require_arg "$@"
+                timeout_seconds="$2"
+                shift 2
+                ;;
+            -R|--replace-existing)
+                replace_existing=1
+                shift
+                ;;
+            -k|--keep-appvm)
+                keep_appvm=1
+                shift
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            *)
+                die "unknown argument: $1"
+                ;;
+        esac
+    done
+}
+
+validate_options() {
+    [ -n "$template_name" ] || die "empty template name"
+    appvm_name="${appvm_name:-$template_name-balloon-test}"
+
+    positive_int "--memory" "$initial_memory"
+    positive_int "--maxmem" "$max_memory"
+    positive_int "--allocate" "$allocation_mb"
+    positive_int "--min-growth" "$min_growth"
+    positive_int "--timeout" "$timeout_seconds"
+    [ "$max_memory" -gt "$initial_memory" ] ||
+        die "--maxmem must be greater than --memory"
+}
+
+check_requirements() {
+    need awk
+    need qvm-create
+    need qvm-ls
+    need qvm-prefs
+    need qvm-remove
+    need qvm-run
+    need qvm-shutdown
+    need qvm-start
+    need xl
+}
+
+ensure_template_available() {
+    vm_exists "$template_name" ||
+        die "template VM does not exist: $template_name"
+    [ "$(qvm-prefs "$template_name" klass 2>/dev/null || true)" = "TemplateVM" ] ||
+        die "source is not a TemplateVM: $template_name"
+}
+
+prepare_appvm() {
+    if vm_exists "$appvm_name"; then
+        [ "$replace_existing" -eq 1 ] ||
+            die "test AppVM already exists: $appvm_name; pass --replace-existing"
+        qvm-shutdown --wait "$appvm_name" >/dev/null 2>&1 || true
+        qvm-remove --force "$appvm_name"
+    fi
+
+    qvm-create -C AppVM -t "$template_name" --label red "$appvm_name"
+    appvm_created=1
+    qvm-prefs "$appvm_name" memory "$initial_memory"
+    qvm-prefs "$appvm_name" maxmem "$max_memory"
+    qvm-start "$appvm_name"
+}
+
+run_balloon_check() {
+    local before
+    local best
+    local current
+    local deadline
+
+    run_guest "$(guest_meminfo_checks)" >/dev/null
+
+    before="$(domain_memory_mb "$appvm_name")"
+    [ -n "$before" ] ||
+        die "could not read initial domain memory for $appvm_name"
+
+    run_guest "$(guest_balloon_pressure)" >/dev/null
+
+    deadline=$((SECONDS + timeout_seconds))
+    best="$before"
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        current="$(domain_memory_mb "$appvm_name")"
+        if [ -n "$current" ]; then
+            [ "$current" -gt "$best" ] && best="$current"
+            if [ $((current - before)) -ge "$min_growth" ]; then
+                printf 'memory balloon check passed: %s grew from %s MiB to %s MiB\n' \
+                    "$appvm_name" "$before" "$current"
+                return 0
+            fi
+        fi
+        sleep 5
+    done
+
+    run_guest \
+        'cat /tmp/qubes-guix-balloon.log 2>/dev/null || true' >&2 || true
+    die "memory did not grow by at least $min_growth MiB for $appvm_name; before=$before best=$best"
+}
+
+main() {
+    parse_args "$@"
+    validate_options
+    check_requirements
+    ensure_template_available
+    prepare_appvm
+    run_balloon_check
+}
+
+trap cleanup EXIT
+main "$@"

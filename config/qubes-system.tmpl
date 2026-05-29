@@ -1,0 +1,124 @@
+;; SPDX-License-Identifier: GPL-3.0-or-later
+;;
+;; GNU Guix System configuration for a Qubes OS TemplateVM.
+;;
+;; This is a template.  scripts/render-config.sh substitutes the @VARIANT@
+;; token (normal or minimal) and writes the result as the variant's config.scm,
+;; which is what gets installed as /etc/config.scm and reconfigured later with:
+;;
+;;   guix system -L /etc/qubes-guix-channel reconfigure /etc/config.scm
+;;
+;; Everything Qubes-specific (packages, services, bootloader, privileged
+;; programs) lives in the (qubes ...) channel modules; this file only wires
+;; those building blocks into a standard operating-system record.
+
+(use-modules (gnu)
+             (gnu bootloader)
+             (gnu packages bash)
+             (gnu services)
+             (gnu system nss)
+             (guix channels)
+             (guix gexp)
+             (qubes vm))
+
+;; Channel this template is built from.  Declaring it in guix-configuration
+;; writes /etc/guix/channels.scm in the installed system, so a user can run
+;; "guix pull" to update the Qubes modules the idiomatic way instead of being
+;; pinned to the image's modules forever.  No commit is pinned here so pulls
+;; track the branch; release reproducibility comes from the build-time
+;; config/channels.scm instead.  During development this points at the GitHub
+;; mirror; it should move to the Qubes-hosted URL for publication.
+(define %qubes-channels
+  (cons (channel
+         (name 'qubes)
+         (url "https://github.com/noufalkv/qubes-template-guix.git")
+         (branch "main"))
+        %default-channels))
+
+;; Qubes dom0 supplies the VM kernel, so this bootloader installs nothing and
+;; writes only a placeholder config.  It lives here (not in the channel module)
+;; because a bootloader record's gexp fields trip the Guile 3.0.9 ahead-of-time
+;; compiler used by "guix pull"; config files are loaded interpreted, so the
+;; record is safe here while keeping the channel modules byte-compilable.
+(define (qubes-dom0-kernel-bootloader-config _config _entries
+                                             . _rest)
+  (computed-file
+   "qubes-dom0-kernel.cfg"
+   #~(call-with-output-file #$output
+       (lambda (port)
+         (display
+          "Qubes dom0 supplies the VM kernel; no guest bootloader is installed.\n"
+          port)))
+   #:options '(#:local-build? #t
+               #:substitutable? #f)))
+
+(define qubes-dom0-kernel-bootloader
+  (bootloader
+   (name 'qubes-dom0-kernel)
+   (package bash-minimal)
+   (installer #~(lambda (_bootloader _device _mount-point) #t))
+   (configuration-file "/boot/qubes-dom0-kernel.cfg")
+   (configuration-file-generator qubes-dom0-kernel-bootloader-config)))
+
+(operating-system
+  (host-name (qubes-host-name '@VARIANT@))
+  (timezone "Etc/UTC")
+  (locale "en_US.utf8")
+
+  ;; Qubes dom0 supplies the VM kernel; a bootloader record is still required by
+  ;; the operating-system type, but images are built with --no-bootloader.
+  (bootloader
+   (bootloader-configuration
+    (bootloader qubes-dom0-kernel-bootloader)
+    (targets '("/dev/xvda"))))
+  (kernel qubes-dom0-kernel)
+  (initrd-modules '())
+  (kernel-arguments
+   (append '("console=hvc0" "panic=1")
+           %default-kernel-arguments))
+
+  (file-systems
+   (cons* (file-system
+            (mount-point "/")
+            (device (file-system-label "guix-root"))
+            (type "ext4"))
+          %base-file-systems))
+  (swap-devices
+   (list (swap-space
+          (target "/dev/xvdc1"))))
+
+  (users
+   (cons* (user-account
+            (name "user")
+            (comment "Qubes user")
+            (group "users")
+            (supplementary-groups '("wheel" "netdev" "audio" "video"
+                                    "qubes")))
+          %base-user-accounts))
+  (groups
+   (cons* (user-group (name "qubes"))
+          %base-groups))
+
+  ;; Variant package set (normal adds desktop apps + audio; minimal is xterm).
+  (packages (qubes-variant-packages '@VARIANT@))
+
+  (privileged-programs %qubes-privileged-programs)
+  (sudoers-file
+   (plain-file "sudoers"
+               "root ALL=(ALL) ALL
+%wheel ALL=(ALL) NOPASSWD:ALL
+user ALL=(ALL) NOPASSWD:ALL
+"))
+
+  ;; Full Qubes VM service stack (identical for both variants).  The
+  ;; guix-service-type is extended so /etc/guix/channels.scm records the Qubes
+  ;; channel for "guix pull"; the system guix itself is left unchanged to avoid
+  ;; rebuilding it.
+  (services
+   (modify-services %qubes-system-services
+     (guix-service-type
+      config => (guix-configuration
+                 (inherit config)
+                 (channels %qubes-channels)))))
+
+  (name-service-switch %mdns-host-lookup-nss))

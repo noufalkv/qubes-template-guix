@@ -1,7 +1,3 @@
-/root.img
-/root.img.*
-/root-minimal.img
-/root-minimal.img.*
 /*.img
 /*.img.*
 /*.rpm
@@ -13,21 +9,14 @@
 /*.iso.*
 /inspect.*/
 /activation.*/
-/mnt/
 /mnt.*/
 /work/
-/work.builder-v2/
-/work.builder-adapter.*/
-/work.build-native-rootfs-policy.*/
-/work.builder-rpm.*/
-/work.package.*/
-/work.openqa-rpm.*
-/work.rpm-layout.*/
-/builder-hook-contract-check.*/
-/preflight-check.*/
+/work.*
 /dist/
 /.cache/
 /logs/
 /.last-remote-sync
 # CocoIndex Code (ccc)
 /.cocoindex_code/
+# Sisyphus loop state
+/.sisyphus/

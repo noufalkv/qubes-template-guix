@@ -4,6 +4,9 @@ set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 image="$repo_root/root.img"
+work_dir=""
+test_image=""
+mount_dir=""
 PATH="/usr/sbin:/sbin:$PATH"
 export PATH
 
@@ -35,57 +38,93 @@ require_arg() {
     [ "$#" -ge 2 ] || die "$1 requires a value"
 }
 
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        --image)
-            require_arg "$@"
-            image="$2"
-            shift 2
-            ;;
-        -h|--help)
-            usage
-            exit 0
-            ;;
-        *)
-            die "unknown argument: $1"
-            ;;
-    esac
-done
+as_root() {
+    if [ "$(id -u)" -eq 0 ]; then
+        "$@"
+    else
+        sudo "$@"
+    fi
+}
 
-need mountpoint
-need sudo
+parse_args() {
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --image)
+                require_arg "$@"
+                image="$2"
+                shift 2
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            *)
+                die "unknown argument: $1"
+                ;;
+        esac
+    done
+}
 
-[ -r "$image" ] || die "missing readable image: $image"
+check_requirements() {
+    if [ "$(id -u)" -ne 0 ]; then
+        need sudo
+    fi
+    need chroot
+    need cp
+    need mount
 
-work_dir="$(mktemp -d "$repo_root/activation.XXXXXX")"
-test_image="$work_dir/root.img"
-mount_dir="$work_dir/mnt"
+    [ -r "$image" ] || die "missing readable image: $image"
+}
 
 cleanup() {
-    sudo umount -R "$mount_dir" 2>/dev/null || true
-    rm -rf "$work_dir"
+    if [ -n "$mount_dir" ]; then
+        as_root umount -R "$mount_dir" 2>/dev/null || true
+    fi
+    if [ -n "$work_dir" ]; then
+        rm -rf "$work_dir"
+    fi
 }
 trap cleanup EXIT
 
-mkdir -p "$mount_dir"
-cp --reflink=auto --sparse=always "$image" "$test_image"
-sudo mount -o loop,rw "$test_image" "$mount_dir"
-sudo mkdir -p "$mount_dir/proc" "$mount_dir/dev" "$mount_dir/sys" \
-    "$mount_dir/run" "$mount_dir/tmp"
-sudo mount -t proc proc "$mount_dir/proc"
-sudo mount --rbind /dev "$mount_dir/dev"
-sudo mount --make-rslave "$mount_dir/dev"
-sudo mount --rbind /sys "$mount_dir/sys"
-sudo mount --make-rslave "$mount_dir/sys"
+prepare_writable_root() {
+    work_dir="$(mktemp -d "$repo_root/activation.XXXXXX")"
+    test_image="$work_dir/root.img"
+    mount_dir="$work_dir/mnt"
 
-sudo chroot "$mount_dir" /bin/sh -lc \
-    'GUIX_NEW_SYSTEM=/var/guix/profiles/system /var/guix/profiles/system/activate'
+    mkdir -p "$mount_dir"
+    cp --reflink=auto --sparse=always "$image" "$test_image"
+    as_root mount -o loop,rw "$test_image" "$mount_dir"
+    as_root mkdir -p "$mount_dir/proc" "$mount_dir/dev" "$mount_dir/sys" \
+        "$mount_dir/run" "$mount_dir/tmp"
+    as_root mount -t proc proc "$mount_dir/proc"
+    as_root mount --rbind /dev "$mount_dir/dev"
+    as_root mount --make-rslave "$mount_dir/dev"
+    as_root mount --rbind /sys "$mount_dir/sys"
+    as_root mount --make-rslave "$mount_dir/sys"
+}
 
-sudo chroot "$mount_dir" /bin/sh -lc '
+run_activation() {
+    as_root chroot "$mount_dir" /bin/sh -lc \
+        'GUIX_NEW_SYSTEM=/var/guix/profiles/system /var/guix/profiles/system/activate'
+}
+
+run_activation_twice() {
+    run_activation
+    # Activation must be idempotent because AppVM starts and reconfigure runs can
+    # revisit the same mutable paths.
+    run_activation
+}
+
+verify_activation_paths() {
+    as_root chroot "$mount_dir" /bin/sh -lc '
     set -eu
     test -d /rw
     test -d /usr/local
-    test -f /etc/fstab
+    test -L /etc/ssl
+	    test -s /etc/ssl/certs/ca-certificates.crt
+	    test -r /etc/qubes-guix-channel/.guix-channel
+	    test -r /etc/qubes-guix-channel/qubes/vm.scm
+	    test -f /etc/fstab
     test ! -L /etc/fstab
     printf "\n# qubes-guix activation fstab write check\n" >> /etc/fstab
     test -L /usr/lib/qubes
@@ -107,22 +146,25 @@ sudo chroot "$mount_dir" /bin/sh -lc '
     grep -q "force-user[[:space:]]*=[[:space:]]*'\''root'\''" /etc/qubes/rpc-config/qubes.PostInstall
     test -x /etc/qubes-rpc/qubes.PostInstall
     test -x /etc/qubes-rpc/qubes.VMShell
-    grep -F "exec /bin/bash" /etc/qubes-rpc/qubes.VMShell
-    grep -F "exec /bin/bash" /etc/qubes-rpc/qubes.VMRootShell
+    test -x /etc/qubes-rpc/qubes.VMRootShell
     /bin/sh -c true
     /bin/bash -lc true
     test -r /etc/os-release
     grep -qx "ID=guix" /etc/os-release
     grep -qx "PRETTY_NAME=\"Guix System\"" /etc/os-release
 '
+}
 
-libpam_path="$(
-    sudo chroot "$mount_dir" /bin/sh -lc \
-        'find /gnu/store -path "*/lib/libpam.so.0" -print -quit'
-)"
-[ -n "$libpam_path" ] || die "missing libpam.so.0 in guest image"
+verify_pam_services() {
+    local libpam_path
 
-sudo chroot "$mount_dir" /bin/python3 - "$libpam_path" <<'PY'
+    libpam_path="$(
+        as_root chroot "$mount_dir" /bin/sh -lc \
+            'find /gnu/store -path "*/lib/libpam.so.0" -print -quit'
+    )"
+    [ -n "$libpam_path" ] || die "missing libpam.so.0 in guest image"
+
+    as_root chroot "$mount_dir" /bin/python3 - "$libpam_path" <<'PY'
 import ctypes
 import sys
 
@@ -136,8 +178,8 @@ class PamResponse(ctypes.Structure):
 
 
 Conversation = ctypes.CFUNCTYPE(
-    ctypes.c_int,
-    ctypes.c_int,
+    ctypes.c_int,  # return code
+    ctypes.c_int,  # message count
     ctypes.POINTER(ctypes.POINTER(PamMessage)),
     ctypes.POINTER(ctypes.POINTER(PamResponse)),
     ctypes.c_void_p,
@@ -189,8 +231,10 @@ for service in (b"qrexec", b"qubes-gui-agent"):
         finally:
             libpam.pam_end(handle, status)
 PY
+}
 
-sudo chroot "$mount_dir" /bin/python3 - <<'PY'
+verify_qrexec_shell_wrapper() {
+    as_root chroot "$mount_dir" /bin/python3 - <<'PY'
 import os
 import pwd
 import select
@@ -290,8 +334,10 @@ def run_vmshell_as(user):
 for name in ("root", "user"):
     run_vmshell_as(name)
 PY
+}
 
-sudo chroot "$mount_dir" /bin/sh -lc '
+verify_home_initialization() {
+    as_root chroot "$mount_dir" /bin/sh -lc '
     set -eu
     rm -rf /rw/home
     . /usr/lib/qubes/init/functions
@@ -304,11 +350,24 @@ sudo chroot "$mount_dir" /bin/sh -lc '
     fi
 '
 
-sudo chroot --userspec=user:users "$mount_dir" /bin/sh -lc '
+    as_root chroot --userspec=user:users "$mount_dir" /bin/sh -lc '
     set -eu
     export HOME=/rw/home/user
     test -w "$HOME"
     mkdir -p "$HOME/.config/guix" "$HOME/.cache/guix"
 '
+}
 
-printf 'native root image activation test passed: %s\n' "$image"
+main() {
+    parse_args "$@"
+    check_requirements
+    prepare_writable_root
+    run_activation_twice
+    verify_activation_paths
+    verify_pam_services
+    verify_qrexec_shell_wrapper
+    verify_home_initialization
+    printf 'native root image activation check passed: %s\n' "$image"
+}
+
+main "$@"

@@ -11,10 +11,12 @@ expect_template=""
 replace_existing=0
 keep_template=0
 run_smoke=0
-metadata_only=0
+template_owned=0
 appvm_name=""
 log_dir=""
 rpmdb=""
+template_name=""
+install_evr=""
 
 usage() {
     cat <<'EOF'
@@ -29,7 +31,6 @@ Options:
                           Optional older RPM for qvm-template downgrade.
   -e, --expect-template NAME
                           Require the RPM package to map to template NAME.
-  -m, --metadata-only     Validate RPM metadata and exit before dom0 commands.
   -R, --replace-existing  Remove an existing TemplateVM with the same name first.
   -k, --keep-template     Leave the installed TemplateVM after the test.
   -s, --run-smoke         Run the existing TemplateVM/AppVM smoke test after
@@ -59,79 +60,80 @@ require_arg() {
     [ "$#" -ge 2 ] || die "$1 requires a value"
 }
 
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        -r|--rpm)
-            require_arg "$@"
-            install_rpm="$2"
-            shift 2
-            ;;
-        -u|--upgrade-rpm)
-            require_arg "$@"
-            upgrade_rpm="$2"
-            shift 2
-            ;;
-        -d|--downgrade-rpm)
-            require_arg "$@"
-            downgrade_rpm="$2"
-            shift 2
-            ;;
-        -e|--expect-template)
-            require_arg "$@"
-            expect_template="$2"
-            shift 2
-            ;;
-        -m|--metadata-only)
-            metadata_only=1
-            shift
-            ;;
-        -R|--replace-existing)
-            replace_existing=1
-            shift
-            ;;
-        -k|--keep-template)
-            keep_template=1
-            shift
-            ;;
-        -s|--run-smoke)
-            run_smoke=1
-            shift
-            ;;
-        -a|--appvm)
-            require_arg "$@"
-            appvm_name="$2"
-            shift 2
-            ;;
-        -l|--log-dir)
-            require_arg "$@"
-            log_dir="$2"
-            shift 2
-            ;;
-        -h|--help)
-            usage
-            exit 0
-            ;;
-        *)
-            die "unknown argument: $1"
-            ;;
-    esac
-done
+parse_args() {
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -r|--rpm)
+                require_arg "$@"
+                install_rpm="$2"
+                shift 2
+                ;;
+            -u|--upgrade-rpm)
+                require_arg "$@"
+                upgrade_rpm="$2"
+                shift 2
+                ;;
+            -d|--downgrade-rpm)
+                require_arg "$@"
+                downgrade_rpm="$2"
+                shift 2
+                ;;
+            -e|--expect-template)
+                require_arg "$@"
+                expect_template="$2"
+                shift 2
+                ;;
+            -R|--replace-existing)
+                replace_existing=1
+                shift
+                ;;
+            -k|--keep-template)
+                keep_template=1
+                shift
+                ;;
+            -s|--run-smoke)
+                run_smoke=1
+                shift
+                ;;
+            -a|--appvm)
+                require_arg "$@"
+                appvm_name="$2"
+                shift 2
+                ;;
+            -l|--log-dir)
+                require_arg "$@"
+                log_dir="$2"
+                shift 2
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            *)
+                die "unknown argument: $1"
+                ;;
+        esac
+    done
+}
 
-[ -n "$install_rpm" ] || die "missing --rpm"
-[ -r "$install_rpm" ] || die "missing RPM: $install_rpm"
-[ -z "$upgrade_rpm" ] || [ -r "$upgrade_rpm" ] || die "missing upgrade RPM: $upgrade_rpm"
-[ -z "$downgrade_rpm" ] || [ -r "$downgrade_rpm" ] || die "missing downgrade RPM: $downgrade_rpm"
-
-need rpm
+check_input_rpms() {
+    [ -n "$install_rpm" ] || die "missing --rpm"
+    [ -r "$install_rpm" ] || die "missing RPM: $install_rpm"
+    [ -z "$upgrade_rpm" ] || [ -r "$upgrade_rpm" ] ||
+        die "missing upgrade RPM: $upgrade_rpm"
+    [ -z "$downgrade_rpm" ] || [ -r "$downgrade_rpm" ] ||
+        die "missing downgrade RPM: $downgrade_rpm"
+}
 
 cleanup() {
+    if [ "$keep_template" -eq 0 ] && [ "$template_owned" -eq 1 ]; then
+        remove_template "$template_name" >/dev/null 2>&1 || true
+    fi
     if [ -n "$rpmdb" ] && [ -d "$rpmdb" ]; then
         rm -rf "$rpmdb"
     fi
 }
 trap cleanup EXIT
-
-rpmdb="$(mktemp -d /tmp/qubes-template-lifecycle-rpmdb.XXXXXX)"
 
 rpm_package_name() {
     rpm --dbpath "$rpmdb" -qp --qf '%{NAME}' "$1"
@@ -151,14 +153,6 @@ template_from_rpm() {
     esac
 }
 
-template_name="$(template_from_rpm "$install_rpm")"
-install_evr="$(rpm_version_release "$install_rpm")"
-[ -z "$expect_template" ] || [ "$template_name" = "$expect_template" ] ||
-    die "expected template '$expect_template', got '$template_name'"
-appvm_name="${appvm_name:-$template_name-lifecycle-app}"
-log_dir="${log_dir:-/tmp/qubes-template-lifecycle-$template_name.$$}"
-mkdir -p "$log_dir"
-
 check_same_template() {
     local rpm_file="$1"
     local label="$2"
@@ -169,8 +163,15 @@ check_same_template() {
         die "$label RPM template '$other' does not match '$template_name'"
 }
 
-check_same_template "$upgrade_rpm" "upgrade"
-check_same_template "$downgrade_rpm" "downgrade"
+load_template_metadata() {
+    template_name="$(template_from_rpm "$install_rpm")"
+    install_evr="$(rpm_version_release "$install_rpm")"
+    [ -z "$expect_template" ] || [ "$template_name" = "$expect_template" ] ||
+        die "expected template '$expect_template', got '$template_name'"
+    appvm_name="${appvm_name:-$template_name-lifecycle-app}"
+    check_same_template "$upgrade_rpm" "upgrade"
+    check_same_template "$downgrade_rpm" "downgrade"
+}
 
 template_exists() {
     qvm-ls --raw-list 2>/dev/null | grep -Fxq "$1"
@@ -187,8 +188,15 @@ run_template_command() {
     local label="$1"
     shift
     local log="$log_dir/qvm-template-$label.log"
+    local status
+
     printf 'running qvm-template %s for %s\n' "$label" "$template_name"
+
+    set +e
     qvm-template --yes "$@" 2>&1 | tee "$log"
+    status=${PIPESTATUS[0]}
+    set -e
+
     if grep -Eq 'PermissionError|Failed to set default application list|qubes[.]PostInstall service failed' "$log"; then
         if [ -x "$repo_root/scripts/diagnose-guix-postinstall-dom0.sh" ]; then
             "$repo_root/scripts/diagnose-guix-postinstall-dom0.sh" "$template_name" \
@@ -196,6 +204,8 @@ run_template_command() {
         fi
         die "qvm-template $label logged a post-install failure"
     fi
+    [ "$status" -eq 0 ] ||
+        die "qvm-template $label failed with status $status"
 }
 
 assert_template_metadata() {
@@ -224,71 +234,101 @@ assert_template_metadata() {
 }
 
 run_smoke_test() {
-    local args=()
     [ "$run_smoke" -eq 1 ] || return 0
     [ -x "$repo_root/scripts/test-native-guix-template-dom0.sh" ] ||
         die "missing smoke test script"
 
-    case "$template_name" in
-        *-minimal)
-            args+=(--expect-command xterm --expect-command Xorg --expect-desktop xterm.desktop)
-            ;;
-        *)
-            args+=(--expect-command evince --expect-command mousepad --expect-command thunar --expect-command xfce4-terminal --expect-command Xorg --expect-desktop org.gnome.Evince.desktop --expect-desktop org.xfce.mousepad.desktop --expect-desktop thunar.desktop --expect-desktop xfce4-terminal.desktop)
-            ;;
-    esac
-
     "$repo_root/scripts/test-native-guix-template-dom0.sh" \
         --template "$template_name" \
-        --appvm "$appvm_name" \
-        "${args[@]}"
+        --appvm "$appvm_name"
 }
 
-printf 'template: %s\n' "$template_name"
-printf 'install RPM: %s (%s)\n' "$install_rpm" "$install_evr"
-[ -z "$upgrade_rpm" ] || printf 'upgrade RPM: %s (%s)\n' "$upgrade_rpm" "$(rpm_version_release "$upgrade_rpm")"
-[ -z "$downgrade_rpm" ] || printf 'downgrade RPM: %s (%s)\n' "$downgrade_rpm" "$(rpm_version_release "$downgrade_rpm")"
-printf 'logs: %s\n' "$log_dir"
+run_lifecycle_step() {
+    local label="$1"
+    local rpm_file="$2"
+    local smoke="$3"
+    shift 3
 
-if [ "$metadata_only" -eq 1 ]; then
-    printf 'metadata check passed for %s\n' "$template_name"
-    exit 0
-fi
+    run_template_command "$label" "$@"
+    assert_template_metadata "$rpm_file"
+    [ "$smoke" -eq 0 ] || run_smoke_test
+}
 
-need qvm-ls
-need qvm-features
-need qvm-prefs
-need qvm-shutdown
-need qvm-template
+print_lifecycle_summary() {
+    printf 'template: %s\n' "$template_name"
+    printf 'install RPM: %s (%s)\n' "$install_rpm" "$install_evr"
+    if [ -n "$upgrade_rpm" ]; then
+        printf 'upgrade RPM: %s (%s)\n' \
+            "$upgrade_rpm" "$(rpm_version_release "$upgrade_rpm")"
+    fi
+    if [ -n "$downgrade_rpm" ]; then
+        printf 'downgrade RPM: %s (%s)\n' \
+            "$downgrade_rpm" "$(rpm_version_release "$downgrade_rpm")"
+    fi
+}
 
-if template_exists "$template_name"; then
-    [ "$replace_existing" -eq 1 ] ||
-        die "template already exists: $template_name; pass --replace-existing"
-    remove_template "$template_name"
-fi
+prepare_logs() {
+    log_dir="${log_dir:-/tmp/qubes-template-lifecycle-$template_name.$$}"
+    mkdir -p "$log_dir"
+    printf 'logs: %s\n' "$log_dir"
+}
 
-run_template_command install install --nogpgcheck "$install_rpm"
-assert_template_metadata "$install_rpm"
-run_smoke_test
+check_required_commands() {
+    need qvm-ls
+    need qvm-features
+    need qvm-prefs
+    need qvm-shutdown
+    need qvm-template
+}
 
-run_template_command reinstall reinstall --nogpgcheck "$install_rpm"
-assert_template_metadata "$install_rpm"
-run_smoke_test
+prepare_template_slot() {
+    if template_exists "$template_name"; then
+        [ "$replace_existing" -eq 1 ] ||
+            die "template already exists: $template_name; pass --replace-existing"
+        remove_template "$template_name"
+    fi
+    template_owned=1
+}
 
-if [ -n "$upgrade_rpm" ]; then
-    run_template_command upgrade upgrade --nogpgcheck "$upgrade_rpm"
-    assert_template_metadata "$upgrade_rpm"
-fi
+run_lifecycle() {
+    run_lifecycle_step install "$install_rpm" 1 \
+        install --nogpgcheck "$install_rpm"
+    run_lifecycle_step reinstall "$install_rpm" 1 \
+        reinstall --nogpgcheck "$install_rpm"
 
-if [ -n "$downgrade_rpm" ]; then
-    run_template_command downgrade downgrade --nogpgcheck "$downgrade_rpm"
-    assert_template_metadata "$downgrade_rpm"
-fi
+    if [ -n "$upgrade_rpm" ]; then
+        run_lifecycle_step upgrade "$upgrade_rpm" 0 \
+            upgrade --nogpgcheck "$upgrade_rpm"
+    fi
 
-if [ "$keep_template" -eq 0 ]; then
+    if [ -n "$downgrade_rpm" ]; then
+        run_lifecycle_step downgrade "$downgrade_rpm" 0 \
+            downgrade --nogpgcheck "$downgrade_rpm"
+    fi
+}
+
+remove_test_template() {
+    [ "$keep_template" -eq 0 ] || return 0
     remove_template "$template_name"
     ! template_exists "$template_name" ||
         die "template still exists after remove: $template_name"
-fi
+    template_owned=0
+}
 
-printf 'qvm-template lifecycle check passed for %s\n' "$template_name"
+main() {
+    parse_args "$@"
+    check_input_rpms
+    need rpm
+    rpmdb="$(mktemp -d /tmp/qubes-template-lifecycle-rpmdb.XXXXXX)"
+    load_template_metadata
+    print_lifecycle_summary
+    prepare_logs
+    check_required_commands
+    prepare_template_slot
+    run_lifecycle
+    remove_test_template
+
+    printf 'qvm-template lifecycle check passed for %s\n' "$template_name"
+}
+
+main "$@"

@@ -2,17 +2,18 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 
-template_name="guix-native-test"
-appvm_name="guix-native-test-app"
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+template_name="guix"
+template_variant=""
+appvm_name="guix-test-app"
 appvm_netvm="${QUBES_GUIX_APPVM_NETVM:-}"
 qrexec_socket_dir="${QUBES_QREXEC_SOCKET_DIR:-/var/run/qubes}"
-run_system_tests=0
 keep_appvm=0
-system_tests="qubes.tests.integ.qrexec:14400 qubes.tests.integ.vm_qrexec_gui:14400"
+appvm_created=0
 dom0_test_user="${QUBES_DOM0_TEST_USER:-user}"
-system_test_netvm="${QUBES_SYSTEM_TEST_NETVM:-guix-system-test-netvm}"
-system_test_pythonpath=""
-force_system_test_vm_netvm_none=0
+dom0_test_home=""
+diagnostics_enabled=0
+kernel=""
 expected_commands=()
 expected_desktops=()
 
@@ -23,28 +24,14 @@ Usage: test-native-guix-template-dom0.sh [options]
 Runs dom0-side smoke tests against a native GNU Guix System TemplateVM.
 
 Options:
-  --template NAME       TemplateVM to test. Default: guix-native-test
-  --appvm NAME          Temporary AppVM name. Default: guix-native-test-app
+  --template NAME       TemplateVM to test. Default: guix
+  --variant NAME        Template variant: normal or minimal. Default: infer
+                        from the template name.
+  --appvm NAME          Temporary AppVM name. Default: guix-test-app
   --appvm-netvm NAME    Attach the temporary AppVM to this NetVM for uplink
                         checks. Default: keep dom0's default netvm behavior.
-  --run-system-tests    Also run selected Qubes dom0 integration tests.
-  --system-tests LIST   Space-separated Qubes test modules. Each module may
-                        be suffixed with :TIMEOUT. Default:
-                        qubes.tests.integ.qrexec:14400 qubes.tests.integ.vm_qrexec_gui:14400
-  --expect-command CMD  Require CMD to resolve inside TemplateVM and AppVM.
-  --expect-desktop ID   Require a desktop-file ID inside TemplateVM and AppVM.
   --keep-appvm          Do not remove the temporary AppVM after tests.
   -h, --help            Show this help.
-
-The optional system-test mode is intentionally off by default. It sets the test
-template as dom0's default template, stops qubesd while running, and uses Qubes'
-own openQA nose2/load_tests runner command with root privileges, while keeping
-the normal dom0 user's home/runtime/display environment.  The default module set
-uses Qubes' qrexec and vm_qrexec_gui suites because they exercise the tested
-template directly; pass --system-tests explicitly to run broader dom0 host
-scenarios such as qubes.tests.integ.basic.  This serial-console harness does not
-wrap nose2 in script(1), because script(1) can stop itself under the
-non-interactive openQA serial pipeline before nose2 starts.
 EOF
 }
 
@@ -61,6 +48,31 @@ require_arg() {
     [ "$#" -ge 2 ] || die "$1 requires a value"
 }
 
+resolve_variant() {
+    if [ -n "$template_variant" ]; then
+        "$repo_root/scripts/template-variant.sh" "$template_variant" variant
+        return
+    fi
+
+    case "$template_name" in
+        minimal|guix-minimal|*minimal*) printf '%s\n' minimal ;;
+        *) printf '%s\n' normal ;;
+    esac
+}
+
+load_variant_expectations() {
+    template_variant="$(resolve_variant)"
+    mapfile -t expected_commands < \
+        <("$repo_root/scripts/template-variant.sh" "$template_variant" commands)
+    mapfile -t expected_desktops < \
+        <("$repo_root/scripts/template-appmenus.sh" "$template_variant")
+
+    [ "${#expected_commands[@]}" -gt 0 ] ||
+        die "empty command expectation list for variant: $template_variant"
+    [ "${#expected_desktops[@]}" -gt 0 ] ||
+        die "empty appmenu expectation list for variant: $template_variant"
+}
+
 run_as_root() {
     if [ "$(id -u)" -eq 0 ]; then
         "$@"
@@ -69,34 +81,12 @@ run_as_root() {
     fi
 }
 
-ensure_nose2_runner() {
-    if command -v nose2 >/dev/null 2>&1; then
-        return
+run_as_dom0_user() {
+    if [ "$(id -un)" = "$dom0_test_user" ]; then
+        "$@"
+    else
+        run_as_root runuser -u "$dom0_test_user" -- "$@"
     fi
-
-    if [ -n "${GUIX_NOSE2_RPM:-}" ] && [ -r "$GUIX_NOSE2_RPM" ]; then
-        printf 'nose2 not found; installing %s\n' "$GUIX_NOSE2_RPM"
-        if command -v dnf >/dev/null 2>&1; then
-            run_as_root dnf -y install "$GUIX_NOSE2_RPM" || true
-        fi
-        if ! command -v nose2 >/dev/null 2>&1 && command -v rpm >/dev/null 2>&1; then
-            run_as_root rpm -Uvh --replacepkgs "$GUIX_NOSE2_RPM" || true
-        fi
-        if command -v nose2 >/dev/null 2>&1; then
-            return
-        fi
-    fi
-
-    printf 'nose2 not found; installing python3-nose2 for Qubes system tests\n'
-    if command -v qubes-dom0-update >/dev/null 2>&1; then
-        run_as_root qubes-dom0-update -y python3-nose2 || true
-    fi
-    if ! command -v nose2 >/dev/null 2>&1 && command -v dnf >/dev/null 2>&1; then
-        run_as_root dnf -y install python3-nose2 || true
-    fi
-
-    command -v nose2 >/dev/null 2>&1 ||
-        die "nose2 is required for Qubes openQA-compatible system tests"
 }
 
 vm_exists() {
@@ -249,6 +239,17 @@ wait_for_qrexec() {
     done
     collect_vm_diagnostics "$vm"
     return 1
+}
+
+start_vm_or_die() {
+    local vm="$1"
+
+    if qvm-start "$vm" >/dev/null; then
+        return 0
+    fi
+
+    collect_vm_diagnostics "$vm"
+    die "failed to start VM: $vm"
 }
 
 shutdown_vm_or_die() {
@@ -450,6 +451,20 @@ run_qubes_cmd() {
     return "$status"
 }
 
+run_vm_cmd() {
+    local vm="$1"
+    shift
+
+    run_qubes_cmd qvm-run --no-gui --pass-io "$vm" "$@"
+}
+
+run_vm_root_cmd() {
+    local vm="$1"
+    shift
+
+    run_qubes_cmd qvm-run --no-gui --pass-io --user root "$vm" "$@"
+}
+
 infer_qvm_run_target() {
     [ "${1:-}" = qvm-run ] || return 0
     shift
@@ -520,6 +535,84 @@ vm_provides_network() {
     esac
 }
 
+guest_runtime_diagnostics() {
+    cat <<'EOF'
+set +e
+echo "== qrexec runtime =="
+id
+ps -efww | grep -E "qrexec|qubes|shepherd" | grep -v grep
+ls -la /run/qubes /var/run/qubes 2>/dev/null
+echo "== guest logs =="
+for log in \
+    /var/log/qubes-qrexec-agent.log \
+    /var/log/qubes-qrexec-fork-server.log \
+    /var/log/qubes-gui-agent.log \
+    /var/log/Xorg.0.log \
+    /home/user/.xsession-errors \
+    /home/user/.xorg-errors \
+    /tmp/qubes-guix-*.log \
+    /var/log/shepherd.log
+do
+    [ -e "$log" ] || continue
+    echo "-- $log --"
+    tail -240 "$log"
+done
+EOF
+}
+
+guest_netvm_diagnostics() {
+    cat <<'EOF'
+set +e
+echo "== NetVM service state =="
+herd status qubes-network qubes-network-uplink qubes-network-sysctl 2>&1
+echo "== NetVM qubesdb =="
+for key in \
+    /qubes-netvm-network \
+    /qubes-netvm-gateway \
+    /qubes-netvm-gateway6 \
+    /qubes-netvm-primary-dns \
+    /qubes-netvm-secondary-dns \
+    /qubes-service/qubes-network \
+    /qubes-service/qubes-updates-proxy
+do
+    printf "%s=" "$key"
+    qubesdb-read "$key" 2>/dev/null || true
+    printf "\n"
+done
+echo "== NetVM modules =="
+lsmod | grep -E "xen.*net|netback|netfront" || true
+modprobe -v xen-netback 2>&1 || modprobe -v netbk 2>&1 || true
+echo "== NetVM hotplug tools =="
+command -v xenstore-read xenstore-write nft conntrack ip modprobe qubesdb-read || true
+find /etc/xen/scripts /run/current-system/profile/etc/xen/scripts \
+    -maxdepth 1 -type f -printf "%p\n" 2>/dev/null | sort
+for path in \
+    /etc/xen/scripts/vif-route-qubes \
+    /etc/xen/scripts/vif-common.sh \
+    /etc/xen/scripts/xen-hotplug-common.sh \
+    /etc/xen/scripts/hotplugpath.sh
+do
+    if [ -e "$path" ]; then
+        ls -l "$path"
+    else
+        echo "missing $path"
+    fi
+done
+echo "== NetVM logs =="
+for log in \
+    /var/log/qubes-network.log \
+    /var/log/qubes-network-uplink.log \
+    /var/log/qubes-network-sysctl.log \
+    /var/log/qubes-feature-advertisement.log \
+    /var/log/shepherd.log
+do
+    [ -e "$log" ] || continue
+    echo "-- $log --"
+    tail -240 "$log"
+done
+EOF
+}
+
 collect_vm_diagnostics() {
     local vm="$1"
     local log
@@ -547,59 +640,11 @@ collect_vm_diagnostics() {
     done
     if qvm-check --running "$vm" >/dev/null 2>&1; then
         timeout 30 qvm-run --no-gui --pass-io --user root "$vm" \
-            'set +e; echo "== qrexec runtime =="; id; ps -efww | grep -E "qrexec|qubes|shepherd" | grep -v grep; ls -la /run/qubes /var/run/qubes 2>/dev/null; echo "== guest logs =="; for log in /var/log/qubes-qrexec-agent.log /var/log/qubes-qrexec-fork-server.log /var/log/qubes-gui-agent.log /var/log/Xorg.0.log /home/user/.xsession-errors /home/user/.xorg-errors /var/log/shepherd.log; do [ -e "$log" ] || continue; echo "-- $log --"; tail -240 "$log"; done' \
+            "$(guest_runtime_diagnostics)" \
             >&2 || true
         if vm_provides_network "$vm"; then
-            timeout 45 qvm-run --no-gui --pass-io --user root "$vm" '
-                set +e
-                echo "== NetVM service state =="
-                herd status qubes-network qubes-network-uplink qubes-network-sysctl 2>&1
-                echo "== NetVM qubesdb =="
-                for key in \
-                    /qubes-netvm-network \
-                    /qubes-netvm-gateway \
-                    /qubes-netvm-gateway6 \
-                    /qubes-netvm-primary-dns \
-                    /qubes-netvm-secondary-dns \
-                    /qubes-service/qubes-network \
-                    /qubes-service/qubes-updates-proxy
-                do
-                    printf "%s=" "$key"
-                    qubesdb-read "$key" 2>/dev/null || true
-                    printf "\n"
-                done
-                echo "== NetVM modules =="
-                lsmod | grep -E "xen.*net|netback|netfront" || true
-                modprobe -v xen-netback 2>&1 || modprobe -v netbk 2>&1 || true
-                echo "== NetVM hotplug tools =="
-                command -v xenstore-read xenstore-write nft conntrack ip modprobe qubesdb-read || true
-                find /etc/xen/scripts /run/current-system/profile/etc/xen/scripts \
-                    -maxdepth 1 -type f -printf "%p\n" 2>/dev/null | sort
-                for path in \
-                    /etc/xen/scripts/vif-route-qubes \
-                    /etc/xen/scripts/vif-common.sh \
-                    /etc/xen/scripts/xen-hotplug-common.sh \
-                    /etc/xen/scripts/hotplugpath.sh
-                do
-                    if [ -e "$path" ]; then
-                        ls -l "$path"
-                    else
-                        echo "missing $path"
-                    fi
-                done
-                echo "== NetVM logs =="
-                for log in \
-                    /var/log/qubes-network.log \
-                    /var/log/qubes-network-uplink.log \
-                    /var/log/qubes-network-sysctl.log \
-                    /var/log/qubes-feature-advertisement.log \
-                    /var/log/shepherd.log
-                do
-                    [ -e "$log" ] || continue
-                    echo "-- $log --"
-                    tail -240 "$log"
-                done
-            ' >&2 || true
+            timeout 45 qvm-run --no-gui --pass-io --user root "$vm" \
+                "$(guest_netvm_diagnostics)" >&2 || true
         fi
     else
         printf 'Skipping guest qrexec diagnostics: %s is not running\n' "$vm" >&2
@@ -630,7 +675,7 @@ guest_command_checks() {
     local command_name
 
     for command_name in "${expected_commands[@]}"; do
-        printf 'command -v %q >/dev/null; ' "$command_name"
+        printf 'command -v %q >/dev/null\n' "$command_name"
     done
 }
 
@@ -638,8 +683,524 @@ guest_desktop_checks() {
     local desktop_file
 
     for desktop_file in "${expected_desktops[@]}"; do
-        printf 'test -f /usr/share/applications/%q; ' "$desktop_file"
+        printf 'desktop=/usr/share/applications/%q\n' "$desktop_file"
+        printf 'test -f "$desktop"\n'
+        printf 'grep -Eq "^Icon=.+" "$desktop"\n'
     done
+}
+
+guest_tls_checks() {
+    printf 'test -s /etc/ssl/certs/ca-certificates.crt\n'
+}
+
+guest_profile_checks() {
+    guest_command_checks
+    guest_desktop_checks
+    guest_tls_checks
+}
+
+guest_template_boot_checks() {
+    {
+        cat <<'EOF'
+set -e
+qubesdb-read /name
+/usr/bin/qubesdb-read /qubes-vm-type
+test -x /usr/bin/python3
+test -x /sbin/blockdev
+test -x /sbin/poweroff
+EOF
+        guest_profile_checks
+    }
+}
+
+guest_qrexec_agent_checks() {
+    cat <<'EOF'
+set -e
+test -e /usr/lib/qubes/qrexec-agent ||
+    test -e /run/current-system/profile/lib/qubes/qrexec-agent
+EOF
+}
+
+guest_qubes_path_checks() {
+    cat <<'EOF'
+test -f /etc/fstab
+test ! -L /etc/fstab
+test -L /usr/lib/qubes
+test -L /usr/lib/qubes-bind-dirs.d
+test -d /etc/qubes-rpc
+test ! -L /etc/qubes-rpc
+	test -d /etc/qubes/post-install.d
+	test ! -L /etc/qubes/post-install.d
+	test -r /etc/qubes-guix-channel/.guix-channel
+	test -r /etc/qubes-guix-channel/qubes/vm.scm
+	test -x /etc/qubes-rpc/qubes.WaitForSession
+test -x /etc/qubes-rpc/qubes.VMShell
+EOF
+}
+
+guest_template_writable_path_checks() {
+    {
+        printf 'set -eux\n'
+        guest_qubes_path_checks
+        cat <<'EOF'
+printf "#!/bin/sh\nexit 0\n" > /etc/qubes-rpc/test.GuixWritable
+chmod 755 /etc/qubes-rpc/test.GuixWritable
+test -x /etc/qubes-rpc/test.GuixWritable
+printf "#!/bin/sh\nexit 0\n" > /etc/qubes/post-install.d/50-test.sh
+chmod 755 /etc/qubes/post-install.d/50-test.sh
+test -x /etc/qubes/post-install.d/50-test.sh
+EOF
+    }
+}
+
+guest_appvm_qubes_path_checks() {
+    {
+        printf 'set -eux\n'
+        guest_qubes_path_checks
+        cat <<'EOF'
+awk 'NF >= 2 && $1 !~ /^#/ && $2 == "/rw" { found = 1 } END { exit found ? 0 : 1 }' /etc/fstab
+EOF
+    }
+}
+
+guest_appvm_identity_checks() {
+    local expected_name="$1"
+
+    printf 'expected_name=%q\n' "$expected_name"
+    cat <<'EOF'
+set -eux
+name="$(qubesdb-read /name)"
+type="$(qubesdb-read /qubes-vm-type)"
+persistence="$(qubesdb-read /qubes-vm-persistence)"
+printf "name=%s type=%s persistence=%s\n" "$name" "$type" "$persistence"
+test "$name" = "$expected_name"
+test "$type" = AppVM
+test "$persistence" = rw-only
+mountpoint -q /rw
+mountpoint -q /home
+mountpoint -q /usr/local
+test -b /dev/xvdb
+EOF
+    guest_profile_checks
+}
+
+guest_appvm_swap_and_meminfo_checks() {
+    cat <<'EOF'
+set -eux
+/sbin/blockdev --getsz /dev/xvdb >/dev/null
+test -b /dev/xvdc1
+grep -q "^/dev/xvdc1[[:space:]]" /proc/swaps
+test -e /run/qubes-service/meminfo-writer
+pidfile=/var/run/meminfo-writer.pid
+test -s "$pidfile"
+pid="$(cat "$pidfile")"
+kill -0 "$pid"
+pgrep -x meminfo-writer >/dev/null
+EOF
+}
+
+guest_appvm_guix_storage_checks() {
+    cat <<'EOF'
+set -eux
+test -w "$HOME"
+mkdir -p "$HOME/.config/guix" "$HOME/.cache/guix"
+guix --version >/dev/null
+rw_dev="$(stat -c %d /rw)"
+for path in /home "$HOME" /usr/local; do
+    path_dev="$(stat -c %d "$path")"
+    printf "%s dev=%s rw_dev=%s private\n" "$path" "$path_dev" "$rw_dev"
+    test "$path_dev" = "$rw_dev"
+done
+for path in /gnu/store /var/guix/db /var/guix/profiles; do
+    test -e "$path"
+    path_dev="$(stat -c %d "$path")"
+    printf "%s dev=%s rw_dev=%s\n" "$path" "$path_dev" "$rw_dev"
+    test "$path_dev" != "$rw_dev"
+done
+per_user_profile="/var/guix/profiles/per-user/$(id -un)"
+if [ -e "$per_user_profile" ]; then
+    profile_dev="$(stat -c %d "$per_user_profile")"
+    printf "%s dev=%s rw_dev=%s\n" "$per_user_profile" "$profile_dev" "$rw_dev"
+    test "$profile_dev" != "$rw_dev"
+fi
+EOF
+}
+
+guest_default_route_checks() {
+    cat <<'EOF'
+set -eu
+. /usr/lib/qubes/init/functions
+if qsvc disable-default-route; then
+    exit 0
+fi
+ip route show default | grep -q .
+test -s /etc/resolv.conf
+grep -q "^nameserver[[:space:]]" /etc/resolv.conf
+EOF
+}
+
+guest_https_probe_checks() {
+    cat <<'EOF'
+set -eux
+. /usr/lib/qubes/init/functions
+if qsvc disable-default-route; then
+    exit 0
+fi
+ip route show default | grep -q .
+test -s /etc/ssl/certs/ca-certificates.crt
+command -v curl >/dev/null
+rm -f /tmp/qubes-guix-https-probe
+timeout 90 curl \
+    --fail \
+    --silent \
+    --show-error \
+    --location \
+    --proto =https \
+    --max-time 60 \
+    https://guix.gnu.org/ \
+    -o /tmp/qubes-guix-https-probe
+test -s /tmp/qubes-guix-https-probe
+rm -f /tmp/qubes-guix-download.payload \
+    /tmp/qubes-guix-download.out \
+    /tmp/qubes-guix-download.err
+timeout 180 guix download \
+    --output=/tmp/qubes-guix-download.payload \
+    https://guix.gnu.org/ \
+    >/tmp/qubes-guix-download.out \
+    2>/tmp/qubes-guix-download.err
+test -s /tmp/qubes-guix-download.payload
+EOF
+}
+
+guest_default_user_checks() {
+    cat <<'EOF'
+set -eu
+expected_user="$(qubesdb-read /default-user 2>/dev/null || echo user)"
+test "$(id -un)" = "$expected_user"
+test "${HOME:-}" = "/home/$expected_user"
+test "${USER:-}" = "$expected_user"
+test "${LOGNAME:-}" = "$expected_user"
+EOF
+}
+
+guest_write_persistence_sentinels() {
+    cat <<'EOF'
+set -eu
+test_path="$HOME/.guix-native-template-test"
+case "$test_path" in
+    /home/*/.guix-native-template-test) ;;
+    *)
+        echo "unexpected HOME for persistent AppVM test: $HOME" >&2
+        exit 1
+        ;;
+esac
+printf "%s\n" guix-native-template > "$test_path"
+EOF
+}
+
+guest_root_write_persistence_sentinels() {
+    cat <<'EOF'
+set -eu
+printf "%s\n" guix-rw > /rw/.guix-native-template-rw-test
+mkdir -p /usr/local/share
+printf "%s\n" guix-usrlocal > /usr/local/share/.guix-native-template-usrlocal-test
+touch /var/guix/.qubes-appvm-volatile-test
+EOF
+}
+
+guest_user_persistence_after_restart_checks() {
+    cat <<'EOF'
+set -eu
+rw_dev="$(stat -c %d /rw)"
+home_dev="$(stat -c %d "$HOME")"
+printf "%s dev=%s rw_dev=%s after restart\n" "$HOME" "$home_dev" "$rw_dev"
+test "$home_dev" = "$rw_dev"
+test "$(cat "$HOME/.guix-native-template-test")" = guix-native-template
+EOF
+}
+
+guest_root_persistence_after_restart_checks() {
+    cat <<'EOF'
+set -eu
+test "$(cat /rw/.guix-native-template-rw-test)" = guix-rw
+test "$(cat /usr/local/share/.guix-native-template-usrlocal-test)" = guix-usrlocal
+rw_dev="$(stat -c %d /rw)"
+for path in /home /usr/local; do
+    path_dev="$(stat -c %d "$path")"
+    printf "%s dev=%s rw_dev=%s private after restart\n" "$path" "$path_dev" "$rw_dev"
+    test "$path_dev" = "$rw_dev"
+done
+for path in /gnu/store /var/guix/db /var/guix/profiles; do
+    test -e "$path"
+    path_dev="$(stat -c %d "$path")"
+    printf "%s dev=%s rw_dev=%s after restart\n" "$path" "$path_dev" "$rw_dev"
+    test "$path_dev" != "$rw_dev"
+done
+test ! -e /var/guix/.qubes-appvm-volatile-test
+EOF
+}
+
+find_dom0_appmenu_launcher() {
+    local vm="$1"
+    local app_id="$2"
+    local appmenus_dir="$dom0_test_home/.local/share/qubes-appmenus/$vm/apps"
+    local applications_dir="$dom0_test_home/.local/share/applications"
+    local file
+
+    if [ -d "$appmenus_dir" ]; then
+        while IFS= read -r -d '' file; do
+            case "$(basename -- "$file")" in
+                *"$app_id"*.desktop) ;;
+                *) continue ;;
+            esac
+            printf '%s\n' "$file"
+            return 0
+        done < <(find "$appmenus_dir" -type f -name '*.desktop' -print0 2>/dev/null)
+    fi
+
+    if [ -d "$applications_dir" ]; then
+        while IFS= read -r -d '' file; do
+            grep -Fq -- '%VMNAME%' "$file" && continue
+            case "$(basename -- "$file")" in
+                *"$vm"*"${app_id}"*.desktop) ;;
+                *) continue ;;
+            esac
+            grep -Fq -- "$vm" "$file" || continue
+            printf '%s\n' "$file"
+            return 0
+        done < <(find "$applications_dir" -type f -name '*.desktop' -print0 2>/dev/null)
+    fi
+
+    return 1
+}
+
+wait_for_guest_process() {
+    local vm="$1"
+    local process="$2"
+    local log_file="${3:-}"
+    local attempt
+    local stable=0
+    local quoted_log
+
+    for attempt in $(seq 1 45); do
+        if qvm-run --no-gui --pass-io --user root "$vm" \
+            "pgrep -x '$process' >/dev/null" >/dev/null 2>&1; then
+            stable=$((stable + 1))
+            [ "$stable" -ge 3 ] && return 0
+        else
+            stable=0
+        fi
+        sleep 1
+    done
+
+    if [ -n "$log_file" ]; then
+        printf -v quoted_log '%q' "$log_file"
+        qvm-run --no-gui --pass-io --user root "$vm" \
+            "if [ -e $quoted_log ]; then echo '-- $log_file --'; tail -200 $quoted_log; fi" \
+            >&2 || true
+    fi
+    collect_vm_diagnostics "$vm"
+    die "process did not stay running after GUI launch in $vm: $process"
+}
+
+guest_terminal_process_for_desktop() {
+    local vm="$1"
+    local desktop_path="$2"
+    local quoted_desktop_path
+
+    printf -v quoted_desktop_path '%q' "$desktop_path"
+    run_vm_cmd "$vm" "
+set -eu
+desktop_file=$quoted_desktop_path
+command -v qubes-desktop-run >/dev/null
+test -f \"\$desktop_file\"
+desktop_key() {
+    awk -F= -v key=\"\$1\" '\$1 == key { print substr(\$0, index(\$0, \"=\") + 1); exit }' \"\$desktop_file\"
+}
+categories=\"\$(desktop_key Categories)\"
+case \";\$categories;\" in
+    *';TerminalEmulator;'*) ;;
+    *) exit 0 ;;
+esac
+exec_line=\"\$(desktop_key Exec)\"
+[ -n \"\$exec_line\" ]
+set -- \$exec_line
+process=\"\${1##*/}\"
+command -v \"\$process\" >/dev/null
+printf '%s\n' \"\$process\"
+"
+}
+
+dom0_icon_exists() {
+    local icon="$1"
+    local root name found
+    local names=()
+    local roots=(
+        "$dom0_test_home/.local/share/icons"
+        "$dom0_test_home/.local/share/pixmaps"
+        /usr/share/icons
+        /usr/share/pixmaps
+    )
+
+    if [[ "$icon" = /* ]]; then
+        [ -e "$icon" ]
+        return
+    fi
+
+    case "$icon" in
+        *.*)
+            names=("$icon")
+            ;;
+        *)
+            names=(
+                "$icon"
+                "$icon.png"
+                "$icon.svg"
+                "$icon-symbolic.svg"
+                "$icon.xpm"
+                "$icon.jpg"
+                "$icon.jpeg"
+                "$icon.ico"
+            )
+            ;;
+    esac
+
+    for root in "${roots[@]}"; do
+        [ -d "$root" ] || continue
+        for name in "${names[@]}"; do
+            found="$(find -L "$root" -type f -name "$name" -print -quit 2>/dev/null || true)"
+            [ -n "$found" ] && return 0
+        done
+    done
+
+    return 1
+}
+
+check_dom0_launcher_icon() {
+    local launcher="$1"
+    local icon
+
+    icon="$(
+        awk -F= '
+            tolower($1) == "icon" {
+                value = substr($0, index($0, "=") + 1)
+                sub(/\r$/, "", value)
+                print value
+                exit
+            }
+        ' "$launcher"
+    )"
+    [ -n "$icon" ] || die "dom0 appmenu launcher has no Icon field: $launcher"
+    dom0_icon_exists "$icon" ||
+        die "dom0 appmenu icon is not present: $launcher Icon=$icon"
+}
+
+run_appmenu_command() {
+    local vm="$1"
+    local action="$2"
+    shift 2
+    local output
+
+    output="$(run_as_dom0_user "$@" 2>&1)" || {
+        printf '%s\n' "$output" >&2
+        return 1
+    }
+    printf '%s\n' "$output"
+    if printf '%s\n' "$output" | grep -Fq "Failed to get icon"; then
+        printf '%s\n' "$output" >&2
+        die "Qubes appmenu icon retrieval failed while $action $vm"
+    fi
+}
+
+sync_vm_appmenus() {
+    local vm="$1"
+
+    need qvm-sync-appmenus
+    need qvm-appmenus
+    run_appmenu_command "$vm" syncing qvm-sync-appmenus "$vm"
+    run_appmenu_command "$vm" updating qvm-appmenus --update --force "$vm"
+}
+
+dump_appmenu_diagnostics() {
+    local vm="$1"
+    local dir
+
+    printf -- '-- qvm-features %s appmenus --\n' "$vm" >&2
+    if command -v qvm-features >/dev/null 2>&1; then
+        qvm-features "$vm" 2>&1 |
+            grep -E '(^|[[:space:]])(menu-items|default-menu-items|netvm-menu-items|servicevm-menu-items)([[:space:]]|$)' >&2 ||
+            true
+    fi
+
+    for dir in \
+        "$dom0_test_home/.local/share/applications" \
+        "$dom0_test_home/.local/share/qubes-appmenus/$vm" \
+        "$dom0_test_home/.local/share/qubes-appmenus/$vm/apps"
+    do
+        [ -e "$dir" ] || continue
+        printf -- '-- %s --\n' "$dir" >&2
+        find "$dir" -maxdepth 2 -type f -name '*.desktop' -printf '%P\n' 2>/dev/null |
+            sort >&2 || true
+    done
+}
+
+check_appmenu_and_launch_terminals() {
+    local vm="$1"
+    local desktop
+    local app_id
+    local desktop_path
+    local process
+    local quoted_desktop
+    local quoted_log
+    local log_file
+    local launcher
+
+    [ "${#expected_desktops[@]}" -gt 0 ] || return 0
+    dom0_test_home="$(getent passwd "$dom0_test_user" | cut -d: -f6)"
+    [ -n "$dom0_test_home" ] && [ -d "$dom0_test_home" ] ||
+        die "dom0 appmenu test user has no home directory: $dom0_test_user"
+
+    sync_vm_appmenus "$vm"
+
+    for desktop in "${expected_desktops[@]}"; do
+        app_id="${desktop%.desktop}"
+        desktop_path="/usr/share/applications/$desktop"
+        printf 'Checking Qubes appmenu entry for %s in %s\n' "$desktop" "$vm"
+        if ! launcher="$(find_dom0_appmenu_launcher "$vm" "$app_id")"; then
+            dump_appmenu_diagnostics "$vm"
+            die "missing dom0 appmenu launcher for $desktop in $vm"
+        fi
+        check_dom0_launcher_icon "$launcher"
+
+        process="$(guest_terminal_process_for_desktop "$vm" "$desktop_path")"
+        [ -n "$process" ] || continue
+        printf 'Launching %s through qubes-desktop-run in %s\n' "$desktop" "$vm"
+        printf -v quoted_desktop '%q' "$desktop_path"
+        log_file="/tmp/qubes-guix-${app_id}.log"
+        printf -v quoted_log '%q' "$log_file"
+        run_as_dom0_user qvm-run --no-gui --pass-io "$vm" \
+            "sh -lc 'rm -f $quoted_log; setsid qubes-desktop-run $quoted_desktop >$quoted_log 2>&1 </dev/null &'" \
+            >/dev/null
+        wait_for_guest_process "$vm" "$process" "$log_file"
+        qvm-run --no-gui --pass-io --user root "$vm" \
+            "pkill -x '$process' || true" >/dev/null 2>&1 || true
+    done
+}
+
+guest_appvm_failure_diagnostics() {
+    cat <<'EOF'
+set +e
+echo "== qubesdb =="
+qubesdb-read /name
+qubesdb-read /qubes-vm-type
+qubesdb-read /qubes-vm-persistence
+echo "== block devices =="
+ls -l /dev/xvd* /dev/disk/by-id 2>/dev/null
+echo "== mounts =="
+findmnt 2>/dev/null || mount
+echo "== fstab =="
+cat /etc/fstab 2>/dev/null
+EOF
 }
 
 collect_appvm_diagnostics() {
@@ -669,274 +1230,13 @@ collect_appvm_diagnostics() {
     fi
 
     printf 'Collecting AppVM diagnostics after smoke-test failure: %s\n' "$appvm_name" >&2
-    qvm-run --no-gui --pass-io --user root "$appvm_name" '
-        set +e
-        echo "== qubesdb =="
-        qubesdb-read /name
-        qubesdb-read /qubes-vm-type
-        qubesdb-read /qubes-vm-persistence
-        echo "== block devices =="
-        ls -l /dev/xvd* /dev/disk/by-id 2>/dev/null
-        echo "== mounts =="
-        findmnt 2>/dev/null || mount
-        echo "== fstab =="
-        cat /etc/fstab 2>/dev/null
-        echo "== Qubes logs =="
-        for log in /var/log/qubes-*.log /var/log/qubes/* \
-            /var/log/Xorg.0.log \
-            /home/user/.xsession-errors /home/user/.xorg-errors; do
-            [ -e "$log" ] || continue
-            echo "-- $log --"
-            tail -200 "$log"
-        done
-    ' >&2 || true
-}
-
-collect_system_test_diagnostics() {
-    local test_spec="$1"
-    local log_file="$2"
-    local vm
-
-    printf 'Collecting Qubes system-test diagnostics after failure: %s\n' "$test_spec" >&2
-    ps -efww | grep -E 'nose2|qubes.tests|qvm-|qubesd|qrexec|script|timeout' >&2 || true
-    if command -v systemctl >/dev/null 2>&1; then
-        systemctl status qubesd virtxend libvirtd virtqemud xenstored xenconsoled \
-            --no-pager -l >&2 || true
-    fi
-    if command -v journalctl >/dev/null 2>&1; then
-        journalctl -b \
-            -u qubesd \
-            -u virtxend \
-            -u libvirtd \
-            -u virtqemud \
-            -u xenstored \
-            -u xenconsoled \
-            -n 500 --no-pager >&2 || true
-    fi
-
-    free -h >&2 || true
-    df -hT / /var/lib/qubes /var/tmp /tmp >&2 || true
-    lsblk -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINTS >&2 || true
-    qvm-ls --fields NAME,STATE,CLASS,TEMPLATE,KERNEL,VIRT_MODE >&2 || true
-    qvm-pool list >&2 || true
-    qvm-pool info varlibqubes >&2 || true
-
-    for vm in "$template_name" "$appvm_name" "$system_test_netvm" \
-        test-inst-vm1 test-inst-vm2; do
-        vm_exists "$vm" || continue
-        printf -- '-- qvm-prefs %s --\n' "$vm" >&2
-        qvm-prefs "$vm" >&2 || true
-        printf -- '-- qvm-volume info %s:* --\n' "$vm" >&2
-        qvm-volume info "$vm:root" >&2 || true
-        qvm-volume info "$vm:private" >&2 || true
-        qvm-volume info "$vm:volatile" >&2 || true
-        if qvm-check --running "$vm" >/dev/null 2>&1; then
-            printf -- '-- guest GUI diagnostics %s --\n' "$vm" >&2
-            timeout 45 qvm-run --no-gui --pass-io --user root "$vm" '
-                set +e
-                echo "== processes =="
-                ps -efww | grep -E "qubes|qrexec|Xorg|xinit|xterm" | grep -v grep
-                echo "== display state =="
-                env | sort | grep -E "^(DISPLAY|XDG_|DBUS_|QUBES_)=" || true
-                ls -la /tmp/.X11-unix /run/user/* 2>/dev/null || true
-                echo "== PAM snippets =="
-                ls -la /etc/pam.d 2>/dev/null || true
-                for pam in /etc/pam.d/qubes-gui-agent /etc/pam.d/su; do
-                    [ -e "$pam" ] || continue
-                    echo "-- $pam --"
-                    cat "$pam"
-                done
-                echo "== Qubes and X logs =="
-                for log in \
-                    /var/log/qubes-gui-agent.log \
-                    /var/log/qubes-qrexec-agent.log \
-                    /var/log/qubes-qrexec-fork-server.log \
-                    /home/user/.xsession-errors \
-                    /home/user/.xorg-errors
-                do
-                    [ -e "$log" ] || continue
-                    echo "-- $log --"
-                    tail -240 "$log"
-                done
-            ' >&2 || true
-        fi
-    done
-
-    if command -v xl >/dev/null 2>&1; then
-        printf -- '-- xl info --\n' >&2
-        xl info >&2 || true
-        printf -- '-- xl list --\n' >&2
-        xl list >&2 || true
-        printf -- '-- xl dmesg --\n' >&2
-        xl dmesg 2>&1 | tail -500 >&2 || true
-    fi
-    if command -v virsh >/dev/null 2>&1; then
-        printf -- '-- virsh xen domains --\n' >&2
-        virsh -c xen:/// list --all >&2 || true
-    fi
-
-    for log in /var/log/xen/*.log /var/log/libvirt/libxl/*.log; do
-        [ -e "$log" ] || continue
-        printf -- '-- %s --\n' "$log" >&2
-        read_root_file "$log" >&2
-    done
-    printf -- '-- /var/lib/qubes layout --\n' >&2
-    find /var/lib/qubes -maxdepth 3 \
-        \( -name '*test*' -o -name "$template_name" -o -name "$system_test_netvm" \) \
-        -printf '%M %u %g %s %p\n' >&2 || true
-
-    if [ -e "$log_file" ]; then
-        printf -- '-- %s --\n' "$log_file" >&2
-        tail -240 "$log_file" >&2 || true
-    fi
-}
-
-prepare_system_test_user() {
-    local uid
-    local gid
-    local runtime_dir
-
-    id "$dom0_test_user" >/dev/null 2>&1 ||
-        die "dom0 system-test user does not exist: $dom0_test_user"
-
-    uid="$(id -u "$dom0_test_user")"
-    gid="$(id -g "$dom0_test_user")"
-    runtime_dir="/run/user/$uid"
-    run_as_root install -d -m 0700 -o "$uid" -g "$gid" "$runtime_dir"
-    printf '%s\n' "$runtime_dir"
-}
-
-prepare_system_test_pythonpath() {
-    local support_dir="/tmp/qubes-guix-system-test-python"
-
-    [ "$force_system_test_vm_netvm_none" -eq 1 ] || return 0
-
-    run_as_root install -d -m 0755 "$support_dir"
-    run_as_root tee "$support_dir/sitecustomize.py" >/dev/null <<'PY'
-"""Qubes system-test compatibility hooks for the Guix template harness.
-
-This file is injected only when the nested dom0 has no real default NetVM and
-the harness had to create a synthetic one to satisfy Qubes' test-suite cleanup
-assumptions.  Non-network vm_qrexec_gui tests should not depend on that
-synthetic NetVM, so force their generated test VMs to have no netvm.
-"""
-
-import os
-import sys
-
-
-def _patch_vm_qrexec_gui_netvm():
-    if os.environ.get("QUBES_GUIX_FORCE_TESTVM_NETVM_NONE") != "1":
-        return
-
-    try:
-        import qubes.tests.integ.vm_qrexec_gui as vm_qrexec_gui
-    except Exception as exc:  # pragma: no cover - best-effort test harness hook
-        print(
-            "qubes-guix: failed to import vm_qrexec_gui for netvm hook: {}".format(
-                exc
-            ),
-            file=sys.stderr,
-        )
-        return
-
-    original_setup = vm_qrexec_gui.TC_00_AppVMMixin.setUp
-
-    def setUp(self):
-        original_setup(self)
-        if getattr(self, "_testMethodName", "") == "test_210_time_sync":
-            return
-        changed = False
-        for attr in ("testvm1", "testvm2"):
-            vm = getattr(self, attr, None)
-            if vm is None:
-                continue
-            vm.netvm = None
-            changed = True
-        if changed:
-            self.app.save()
-
-    vm_qrexec_gui.TC_00_AppVMMixin.setUp = setUp
-    print(
-        "qubes-guix: forcing vm_qrexec_gui non-network test VMs to netvm=None",
-        file=sys.stderr,
-    )
-
-
-_patch_vm_qrexec_gui_netvm()
-PY
-    printf '%s\n' "$support_dir"
-}
-
-ensure_system_test_default_netvm() {
-    local current_netvm
-
-    current_netvm="$(qubes-prefs default_netvm 2>/dev/null || true)"
-    case "$current_netvm" in
-        ""|None) ;;
-        *) return 0 ;;
-    esac
-
-    printf 'Nested dom0 has no default_netvm; creating %s for Qubes system-test cleanup compatibility\n' \
-        "$system_test_netvm"
-    force_system_test_vm_netvm_none=1
-    if ! vm_exists "$system_test_netvm"; then
-        qvm-create --class AppVM --template "$template_name" --label red "$system_test_netvm"
-        qvm-prefs "$system_test_netvm" virt_mode pvh
-        qvm-prefs "$system_test_netvm" kernel "$kernel"
-    fi
-
-    # Qubes' integration-test cleanup code assumes default_netvm is an object
-    # with a name, as it is in the official openQA environment.  The synthetic
-    # NetVM is not expected to provide real external networking for these GUI
-    # and qrexec tests; it only satisfies that dom0-wide test-suite invariant.
-    qvm-prefs "$system_test_netvm" netvm "" >/dev/null 2>&1 || true
-    qvm-prefs "$system_test_netvm" vcpus 1 >/dev/null 2>&1 || true
-    qvm-prefs "$system_test_netvm" memory 300 >/dev/null 2>&1 || true
-    qvm-prefs "$system_test_netvm" maxmem 600 >/dev/null 2>&1 || true
-    qvm-prefs "$system_test_netvm" provides_network true
-    qubes-prefs default_netvm "$system_test_netvm"
-}
-
-run_nose2_system_test() {
-    local test_timeout="$1"
-    local runtime_dir="$2"
-    local test_home="$3"
-    local display
-    local env_args
-    local xauthority
-    shift 3
-
-    display="${QUBES_DOM0_DISPLAY:-${DISPLAY:-:0}}"
-    xauthority="${QUBES_DOM0_XAUTHORITY:-$test_home/.Xauthority}"
-
-    env_args=(
-        QUBES_TEST_TEMPLATES="$template_name" \
-        QUBES_TEST_SKIP_KERNEL_INSTALL=1 \
-        PYTHONUNBUFFERED=1 \
-        XDG_RUNTIME_DIR="$runtime_dir" \
-        HOME="$test_home" \
-        USER="$dom0_test_user" \
-        LOGNAME="$dom0_test_user" \
-        SUDO_USER="$dom0_test_user" \
-        DISPLAY="$display" \
-        XAUTHORITY="$xauthority"
-    )
-    if [ -n "$system_test_pythonpath" ]; then
-        env_args+=(
-            PYTHONPATH="$system_test_pythonpath${PYTHONPATH:+:$PYTHONPATH}"
-            QUBES_GUIX_FORCE_TESTVM_NETVM_NONE=1
-        )
-    fi
-
-    run_as_root env "${env_args[@]}" \
-        timeout --foreground "$test_timeout" \
-        bash -lc 'cd "$1"; shift; exec "$@"' bash "$test_home" \
-        "$@"
+    qvm-run --no-gui --pass-io --user root "$appvm_name" \
+        "$(guest_appvm_failure_diagnostics)" >&2 || true
 }
 
 cleanup() {
-    if [ "$keep_appvm" -eq 0 ] && vm_exists "$appvm_name"; then
+    if [ "$keep_appvm" -eq 0 ] && [ "$appvm_created" -eq 1 ] &&
+        vm_exists "$appvm_name"; then
         qvm-shutdown --wait "$appvm_name" >/dev/null 2>&1 || true
         qvm-remove --force "$appvm_name" >/dev/null 2>&1 || true
     fi
@@ -944,7 +1244,7 @@ cleanup() {
 
 on_exit() {
     local status=$?
-    if [ "$status" -ne 0 ]; then
+    if [ "$status" -ne 0 ] && [ "$diagnostics_enabled" -eq 1 ]; then
         collect_appvm_diagnostics
     fi
     cleanup
@@ -952,192 +1252,150 @@ on_exit() {
 }
 trap on_exit EXIT
 
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        --template)
-            require_arg "$@"
-            template_name="$2"
-            shift 2
-            ;;
-        --appvm)
-            require_arg "$@"
-            appvm_name="$2"
-            shift 2
-            ;;
-        --appvm-netvm)
-            require_arg "$@"
-            appvm_netvm="$2"
-            shift 2
-            ;;
-        --run-system-tests)
-            run_system_tests=1
-            shift
-            ;;
-        --system-tests)
-            require_arg "$@"
-            system_tests="$2"
-            shift 2
-            ;;
-        --expect-command)
-            require_arg "$@"
-            expected_commands+=("$2")
-            shift 2
-            ;;
-        --expect-desktop)
-            require_arg "$@"
-            expected_desktops+=("$2")
-            shift 2
-            ;;
-        --keep-appvm)
-            keep_appvm=1
-            shift
-            ;;
-        -h|--help)
-            usage
-            exit 0
-            ;;
-        *)
-            die "unknown argument: $1"
-            ;;
-    esac
-done
-
-need qvm-ls
-need qvm-create
-need qvm-run
-need qvm-start
-need qvm-shutdown
-need qvm-kill
-need qvm-remove
-need qvm-prefs
-need qvm-check
-
-ensure_qubesd_available
-ensure_qvm_start_daemon
-kernel="$(resolve_kernel)"
-vm_exists "$template_name" || die "template does not exist: $template_name"
-if vm_exists "$appvm_name"; then
-    die "temporary AppVM already exists: $appvm_name"
-fi
-
-stop_stale_vm_or_die "$template_name"
-
-printf 'Testing TemplateVM boot and qrexec: %s\n' "$template_name"
-qvm-start "$template_name" >/dev/null 2>&1 || true
-wait_for_qrexec "$template_name"
-run_qubes_cmd qvm-run --no-gui --pass-io "$template_name" \
-    'set -e; qubesdb-read /name; /usr/bin/qubesdb-read /qubes-vm-type; test -x /usr/bin/python3; test -x /sbin/blockdev; test -x /sbin/poweroff; '"$(guest_command_checks)$(guest_desktop_checks)"'true'
-run_qubes_cmd qvm-run --no-gui --pass-io "$template_name" 'id && uname -a'
-run_qubes_cmd qvm-run --no-gui --pass-io "$template_name" \
-    'test -e /usr/lib/qubes/qrexec-agent || test -e /run/current-system/profile/lib/qubes/qrexec-agent'
-run_qubes_cmd qvm-run --no-gui --pass-io --user root "$template_name" \
-    'set -eux; test -f /etc/fstab; test ! -L /etc/fstab; test -L /usr/lib/qubes; test -L /usr/lib/qubes-bind-dirs.d; test -d /etc/qubes-rpc; test ! -L /etc/qubes-rpc; test -d /etc/qubes/post-install.d; test ! -L /etc/qubes/post-install.d; printf "#!/bin/sh\nexit 0\n" > /etc/qubes-rpc/test.GuixWritable; chmod 755 /etc/qubes-rpc/test.GuixWritable; test -x /etc/qubes-rpc/test.GuixWritable; printf "#!/bin/sh\nexit 0\n" > /etc/qubes/post-install.d/50-test.sh; chmod 755 /etc/qubes/post-install.d/50-test.sh; test -x /etc/qubes/post-install.d/50-test.sh; test -x /etc/qubes-rpc/qubes.WaitForSession; test -x /etc/qubes-rpc/qubes.VMShell; grep -F "exec /bin/bash" /etc/qubes-rpc/qubes.VMShell'
-shutdown_vm_or_die "$template_name"
-
-printf 'Creating temporary AppVM: %s\n' "$appvm_name"
-qvm-create --class AppVM --template "$template_name" --label gray "$appvm_name"
-qvm-prefs "$appvm_name" virt_mode pvh
-qvm-prefs "$appvm_name" kernel "$kernel"
-if [ -n "$appvm_netvm" ]; then
-    qvm-check "$appvm_netvm" >/dev/null 2>&1 ||
-        die "requested AppVM NetVM does not exist: $appvm_netvm"
-    qvm-prefs "$appvm_name" netvm "$appvm_netvm"
-fi
-
-qvm-start "$appvm_name" >/dev/null
-wait_for_qrexec "$appvm_name"
-run_qubes_cmd qvm-run --no-gui --pass-io "$appvm_name" \
-    'set -eux; name="$(qubesdb-read /name)"; type="$(qubesdb-read /qubes-vm-type)"; persistence="$(qubesdb-read /qubes-vm-persistence)"; printf "name=%s type=%s persistence=%s\n" "$name" "$type" "$persistence"; test "$name" = "'"$appvm_name"'"; test "$type" = AppVM; test "$persistence" = rw-only; mountpoint -q /rw; mountpoint -q /home; mountpoint -q /usr/local; test -b /dev/xvdb; '"$(guest_command_checks)$(guest_desktop_checks)"'true'
-run_qubes_cmd qvm-run --no-gui --pass-io --user root "$appvm_name" \
-    'set -eux; /sbin/blockdev --getsz /dev/xvdb >/dev/null; test -b /dev/xvdc1; grep -q "^/dev/xvdc1[[:space:]]" /proc/swaps; test -e /run/qubes-service/meminfo-writer; pidfile=/var/run/meminfo-writer.pid; test -s "$pidfile"; pid="$(cat "$pidfile")"; kill -0 "$pid"; pgrep -x meminfo-writer >/dev/null'
-run_qubes_cmd qvm-run --no-gui --pass-io --user root "$appvm_name" \
-    'set -eux; test -f /etc/fstab; test ! -L /etc/fstab; awk '\''NF >= 2 && $1 !~ /^#/ && $2 == "/rw" { found = 1 } END { exit found ? 0 : 1 }'\'' /etc/fstab; test -L /usr/lib/qubes; test -L /usr/lib/qubes-bind-dirs.d; test -d /etc/qubes-rpc; test ! -L /etc/qubes-rpc; test -d /etc/qubes/post-install.d; test ! -L /etc/qubes/post-install.d; test -x /etc/qubes-rpc/qubes.WaitForSession; test -x /etc/qubes-rpc/qubes.VMShell'
-run_qubes_cmd qvm-run --no-gui --pass-io "$appvm_name" 'echo qrexec-ok && id && uname -a'
-run_qubes_cmd qvm-run --no-gui --pass-io "$appvm_name" \
-    'set -eux; test -w "$HOME"; mkdir -p "$HOME/.config/guix" "$HOME/.cache/guix"; guix --version >/dev/null; rw_dev="$(stat -c %d /rw)"; for path in /home "$HOME" /usr/local; do path_dev="$(stat -c %d "$path")"; printf "%s dev=%s rw_dev=%s private\n" "$path" "$path_dev" "$rw_dev"; test "$path_dev" = "$rw_dev"; done; for path in /gnu/store /var/guix/db /var/guix/profiles; do test -e "$path"; path_dev="$(stat -c %d "$path")"; printf "%s dev=%s rw_dev=%s\n" "$path" "$path_dev" "$rw_dev"; test "$path_dev" != "$rw_dev"; done; per_user_profile="/var/guix/profiles/per-user/$(id -un)"; if [ -e "$per_user_profile" ]; then profile_dev="$(stat -c %d "$per_user_profile")"; printf "%s dev=%s rw_dev=%s\n" "$per_user_profile" "$profile_dev" "$rw_dev"; test "$profile_dev" != "$rw_dev"; fi'
-current_netvm="$(qvm-prefs "$appvm_name" netvm 2>/dev/null || true)"
-case "$current_netvm" in
-    ""|None) printf 'Skipping AppVM uplink route check: %s has no NetVM\n' "$appvm_name" ;;
-    *)
-        run_qubes_cmd qvm-run --no-gui --pass-io --user root "$appvm_name" \
-            'set -eu; . /usr/lib/qubes/init/functions; if qsvc disable-default-route; then exit 0; fi; ip route show default | grep -q .; test -s /etc/resolv.conf; grep -q "^nameserver[[:space:]]" /etc/resolv.conf'
-        ;;
-esac
-check_wait_for_session_rpc "$appvm_name"
-run_qubes_cmd qvm-run --no-gui --pass-io "$appvm_name" \
-    'set -eu; expected_user="$(qubesdb-read /default-user 2>/dev/null || echo user)"; test "$(id -un)" = "$expected_user"; test "${HOME:-}" = "/home/$expected_user"; test "${USER:-}" = "$expected_user"; test "${LOGNAME:-}" = "$expected_user"'
-run_qubes_cmd qvm-run --no-gui --pass-io "$appvm_name" \
-    'set -eu; test_path="$HOME/.guix-native-template-test"; case "$test_path" in /home/*/.guix-native-template-test) ;; *) echo "unexpected HOME for persistent AppVM test: $HOME" >&2; exit 1;; esac; printf "%s\n" guix-native-template > "$test_path"'
-run_qubes_cmd qvm-run --no-gui --pass-io --user root "$appvm_name" \
-    'set -eu; printf "%s\n" guix-rw > /rw/.guix-native-template-rw-test; mkdir -p /usr/local/share; printf "%s\n" guix-usrlocal > /usr/local/share/.guix-native-template-usrlocal-test'
-run_qubes_cmd qvm-run --no-gui --pass-io --user root "$appvm_name" \
-    'set -eu; touch /var/guix/.qubes-appvm-volatile-test'
-shutdown_vm_or_die "$appvm_name"
-qvm-start "$appvm_name" >/dev/null
-wait_for_qrexec "$appvm_name"
-run_qubes_cmd qvm-run --no-gui --pass-io "$appvm_name" \
-    'set -eu; rw_dev="$(stat -c %d /rw)"; home_dev="$(stat -c %d "$HOME")"; printf "%s dev=%s rw_dev=%s after restart\n" "$HOME" "$home_dev" "$rw_dev"; test "$home_dev" = "$rw_dev"; test "$(cat "$HOME/.guix-native-template-test")" = guix-native-template'
-run_qubes_cmd qvm-run --no-gui --pass-io --user root "$appvm_name" \
-    'set -eu; test "$(cat /rw/.guix-native-template-rw-test)" = guix-rw; test "$(cat /usr/local/share/.guix-native-template-usrlocal-test)" = guix-usrlocal; rw_dev="$(stat -c %d /rw)"; for path in /home /usr/local; do path_dev="$(stat -c %d "$path")"; printf "%s dev=%s rw_dev=%s private after restart\n" "$path" "$path_dev" "$rw_dev"; test "$path_dev" = "$rw_dev"; done; for path in /gnu/store /var/guix/db /var/guix/profiles; do test -e "$path"; path_dev="$(stat -c %d "$path")"; printf "%s dev=%s rw_dev=%s after restart\n" "$path" "$path_dev" "$rw_dev"; test "$path_dev" != "$rw_dev"; done; test ! -e /var/guix/.qubes-appvm-volatile-test'
-check_wait_for_session_rpc "$appvm_name"
-
-if [ "$run_system_tests" -eq 1 ]; then
-    need qubes-prefs
-    previous_default_template="$(qubes-prefs default_template 2>/dev/null || true)"
-    if [ "$previous_default_template" != "$template_name" ]; then
-        qvm-prefs "$template_name" template_for_dispvms true >/dev/null 2>&1 || true
-        qubes-prefs default_template "$template_name"
-    fi
-    ensure_nose2_runner
-    need systemctl
-    need timeout
-    dom0_test_home="$(getent passwd "$dom0_test_user" | cut -d: -f6)"
-    [ -n "$dom0_test_home" ] && [ -d "$dom0_test_home" ] ||
-        die "dom0 system-test user has no home directory: $dom0_test_user"
-    runtime_dir="$(prepare_system_test_user)"
-    if [ "$keep_appvm" -eq 0 ]; then
-        cleanup
-    fi
-    ensure_system_test_default_netvm
-    system_test_pythonpath="$(prepare_system_test_pythonpath)"
-    printf 'Running Qubes system tests for template %s with dom0 user environment %s: %s\n' \
-        "$template_name" "$dom0_test_user" "$system_tests"
-    for test_spec in $system_tests; do
-        test_module="${test_spec%%:*}"
-        if [ "$test_module" != "$test_spec" ]; then
-            test_timeout="${test_spec##*:}"
-        else
-            test_timeout=3600
-        fi
-        case "$test_timeout" in
-            ''|*[!0-9]*)
-                die "invalid Qubes system test timeout in: $test_spec"
+parse_args() {
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --template)
+                require_arg "$@"
+                template_name="$2"
+                shift 2
+                ;;
+            --variant)
+                require_arg "$@"
+                template_variant="$2"
+                shift 2
+                ;;
+            --appvm)
+                require_arg "$@"
+                appvm_name="$2"
+                shift 2
+                ;;
+            --appvm-netvm)
+                require_arg "$@"
+                appvm_netvm="$2"
+                shift 2
+                ;;
+            --keep-appvm)
+                keep_appvm=1
+                shift
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            *)
+                die "unknown argument: $1"
                 ;;
         esac
-        log_file="tests-$test_module.log"
-        test_runner=(nose2 -v --plugin nose2.plugins.loader.loadtests)
-        # The Qubes openQA runner passes -X, but the nose2 builds available in
-        # some dom0 test images do not expose that option.  Use it when present
-        # without making the template validation depend on a runner-version
-        # detail unrelated to the guest image.
-        if nose2 -h 2>&1 | grep -Eq '(^|[[:space:]])-X([,[:space:]]|$)'; then
-            test_runner+=(-X)
-        fi
-        test_runner+=("$test_module")
-        printf 'Running Qubes system test module with official nose2 loader: %s\n' "$test_module"
-        sudo systemctl stop qubesd
-        set +e
-        run_nose2_system_test "$test_timeout" "$runtime_dir" "$dom0_test_home" \
-            "${test_runner[@]}" 2>&1 | tee "$log_file"
-        status=${PIPESTATUS[0]}
-        set -e
-        sudo systemctl start qubesd || true
-        ensure_qubesd_available || true
-        if [ "$status" -ne 0 ]; then
-            collect_system_test_diagnostics "$test_spec" "$log_file"
-            die "Qubes system test failed: $test_spec"
-        fi
     done
-fi
+}
 
-printf 'native Guix TemplateVM smoke tests passed for %s\n' "$template_name"
+check_required_commands() {
+    need qvm-ls
+    need qvm-create
+    need qvm-run
+    need qvm-start
+    need qvm-shutdown
+    need qvm-kill
+    need qvm-remove
+    need qvm-prefs
+    need qvm-check
+    need qvm-sync-appmenus
+    need qvm-appmenus
+}
+
+prepare_smoke_test() {
+    load_variant_expectations
+    check_required_commands
+    ensure_qubesd_available
+    ensure_qvm_start_daemon
+    kernel="$(resolve_kernel)"
+
+    vm_exists "$template_name" ||
+        die "template does not exist: $template_name"
+    if vm_exists "$appvm_name"; then
+        die "temporary AppVM already exists: $appvm_name"
+    fi
+
+    diagnostics_enabled=1
+    stop_stale_vm_or_die "$template_name"
+}
+
+test_template_vm() {
+    printf 'Testing TemplateVM boot and qrexec: %s\n' "$template_name"
+    start_vm_or_die "$template_name"
+    wait_for_qrexec "$template_name"
+    run_vm_cmd "$template_name" "$(guest_template_boot_checks)"
+    run_vm_cmd "$template_name" 'id && uname -a'
+    run_vm_cmd "$template_name" "$(guest_qrexec_agent_checks)"
+    run_vm_root_cmd "$template_name" "$(guest_template_writable_path_checks)"
+    sync_vm_appmenus "$template_name"
+    shutdown_vm_or_die "$template_name"
+}
+
+create_test_appvm() {
+    printf 'Creating temporary AppVM: %s\n' "$appvm_name"
+    qvm-create --class AppVM --template "$template_name" --label gray "$appvm_name"
+    appvm_created=1
+    qvm-prefs "$appvm_name" virt_mode pvh
+    qvm-prefs "$appvm_name" kernel "$kernel"
+    if [ -n "$appvm_netvm" ]; then
+        qvm-check "$appvm_netvm" >/dev/null 2>&1 ||
+            die "requested AppVM NetVM does not exist: $appvm_netvm"
+        qvm-prefs "$appvm_name" netvm "$appvm_netvm"
+    fi
+}
+
+test_appvm_uplink() {
+    local current_netvm
+
+    current_netvm="$(qvm-prefs "$appvm_name" netvm 2>/dev/null || true)"
+    case "$current_netvm" in
+        ""|None)
+            printf 'Skipping AppVM uplink route check: %s has no NetVM\n' \
+                "$appvm_name"
+            ;;
+        *)
+            run_vm_root_cmd "$appvm_name" "$(guest_default_route_checks)"
+            run_vm_cmd "$appvm_name" "$(guest_https_probe_checks)"
+            ;;
+    esac
+}
+
+test_appvm_first_boot() {
+    start_vm_or_die "$appvm_name"
+    wait_for_qrexec "$appvm_name"
+    run_vm_cmd "$appvm_name" "$(guest_appvm_identity_checks "$appvm_name")"
+    run_vm_root_cmd "$appvm_name" "$(guest_appvm_swap_and_meminfo_checks)"
+    run_vm_root_cmd "$appvm_name" "$(guest_appvm_qubes_path_checks)"
+    run_vm_cmd "$appvm_name" 'echo qrexec-ok && id && uname -a'
+    run_vm_cmd "$appvm_name" "$(guest_appvm_guix_storage_checks)"
+    test_appvm_uplink
+    check_wait_for_session_rpc "$appvm_name"
+    check_appmenu_and_launch_terminals "$appvm_name"
+    run_vm_cmd "$appvm_name" "$(guest_default_user_checks)"
+    run_vm_cmd "$appvm_name" "$(guest_write_persistence_sentinels)"
+    run_vm_root_cmd "$appvm_name" "$(guest_root_write_persistence_sentinels)"
+}
+
+test_appvm_after_restart() {
+    shutdown_vm_or_die "$appvm_name"
+    start_vm_or_die "$appvm_name"
+    wait_for_qrexec "$appvm_name"
+    run_vm_cmd "$appvm_name" "$(guest_user_persistence_after_restart_checks)"
+    run_vm_root_cmd "$appvm_name" "$(guest_root_persistence_after_restart_checks)"
+    check_wait_for_session_rpc "$appvm_name"
+}
+
+main() {
+    parse_args "$@"
+    prepare_smoke_test
+    test_template_vm
+    create_test_appvm
+    test_appvm_first_boot
+    test_appvm_after_restart
+
+    printf 'native Guix TemplateVM smoke tests passed for %s\n' "$template_name"
+}
+
+main "$@"

@@ -7,14 +7,12 @@ The entries follow the existing community template pattern: the builder
 component does not publish packages, templates use dist: guix, and
 guix-minimal is expressed as the minimal flavor of the same distribution.
 
-The public builder-guix repository URL remains placeholder review metadata.
-Maintainer/signing metadata is intentionally left out of this RFC sketch; it
-belongs to the eventual publication request, not the first review pass.
+The public builder-guix repository URL is placeholder review metadata.
+Maintainer metadata is intentionally left out of this RFC sketch; it belongs to
+the eventual publication request.
 
-Validation:
-Parsed R4.3/qubes-os-r4.3-templates-community.yml with PyYAML and
-verified builder-guix, guix, guix-minimal, minimal flavor, and
-21600-second template timeouts.
+Refresh this sketch against a current qubes-release-configs checkout before
+using it in review or publication discussion.
 ---
  R4.3/qubes-os-r4.3-templates-community.yml | 12 ++++++++++++
  1 file changed, 12 insertions(+)

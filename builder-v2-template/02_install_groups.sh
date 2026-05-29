@@ -2,4 +2,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 
-printf '%s\n' '--> Guix 02_install_groups.sh'
+# Builder v2 calls this hook unconditionally.  Guix selects package groups in
+# config.scm through the chosen operating-system variant.
+:

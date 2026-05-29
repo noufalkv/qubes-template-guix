@@ -7,12 +7,10 @@ repo_root="$(cd -- "$script_dir/.." && pwd)"
 
 : "${INSTALL_DIR:?INSTALL_DIR must be set by Qubes Builder v2}"
 
-variant="normal"
-case "${TEMPLATE_FLAVOR:-}:${TEMPLATE_NAME:-}" in
-    minimal:*|*:*-minimal)
-        variant="minimal"
-        ;;
-esac
+template_name="${TEMPLATE_NAME:-guix}"
+template_flavor="${TEMPLATE_FLAVOR:-}"
+variant="$("$repo_root/scripts/template-variant.sh" \
+    "$template_name" builder-variant "$template_flavor")"
 
 root_device="$(findmnt -n -o SOURCE --target "$INSTALL_DIR" 2>/dev/null || true)"
 if [ -n "$root_device" ] && command -v e2label >/dev/null 2>&1; then

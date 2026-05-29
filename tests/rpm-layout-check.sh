@@ -6,66 +6,36 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 PATH="/usr/sbin:/sbin:$PATH"
 export PATH
 
-required_commands=(
-    awk
-    cpio
-    debugfs
-    find
-    mke2fs
-    rpm2cpio
-    rpmbuild
-    sha256sum
-    split
-    stat
-    tar
-    truncate
-)
-
-missing=()
-for command_name in "${required_commands[@]}"; do
-    if ! command -v "$command_name" >/dev/null 2>&1; then
-        missing+=("$command_name")
-    fi
-done
-
-if [ "${#missing[@]}" -gt 0 ]; then
-    printf 'RPM layout check missing required commands: %s\n' \
-        "${missing[*]}" >&2
-    exit 1
-fi
-
-work_dir="$(mktemp -d "$repo_root/work.rpm-layout.XXXXXX")"
-cleanup() {
-    rm -rf "$work_dir"
-}
-trap cleanup EXIT
-
-image="$work_dir/root.img"
-image_tree="$work_dir/image-tree"
-rpm_out="$work_dir/dist"
-lifecycle_runner="$work_dir/lifecycle"
+work_dir=""
+image=""
+image_tree=""
+rpm_out=""
 version="20000101"
 release="1"
 
-mkdir -p "$image_tree/etc" "$rpm_out"
-ln -s "$repo_root/scripts/test-template-rpm-lifecycle-dom0.sh" "$lifecycle_runner"
-printf 'guix rpm layout test\n' > "$image_tree/etc/guix-template-test"
-truncate -s 64M "$image"
-mke2fs -q -t ext4 -d "$image_tree" "$image"
+cleanup() {
+    if [ -n "$work_dir" ] && [ -d "$work_dir" ]; then
+        rm -rf "$work_dir"
+    fi
+}
+trap cleanup EXIT
+
+prepare_root_image() {
+    work_dir="$(mktemp -d "$repo_root/work.rpm-layout.XXXXXX")"
+    image="$work_dir/root.img"
+    image_tree="$work_dir/image-tree"
+    rpm_out="$work_dir/dist"
+
+    mkdir -p "$image_tree/etc" "$rpm_out"
+    printf 'Guix RPM layout root image\n' > "$image_tree/etc/guix-template-test"
+    truncate -s 64M "$image"
+    mke2fs -q -t ext4 -d "$image_tree" "$image"
+}
 
 check_template_rpm() {
     local template_name="$1"
-    shift
-    local appmenu_entries=("$@")
-    local extract_dir="$work_dir/extract-$template_name"
-    local extracted_image_dir="$work_dir/extracted-image-$template_name"
-    local combined_tar="$work_dir/$template_name-root.tar"
-    local extracted_image="$extracted_image_dir/root.img"
     local rpm_file="$rpm_out/qubes-template-$template_name-$version-$release.noarch.rpm"
-    local cpio_file="$work_dir/$template_name.cpio"
     local rpm_path
-    local template_dir
-    local part_count
 
     rpm_path="$(
         "$repo_root/scripts/package-native-template-rpm.sh" \
@@ -79,99 +49,19 @@ check_template_rpm() {
     [ "$rpm_path" = "$rpm_file" ]
     [ -s "$rpm_file" ]
 
-    "$lifecycle_runner" -m -r "$rpm_file" -e "$template_name" >/dev/null
-
-    mkdir -p "$extract_dir"
-    rpm2cpio "$rpm_file" > "$cpio_file"
-    (
-        cd "$extract_dir"
-        cpio -idm --quiet < "$cpio_file"
-    )
-
-    template_dir="$extract_dir/var/lib/qubes/vm-templates/$template_name"
-    [ -d "$template_dir" ]
-    require_template_conf "$template_dir/template.conf" virt-mode pvh
-    require_template_conf "$template_dir/template.conf" qrexec 1
-    require_template_conf "$template_dir/template.conf" gui 1
-    for appmenu_entry in "${appmenu_entries[@]}"; do
-        require_appmenu_entry \
-            "$template_dir/whitelisted-appmenus.list" "$appmenu_entry"
-    done
-    cmp -s "$template_dir/whitelisted-appmenus.list" \
-        "$template_dir/vm-whitelisted-appmenus.list"
-    cmp -s "$template_dir/whitelisted-appmenus.list" \
-        "$template_dir/netvm-whitelisted-appmenus.list"
-    [ -d "$template_dir/apps" ]
-    [ -d "$template_dir/apps.templates" ]
-    [ -d "$template_dir/apps.tempicons" ]
-    [ -f "$template_dir/clean-volatile.img.tar" ]
-    [ ! -e "$template_dir/root.img" ]
-    [ ! -e "$template_dir/private.img" ]
-    [ ! -e "$template_dir/volatile.img" ]
-
-    part_count="$(find "$template_dir" -maxdepth 1 -name 'root.img.part.*' | wc -l)"
-    [ "$part_count" -ge 1 ]
-    cat "$template_dir"/root.img.part.* > "$combined_tar"
-    mkdir -p "$extracted_image_dir"
-    tar -C "$extracted_image_dir" -xf "$combined_tar"
-    [ "$(stat -c '%s' "$extracted_image")" = "$(stat -c '%s' "$image")" ]
-    test_marker="$(debugfs -R 'cat /etc/guix-template-test' "$extracted_image" 2>/dev/null)"
-    [ "$test_marker" = 'guix rpm layout test' ]
+    "$repo_root/tests/template-rpm-payload-check.sh" \
+        --rpm "$rpm_file" \
+        --template "$template_name" \
+        --source-image "$image" \
+        --work-dir "$work_dir/payload-$template_name" >/dev/null
 
     printf 'native template RPM layout check passed: %s\n' "$rpm_file"
 }
 
-template_conf_value() {
-    local conf_file="$1"
-    local key="$2"
-    local line conf_key conf_value
-
-    while IFS= read -r line || [ -n "$line" ]; do
-        case "$line" in
-            *=*)
-                conf_key="${line%%=*}"
-                conf_value="${line#*=}"
-                [ "$conf_key" = "$key" ] || continue
-                printf '%s\n' "$conf_value"
-                return 0
-                ;;
-        esac
-    done < "$conf_file"
-
-    return 1
+main() {
+    prepare_root_image
+    check_template_rpm guix
+    check_template_rpm guix-minimal
 }
 
-require_template_conf() {
-    local conf_file="$1"
-    local key="$2"
-    local expected="$3"
-    local actual
-
-    actual="$(template_conf_value "$conf_file" "$key" || true)"
-    [ "$actual" = "$expected" ] || {
-        printf 'unexpected %s in %s: expected %s, got %s\n' \
-            "$key" "$conf_file" "$expected" "${actual:-<missing>}" >&2
-        exit 1
-    }
-}
-
-require_appmenu_entry() {
-    local appmenus_file="$1"
-    local expected="$2"
-    local entry
-
-    while IFS= read -r entry || [ -n "$entry" ]; do
-        [ "$entry" = "$expected" ] || continue
-        return 0
-    done < "$appmenus_file"
-
-    printf 'missing appmenu entry in %s: %s\n' "$appmenus_file" "$expected" >&2
-    exit 1
-}
-
-check_template_rpm guix \
-    org.gnome.Evince.desktop \
-    org.xfce.mousepad.desktop \
-    thunar.desktop \
-    xfce4-terminal.desktop
-check_template_rpm guix-minimal xterm.desktop
+main "$@"

@@ -6,29 +6,28 @@ not yet a publishable Qubes community template.
 
 ## Start Here
 
-1. Read `SUBMISSION_AUDIT.md` first.  It maps the requested upstreamability
-   requirements to concrete files, checks, and missing gates.
-2. Read `REVIEW_NOTES.md` for the maintainer-facing review matrix, scope, and
+1. Read `REVIEW_NOTES.md` for the maintainer-facing review matrix, scope, and
    non-goals.
-3. Read `ADAPTATION_INVENTORY.md` before reviewing Scheme package phases or
+2. Read `ADAPTATION_INVENTORY.md` before reviewing Scheme package phases or
    Shepherd services.  It lists each non-obvious Guix/Qubes adaptation, why it
    exists, and what currently validates it.
-4. Read `VALIDATION.md` before relying on any test result.  It separates local
-   contract checks, pin/provenance notes, nested-dom0 evidence, and unpassed
-   release gates.
-5. Read `UPSTREAMING.md` and `config/README.md` for the multi-repo Builder v2
+3. Read `VALIDATION.md` before relying on any validation claim.  It separates
+   local contract checks, pin/provenance notes, dom0/openQA evidence, and
+   unpassed release gates.
+4. Read `UPSTREAMING.md` and `config/README.md` for the multi-repo Builder v2
    and release-config path.
 
 ## Review Chunks
 
 - Native Guix implementation:
-  `config.scm`.
+  `.guix-channel`, `qubes/vm.scm`, `config/qubes-system.tmpl`, and
+  `scripts/render-config.sh`.
 - Image and RPM tooling:
   `scripts/build-native-rootfs.sh`, `scripts/inspect-native-rootfs.sh`,
   `scripts/test-native-rootfs-activation.sh`, and
   `scripts/package-native-template-rpm.sh`.
 - Builder and release-config sketches:
-  `builder-v2-template/`, `Makefile.builder`, `config/README.md`,
+  `builder-v2-template/`, `config/README.md`,
   `config/qubes-builderv2-guix.example.patch`, and
   `config/qubes-release-configs-guix.example.patch`.
 - Central Qubes updater sketch:
@@ -36,17 +35,11 @@ not yet a publishable Qubes community template.
 - Runtime and release harnesses:
   `scripts/test-template-rpm-lifecycle-dom0.sh`,
   `scripts/test-native-guix-template-dom0.sh`,
-  `scripts/test-update-proxy-default-target-dom0.sh`,
-  `scripts/test-guix-update-proxy-config-dom0.sh`,
-  `scripts/test-guix-update-proxy-download-dom0.sh`,
-  `scripts/test-guix-update-proxy-stub-download-dom0.sh`,
+  `scripts/test-guix-update-proxy-dom0.sh`,
   `scripts/test-guix-central-vmupdate-dom0.sh`,
-  `scripts/diagnose-update-proxy-dom0.sh`,
   `scripts/test-memory-balloon-dom0.sh`, and `openqa/qubesos/`.
 
-`PATCH_SERIES.md` expands this into the intended review order.
-
-## Checks That Count As Review Evidence
+## Review Evidence
 
 ```sh
 make check
@@ -56,33 +49,14 @@ make check
 built through the Builder RPM adapter and the native packager, extracted,
 checked for Qubes Template Manager layout, and reassembled.
 
-No source-only checker is part of the repository test suite or reviewer
-evidence path.  Tests that grep source or compare patch shape should not be
-submitted as upstream patches or kept as repository validation scripts.
-Formatting, parser-only, inventory, and pin-freshness commands may help a
-maintainer prepare a branch manually, but they do not demonstrate that the
-template builds, installs, boots, or satisfies Qubes-visible contracts.
+Reviewer evidence should come from artifacts, rootfs activation, dom0 behavior,
+and openQA output.
 
 ## Do Not Claim Yet
 
-- Qubes Builder v2 has not accepted `dist: guix`.
-- `qubes-release-configs` has not accepted `guix` or `guix-minimal`.
-- Release-owner metadata and release-owner signed tags are not present.  The
-  current review commits are signed with the one-shot contribution key only;
-  that does not replace maintainer ownership or publication signing.
-- Final publication-branch or release-tag RPM-mode openQA has not been rerun.
-- Final publication-branch or release-tag central update evidence is still
-  needed.  RPM-mode openQA job 129 proved the current review artifact can run
-  `guix time-machine --branch=master` and `guix system reconfigure` through a
-  standard Debian `sys-net` update target with agent exit status 0.  Job 133
-  reached the same Qubes update-proxy path and then failed on an upstream Git
-  HTTP 504 during Guix refresh, so public network availability remains an
-  external release variable.
-- The `qubes-core-admin-linux` Guix vmupdate backend patch is tested in a clean
-  patched checkout.  A temporary nested-dom0 backport of the current backend
-  reached central `qubes-vm-update` dispatch, parsed system-profile metadata
-  into `name:output` records with version and store path values, used the Qubes
-  proxy environment, and logged Guix stderr.  It has not been accepted
-  upstream, and the passing job 129 evidence still needs a publication-object
-  rerun before it can be treated as release evidence.
+- Qubes has not accepted the Builder v2, release-config, or core-admin Linux
+  Guix sketches.
+- Release-owner metadata is not present.
+- Final branch/tag RPM-mode openQA and central-update evidence have not been
+  rerun.
 - Qubes maintainers have not reviewed or accepted the template.

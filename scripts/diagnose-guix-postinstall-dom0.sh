@@ -36,66 +36,36 @@ debugfs_cmd() {
     debugfs -R "$command" "$root_path" 2>&1 | sed -n '1,160p' || true
 }
 
-root_volume_path() {
-    qvm-volume info "$template:root" 2>/dev/null |
-        awk '
-            {
-                if (index($0, ":") > 0) {
-                    key = $1
-                    sub(/:.*/, "", key)
-                    value = $0
-                    sub(/^[^:]*:[[:space:]]*/, "", value)
-                } else {
-                    key = $1
-                    value = $0
-                    sub(/^[^[:space:]]+[[:space:]]*/, "", value)
-                }
-                sub(/^[[:space:]]+/, "", key)
-                sub(/[[:space:]]+$/, "", key)
-                sub(/^[[:space:]]+/, "", value)
-                sub(/[[:space:]]+$/, "", value)
-            }
-            key == "path" {
-                path = value
-            }
-            key == "pool" {
-                pool = value
-            }
-            key == "vid" {
-                vid = value
-            }
-            END {
-                if (path != "") {
-                    print path
-                } else if (pool == "varlibqubes" && vid != "") {
-                    print "/var/lib/qubes/" vid ".img"
-                }
-            }'
+volume_info_field() {
+    local key="$1"
+
+    awk -v key="$key" '
+        $1 == key || $1 == key ":" {
+            sub(/^[^:[:space:]]+[[:space:]]*:?[[:space:]]*/, "", $0)
+            print
+            exit
+        }'
 }
 
-log "POSTINSTALL_DOM0_DIAG_BEGIN"
+root_volume_path() {
+    local info path pool vid
 
-run qvm-ls --fields NAME,STATE,CLASS,TEMPLATE,KERNEL,VIRT_MODE,NETVM "$template" || true
-run qvm-prefs "$template" || true
-run qvm-features "$template" || true
+    info="$(qvm-volume info "$template:root" 2>/dev/null || true)"
+    path="$(printf '%s\n' "$info" | volume_info_field path)"
+    if [ -n "$path" ]; then
+        printf '%s\n' "$path"
+        return
+    fi
 
-for log_path in \
-    "/var/log/xen/console/guest-$template.log" \
-    "/var/log/qubes/qrexec.$template.log" \
-    "/var/log/qubes/qubesdb.$template.log"
-do
-    [ -e "$log_path" ] || continue
-    log "POSTINSTALL_DOM0_LOG $log_path"
-    tail -240 "$log_path" || true
-done
+    pool="$(printf '%s\n' "$info" | volume_info_field pool)"
+    vid="$(printf '%s\n' "$info" | volume_info_field vid)"
+    if [ "$pool" = varlibqubes ] && [ -n "$vid" ]; then
+        printf '/var/lib/qubes/%s.img\n' "$vid"
+    fi
+}
 
-log "POSTINSTALL_QVM_START_BEGIN"
-timeout 180 qvm-start "$template"
-start_status=$?
-log "POSTINSTALL_QVM_START_STATUS $start_status"
-sleep 5
-
-guest_diag='
+guest_postinstall_diagnostics() {
+    cat <<'EOF'
 set +e +u
 exec 2>&1
 export PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:/usr/bin:/usr/sbin:/bin:/sbin${PATH:+:$PATH}
@@ -115,30 +85,91 @@ for script in /etc/qubes/post-install.d/*.sh; do
     echo POSTINSTALL_SCRIPT_STATUS "$status" "$script"
 done
 echo POSTINSTALL_GUEST_LOGS_BEGIN
-for log in /var/log/qubes-db.log /var/log/qubes-sysinit.log /var/log/qubes-mount-dirs.log /var/log/qubes-bind-dirs.log /var/log/qubes-misc-post.log /var/log/qubes-postinstall.log /var/log/qubes-qrexec-agent.log /var/log/qubes-qrexec-fork-server.log /var/log/qubes-gui-agent.log /var/log/shepherd.log; do
+for log in \
+    /var/log/qubes-db.log \
+    /var/log/qubes-sysinit.log \
+    /var/log/qubes-mount-dirs.log \
+    /var/log/qubes-bind-dirs.log \
+    /var/log/qubes-misc-post.log \
+    /var/log/qubes-postinstall.log \
+    /var/log/qubes-qrexec-agent.log \
+    /var/log/qubes-qrexec-fork-server.log \
+    /var/log/qubes-gui-agent.log \
+    /var/log/shepherd.log
+do
     [ -e "$log" ] || continue
     echo POSTINSTALL_GUEST_LOG "$log"
     tail -240 "$log"
 done
 echo POSTINSTALL_DIAG_END
-'
+EOF
+}
 
-log "POSTINSTALL_QVM_RUN_BEGIN"
-timeout 120 qvm-run --no-gui --pass-io --user root "$template" "$guest_diag"
-run_status=$?
-log "POSTINSTALL_QVM_RUN_STATUS $run_status"
+collect_dom0_state() {
+    local log_path
 
-qvm-shutdown --wait "$template" >/dev/null 2>&1 ||
-    qvm-kill "$template" >/dev/null 2>&1 ||
-    true
+    run qvm-ls --fields NAME,STATE,CLASS,TEMPLATE,KERNEL,VIRT_MODE,NETVM "$template" || true
+    run qvm-prefs "$template" || true
+    run qvm-features "$template" || true
 
-log "POSTINSTALL_GUEST_ROOT_LOGS_BEGIN"
-log "POSTINSTALL_QVM_VOLUME_INFO_BEGIN"
-qvm-volume info "$template:root" || true
-log "POSTINSTALL_QVM_VOLUME_INFO_END"
-root_path="$(root_volume_path)"
+    for log_path in \
+        "/var/log/xen/console/guest-$template.log" \
+        "/var/log/qubes/qrexec.$template.log" \
+        "/var/log/qubes/qubesdb.$template.log"
+    do
+        [ -e "$log_path" ] || continue
+        log "POSTINSTALL_DOM0_LOG $log_path"
+        tail -240 "$log_path" || true
+    done
+}
 
-if [ -n "$root_path" ] && command -v debugfs >/dev/null 2>&1; then
+start_template_for_diagnostics() {
+    local start_status
+
+    log "POSTINSTALL_QVM_START_BEGIN"
+    timeout 180 qvm-start "$template"
+    start_status=$?
+    log "POSTINSTALL_QVM_START_STATUS $start_status"
+    sleep 5
+}
+
+run_guest_diagnostics() {
+    local run_status
+
+    log "POSTINSTALL_QVM_RUN_BEGIN"
+    timeout 120 qvm-run --no-gui --pass-io --user root "$template" \
+        "$(guest_postinstall_diagnostics)"
+    run_status=$?
+    log "POSTINSTALL_QVM_RUN_STATUS $run_status"
+}
+
+shutdown_template() {
+    qvm-shutdown --wait "$template" >/dev/null 2>&1 ||
+        qvm-kill "$template" >/dev/null 2>&1 ||
+        true
+}
+
+collect_guest_root_diagnostics() {
+    local command
+    local log_path
+    local root_path
+
+    log "POSTINSTALL_GUEST_ROOT_LOGS_BEGIN"
+    log "POSTINSTALL_QVM_VOLUME_INFO_BEGIN"
+    qvm-volume info "$template:root" || true
+    log "POSTINSTALL_QVM_VOLUME_INFO_END"
+    root_path="$(root_volume_path)"
+
+    if [ -z "$root_path" ]; then
+        log "POSTINSTALL_NO_ROOT_VOLUME_PATH"
+        return
+    fi
+
+    if ! command -v debugfs >/dev/null 2>&1; then
+        log "POSTINSTALL_NO_DEBUGFS"
+        return
+    fi
+
     for command in \
         "stat /etc" \
         "stat /etc/qubes" \
@@ -179,10 +210,16 @@ if [ -n "$root_path" ] && command -v debugfs >/dev/null 2>&1; then
     do
         debugfs_cat "$root_path" "$log_path"
     done
-elif [ -z "$root_path" ]; then
-    log "POSTINSTALL_NO_ROOT_VOLUME_PATH"
-else
-    log "POSTINSTALL_NO_DEBUGFS"
-fi
+}
 
-log "POSTINSTALL_DOM0_DIAG_END"
+main() {
+    log "POSTINSTALL_DOM0_DIAG_BEGIN"
+    collect_dom0_state
+    start_template_for_diagnostics
+    run_guest_diagnostics
+    shutdown_template
+    collect_guest_root_diagnostics
+    log "POSTINSTALL_DOM0_DIAG_END"
+}
+
+main "$@"

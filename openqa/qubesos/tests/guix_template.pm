@@ -5,7 +5,7 @@ use warnings;
 use base 'basetest';
 use Digest::SHA qw(sha256_hex);
 use MIME::Base64 qw(encode_base64);
-use testapi qw(get_required_var get_var record_info select_console send_key type_string upload_logs wait_serial);
+use testapi qw(get_var record_info select_console send_key type_string upload_logs wait_serial);
 
 my $serial_copy_counter = 0;
 my $dom0_command_counter = 0;
@@ -29,16 +29,33 @@ sub serial_output_path {
     return get_var('QUBES_DOM0_SERIAL_OUTPUT_PATH', '/root/openqa-guix-serial-output');
 }
 
+sub positive_int_var {
+    my ($name, $default) = @_;
+    my $value = get_var($name, $default);
+
+    die "$name must be a positive integer" unless defined $value && $value =~ /\A[1-9][0-9]*\z/;
+    return $value;
+}
+
+sub enabled_var {
+    my ($name) = @_;
+    my $value = get_var($name, '0');
+
+    die "$name must be 0 or 1" unless defined $value && $value =~ /\A[01]\z/;
+    return $value eq '1';
+}
+
+sub validate_git_commit {
+    my ($name, $value) = @_;
+
+    die "$name must be a full 40-hex Git commit"
+        if length $value && $value !~ /\A[0-9a-fA-F]{40}\z/;
+}
+
 sub shell_simple_path {
     my ($path) = @_;
     die "unsupported serial output path: $path" unless $path =~ m{\A/[A-Za-z0-9_./-]+\z};
     return $path;
-}
-
-sub shell_word_safe_for_vnc {
-    my ($word) = @_;
-    return if !defined $word || $word =~ /[A-Z]/;
-    return shell_quote($word);
 }
 
 sub prepare_serial_output_path {
@@ -132,23 +149,22 @@ sub dom0_assert_script_run {
 
 sub upload_dom0_logs {
     dom0_assert_script_run(
-        'tar --create --gzip --file /root/openqa-guix-logs.tgz --ignore-failed-read /root/openqa-guix-*.log /root/openqa-guix-root-device /root/openqa-guix-central-vmupdate* 2>/dev/null || true',
+        'tar --create --gzip --file /root/openqa-guix-logs.tgz --ignore-failed-read /root/openqa-guix-*.log /root/openqa-guix-central-vmupdate* 2>/dev/null || true',
         timeout => 120);
     upload_logs('/root/openqa-guix-logs.tgz', failok => 1);
 }
 
-sub read_data_file {
-    my ($name) = @_;
-    my $path = get_required_var('CASEDIR') . "/data/$name";
-    open(my $fh, '<:raw', $path) or die "cannot open $path: $!";
-    local $/;
-    my $content = <$fh>;
-    close($fh) or die "cannot close $path: $!";
-    return $content;
+sub dom0_run_or_upload {
+    my ($cmd, $timeout, $failure) = @_;
+    my $status = dom0_script_run(checked_shell_command($cmd), timeout => $timeout);
+
+    return if defined $status && $status == 0;
+    upload_dom0_logs();
+    die $failure;
 }
 
 sub append_serial_heredoc {
-    my ($dest, $content, $label) = @_;
+    my ($dest, $content) = @_;
     $serial_copy_counter++;
 
     my $done = sprintf('oqcopy%06d', $serial_copy_counter);
@@ -164,23 +180,14 @@ sub append_serial_heredoc {
 }
 
 sub stage_dom0_file_b64 {
-    my ($content, $dest, $mode, $label) = @_;
+    my ($content, $dest, $mode) = @_;
     my $sha256 = sha256_hex($content);
     my $b64 = encode_base64($content, '');
     my @lines = ($b64 =~ /.{1,76}/g);
     my $b64_dest = "$dest.b64";
     my $tmp_dest = "$dest.tmp";
-    my $lines_per_chunk = get_var('QUBES_DOM0_B64_LINES_PER_CHUNK', 8);
-    my $transfer_attempts = get_var('QUBES_DOM0_B64_TRANSFER_ATTEMPTS', 3);
-
-    $label =~ s/[^A-Za-z0-9]/_/g;
-
-    if ($lines_per_chunk !~ /\A[1-9][0-9]*\z/) {
-        $lines_per_chunk = 8;
-    }
-    if ($transfer_attempts !~ /\A[1-9][0-9]*\z/) {
-        $transfer_attempts = 3;
-    }
+    my $lines_per_chunk = positive_int_var('QUBES_DOM0_B64_LINES_PER_CHUNK', 8);
+    my $transfer_attempts = positive_int_var('QUBES_DOM0_B64_TRANSFER_ATTEMPTS', 3);
 
     my $decode = join(' ',
         'rm -f', shell_quote($tmp_dest) . ';',
@@ -201,7 +208,7 @@ sub stage_dom0_file_b64 {
 
         while (@pending) {
             my @chunk = splice @pending, 0, $lines_per_chunk;
-            append_serial_heredoc($b64_dest, join("\n", @chunk) . "\n", $label);
+            append_serial_heredoc($b64_dest, join("\n", @chunk) . "\n");
         }
 
         my $status = dom0_script_run(checked_shell_command($decode), timeout => 120);
@@ -219,24 +226,16 @@ sub stage_dom0_command_script {
     my $script_path = sprintf('/tmp/openqa-dom0-cmd-%06d.sh', $dom0_command_counter);
     my $content = "#!/usr/bin/env bash\n$cmd\n";
 
-    stage_dom0_file_b64($content, $script_path, '0700', 'CMD');
+    stage_dom0_file_b64($content, $script_path, '0700');
     return $script_path;
-}
-
-sub stage_data_file {
-    my ($name, $dest) = @_;
-    my $content = read_data_file($name);
-
-    record_info('stage', "Copying $name to dom0 serial console");
-    stage_dom0_file_b64($content, $dest, '0700', $name);
 }
 
 sub rpm_asset_mount_command {
     my ($rpm_device) = @_;
     my @device_candidates = grep { defined } (
-        shell_word_safe_for_vnc($rpm_device),
+        defined $rpm_device && length $rpm_device ? shell_quote($rpm_device) : undef,
         '/dev/disk/by-id/*guixrpm*',
-        '/dev/sdc /dev/vdc /dev/xvdc',
+        '/dev/sdb /dev/vdb /dev/xvdb /dev/sdc /dev/vdc /dev/xvdc',
     );
 
     return join("\n",
@@ -257,31 +256,16 @@ sub rpm_asset_mount_command {
 sub stage_rpm_asset_files {
     my ($rpm_device) = @_;
     my $serial_output = shell_simple_path(serial_output_path());
-    my @files = (
-        'diagnose-guix-postinstall-dom0.sh',
-        'import-native-rootfs-dom0.sh',
-        'test-guix-update-proxy-config-dom0.sh',
-        'test-guix-update-proxy-download-dom0.sh',
-        'test-guix-update-proxy-stub-download-dom0.sh',
-        'test-guix-central-vmupdate-dom0.sh',
-        'bootstrap-qubes-update-target-dom0.sh',
-        'test-native-guix-template-dom0.sh',
-    );
-
-    push @files, 'python3-nose2.rpm'
-        if get_var('GUIX_RUN_QUBES_SYSTEM_TESTS', '0') eq '1';
-    push @files, 'core-admin-guix-vmupdate.tgz'
-        if get_var('GUIX_CORE_ADMIN_BACKEND', '0') eq '1';
-
-    my $file_words = join(' ', map { shell_quote($_) } @files);
     my $copy_files = join("\n",
         'echo "RPM asset contents:";',
         'find /mnt/guix-template-rpm -maxdepth 2 -mindepth 1 -printf "%y %p\n" | sort;',
-        'for f in ' . $file_words . '; do',
-        'test -r "/mnt/guix-template-rpm/$f" || { echo "missing RPM asset file: $f"; exit 1; }',
-        'cp "/mnt/guix-template-rpm/$f" "/root/$f";',
-        'chmod 0700 "/root/$f";',
-        'done;');
+        'found_helper=0;',
+        'for f in /mnt/guix-template-rpm/*.sh; do',
+        '[ -e "$f" ] || continue;',
+        'found_helper=1;',
+        'install -m 0700 "$f" "/root/$(basename "$f")";',
+        'done;',
+        '[ "$found_helper" = 1 ] || { echo "no helper scripts in RPM asset"; exit 1; }');
 
     record_info('stage', 'Copying helper files from attached RPM asset disk');
     dom0_assert_script_run(checked_shell_command(join("\n",
@@ -315,71 +299,131 @@ sub dom0_wait_for_qubes_cli {
     die "qvm-ls did not return before timeout";
 }
 
-sub install_core_admin_guix_backend {
-    my $serial_output = shell_simple_path(serial_output_path());
-    my $patch_core_admin_cmd = join("\n",
-        'set -eu',
-        'python3 - <<\'PY\'',
-        'import importlib',
-        'import importlib.util',
-        'import os',
-        'import pathlib',
-        'import shutil',
-        'import sys',
-        'import tarfile',
-        '',
-        'agent_spec = importlib.util.find_spec("vmupdate.agent")',
-        'assert agent_spec is not None, "vmupdate.agent package not found"',
-        'agent_dirs = list(agent_spec.submodule_search_locations or [])',
-        'assert agent_dirs, "vmupdate.agent package has no source directory"',
-        'agent_dir = pathlib.Path(agent_dirs[0])',
-        'agent_dir_real = agent_dir.resolve()',
-        'archive_path = pathlib.Path("/root/core-admin-guix-vmupdate.tgz")',
-        'assert archive_path.is_file(), f"missing {archive_path}"',
-        '',
-        'with tarfile.open(archive_path, "r:gz") as archive:',
-        '    for member in archive.getmembers():',
-        '        target = (agent_dir / member.name).resolve()',
-        '        assert target == agent_dir_real or str(target).startswith(str(agent_dir_real) + os.sep), member.name',
-        '    archive.extractall(agent_dir)',
-        '',
-        'source_dir = agent_dir / "source"',
-        'guix_dir = source_dir / "guix"',
-        'for path in (agent_dir, source_dir, guix_dir):',
-        '    shutil.rmtree(path / "__pycache__", ignore_errors=True)',
-        '',
-        'sys.path.insert(0, str(agent_dir))',
-        'package_manager = importlib.import_module("source.common.package_manager")',
-        'assert hasattr(package_manager, "AgentType")',
-        'guix_cli = importlib.import_module("source.guix.guix_cli")',
-        'assert guix_cli.GUIXCLI.SYSTEM_CONFIG == "/etc/config.scm"',
-        'assert "/run/qubes/bin/guix" not in guix_cli.GUIXCLI.GUIX_CANDIDATES',
-        'print(f"patched full core-admin Guix vmupdate agent: {agent_dir}")',
-        'PY');
+sub cleanup_guix_vms {
+    my ($template, $appvm) = @_;
+    my @cleanup_vms = (
+        $appvm,
+        $template,
+        'guix-openqa-test-app',
+        'guix-openqa-test',
+    );
+    my %seen_cleanup_vm;
 
-    dom0_assert_script_run(checked_shell_command(join("\n",
-        '{',
-        $patch_core_admin_cmd,
-        '} 2>&1 | tee ' . $serial_output)),
-        timeout => 120);
+    @cleanup_vms = grep { !$seen_cleanup_vm{$_}++ } grep { length } @cleanup_vms;
+    my $cleanup_vm_words = join(' ', map { shell_quote($_) } @cleanup_vms);
+    my $cleanup = join("\n",
+        'for vm in ' . $cleanup_vm_words . '; do',
+        'if timeout 60 qvm-ls --raw-list | grep -Fxq "$vm"; then',
+        'qvm-shutdown --wait "$vm" >/dev/null 2>&1 || qvm-kill "$vm" >/dev/null 2>&1 || true;',
+        'qvm-remove --force "$vm" || true;',
+        'fi;',
+        'done');
+
+    dom0_assert_script_run(checked_shell_command($cleanup), timeout => 600);
+}
+
+sub install_template_rpm {
+    my ($rpm_device, $template) = @_;
+    my $rpm_install_cmd = join("\n",
+        rpm_asset_mount_command($rpm_device),
+        'rpm_path="$(find /mnt/guix-template-rpm -maxdepth 1 -type f -name ' . shell_quote('qubes-template-*.rpm') . ' -print -quit)";',
+        '[ -n "$rpm_path" ];',
+        'cp "$rpm_path" /root/;',
+        'rpm_copy="/root/$(basename "$rpm_path")";',
+        'qvm-template --yes install --nogpgcheck "$rpm_copy" 2>&1 | tee /root/openqa-guix-import.log');
+    my $postinstall_diag_cmd = join("\n",
+        'if grep -q -i "qubes[.]postinstall service failed" /root/openqa-guix-import.log; then',
+        '/root/diagnose-guix-postinstall-dom0.sh ' . shell_quote($template) . ' 2>&1 | tee /root/openqa-guix-postinstall-diagnostics.log;',
+        'fi');
+    my $postinstall_status;
+
+    dom0_assert_script_run(checked_shell_command($rpm_install_cmd), timeout => 1800);
+    dom0_assert_script_run(checked_shell_command($postinstall_diag_cmd), timeout => 900);
+
+    $postinstall_status = dom0_script_run(checked_shell_command(
+        '! grep -q -i -e "permissionerror" -e "failed to set default application list" -e "qubes[.]postinstall service failed" /root/openqa-guix-import.log'),
+        timeout => 60);
+    if (!defined $postinstall_status || $postinstall_status != 0) {
+        upload_dom0_logs();
+        die "qvm-template post-install failed";
+    }
+}
+
+sub run_template_smoke {
+    my ($template, $appvm, $appvm_netvm, $test_timeout, $serial_output) = @_;
+    my $appvm_netvm_arg = '';
+
+    if (length $appvm_netvm) {
+        $appvm_netvm_arg = '--appvm-netvm ' . shell_quote($appvm_netvm);
+    }
+
+    my $test_cmd = join(' ',
+        '/root/test-native-guix-template-dom0.sh',
+        '--template', shell_quote($template),
+        '--appvm', shell_quote($appvm),
+        $appvm_netvm_arg,
+        '2>&1 | tee /root/openqa-guix-smoke.log ' . $serial_output);
+    dom0_run_or_upload($test_cmd, $test_timeout, 'native Guix TemplateVM smoke test failed');
+}
+
+sub run_update_proxy_checks {
+    my ($template, $run_proxy_download, $run_proxy_pull, $serial_output) = @_;
+    my @proxy_args = (
+        '/root/test-guix-update-proxy-dom0.sh',
+        '--template', shell_quote($template));
+    my $proxy_cmd_timeout = 900;
+
+    if ($run_proxy_download) {
+        my $download_timeout = positive_int_var('GUIX_PROXY_DOWNLOAD_TIMEOUT', 240);
+        push @proxy_args,
+            '--download',
+            '--download-url', shell_quote(get_var('GUIX_PROXY_DOWNLOAD_URL', 'https://guix.gnu.org/')),
+            '--timeout', shell_quote($download_timeout);
+    }
+    if ($run_proxy_pull) {
+        my $pull_commit = get_var('GUIX_PROXY_PULL_COMMIT', '');
+        my $pull_timeout = positive_int_var('GUIX_PROXY_PULL_TIMEOUT', 3600);
+        validate_git_commit('GUIX_PROXY_PULL_COMMIT', $pull_commit);
+        push @proxy_args,
+            '--pull',
+            '--pull-timeout', shell_quote($pull_timeout);
+        push @proxy_args, '--pull-commit', shell_quote($pull_commit)
+            if length $pull_commit;
+        $proxy_cmd_timeout = $pull_timeout + 600
+            if $proxy_cmd_timeout < $pull_timeout + 600;
+    }
+    push @proxy_args, '2>&1 | tee /root/openqa-guix-update-proxy.log ' . $serial_output;
+    dom0_run_or_upload(join(' ', @proxy_args), $proxy_cmd_timeout, 'Guix update proxy check failed');
+}
+
+sub run_central_vmupdate_check {
+    my ($template, $run_central_vmupdate, $serial_output) = @_;
+    return unless $run_central_vmupdate;
+
+    my $central_vmupdate_timeout = positive_int_var('GUIX_CENTRAL_VMUPDATE_TIMEOUT', 3600);
+    my $central_vmupdate_cmd = join(' ',
+        '/root/test-guix-central-vmupdate-dom0.sh',
+        '--template', shell_quote($template),
+        '--timeout', shell_quote($central_vmupdate_timeout),
+        '--proxy-probe-url', shell_quote(get_var('GUIX_CENTRAL_VMUPDATE_PROXY_PROBE_URL', 'https://codeberg.org/guix/guix.git')),
+        '--log-dir', shell_quote('/root/openqa-guix-central-vmupdate'),
+        '2>&1 | tee /root/openqa-guix-central-vmupdate.log ' . $serial_output);
+    dom0_run_or_upload($central_vmupdate_cmd, $central_vmupdate_timeout + 600, 'Guix central vmupdate check failed');
 }
 
 sub run {
     my ($self) = @_;
 
-    my $template = get_var('GUIX_TEMPLATE_NAME', 'guix-openqa-test');
+    my $template = get_var('GUIX_TEMPLATE_NAME', 'guix');
     my $appvm = get_var('GUIX_APPVM_NAME', 'guix-openqa-test-app');
     my $appvm_netvm = get_var('GUIX_APPVM_NETVM', '');
     my $serial_output = shell_simple_path(serial_output_path());
-    my $root_device = get_var('GUIX_ROOT_DEVICE', '/dev/disk/by-id/scsi-0QEMU_QEMU_HARDDISK_guixroot');
-    my $root_bytes = get_var('GUIX_ROOT_BYTES', '21474836480');
-    my $root_size = get_var('GUIX_ROOT_SIZE', '20G');
-    my $install_mode = get_var('GUIX_INSTALL_MODE', 'direct');
     my $rpm_device = get_var('GUIX_TEMPLATE_RPM_DEVICE', '/dev/disk/by-id/scsi-0QEMU_QEMU_HARDDISK_guixrpm');
     my $test_timeout = get_var('GUIX_TEST_TIMEOUT', 3600);
-    my $expect_commands = get_var('GUIX_EXPECT_COMMANDS', '');
-    my $expect_desktops = get_var('GUIX_EXPECT_DESKTOPS', '');
     my $dom0_console = get_var('QUBES_DOM0_CONSOLE', 'root-console');
+    my $run_proxy_download = enabled_var('GUIX_RUN_PROXY_DOWNLOAD_TEST');
+    my $run_proxy_pull = enabled_var('GUIX_RUN_PROXY_PULL_TEST');
+    my $run_central_vmupdate = enabled_var('GUIX_RUN_CENTRAL_VMUPDATE_TEST');
 
     $testapi::username = get_var('QUBES_DOM0_USER', 'user');
     $testapi::password = get_var('QUBES_DOM0_PASSWORD', 'qubes');
@@ -392,218 +436,12 @@ sub run {
     dom0_assert_script_run(':', timeout => 60, attempts => 3);
     dom0_wait_for_qubes_cli();
 
-    if ($install_mode eq 'rpm') {
-        stage_rpm_asset_files($rpm_device);
-    } else {
-        stage_data_file('import-native-rootfs-dom0.sh', '/root/import-native-rootfs-dom0.sh');
-        stage_data_file('test-native-guix-template-dom0.sh', '/root/test-native-guix-template-dom0.sh');
-        stage_data_file('test-guix-update-proxy-config-dom0.sh', '/root/test-guix-update-proxy-config-dom0.sh');
-        stage_data_file('test-guix-update-proxy-download-dom0.sh', '/root/test-guix-update-proxy-download-dom0.sh');
-        stage_data_file('test-guix-update-proxy-stub-download-dom0.sh', '/root/test-guix-update-proxy-stub-download-dom0.sh');
-        stage_data_file('test-guix-central-vmupdate-dom0.sh', '/root/test-guix-central-vmupdate-dom0.sh');
-        stage_data_file('bootstrap-qubes-update-target-dom0.sh', '/root/bootstrap-qubes-update-target-dom0.sh');
-        stage_data_file('diagnose-guix-postinstall-dom0.sh', '/root/diagnose-guix-postinstall-dom0.sh');
-        if (get_var('GUIX_RUN_QUBES_SYSTEM_TESTS', '0') eq '1') {
-            stage_data_file('python3-nose2.rpm', '/root/python3-nose2.rpm');
-        }
-        if (get_var('GUIX_CORE_ADMIN_BACKEND', '0') eq '1') {
-            stage_data_file('core-admin-guix-vmupdate.tgz', '/root/core-admin-guix-vmupdate.tgz');
-        }
-    }
-
-    if (get_var('GUIX_CORE_ADMIN_BACKEND', '0') eq '1') {
-        install_core_admin_guix_backend();
-    }
-
-    my @cleanup_vms = (
-        $appvm,
-        $template,
-        'guix-openqa-test-app',
-        'guix-openqa-test',
-        'guix-native-test-app',
-        'guix-native-test',
-        'guix',
-        'guix-minimal',
-    );
-    my %seen_cleanup_vm;
-    @cleanup_vms = grep { !$seen_cleanup_vm{$_}++ } grep { length } @cleanup_vms;
-    my $cleanup_vm_words = join(' ', map { shell_quote($_) } @cleanup_vms);
-
-    my $cleanup = join("\n",
-        'for vm in ' . $cleanup_vm_words . '; do',
-        'if timeout 60 qvm-ls --raw-list | grep -Fxq "$vm"; then',
-        'qvm-shutdown --wait "$vm" >/dev/null 2>&1 || qvm-kill "$vm" >/dev/null 2>&1 || true;',
-        'qvm-remove --force "$vm" || true;',
-        'fi;',
-        'done');
-    dom0_assert_script_run(checked_shell_command($cleanup), timeout => 600);
-
-    my @root_device_candidates = grep { defined } (
-        shell_word_safe_for_vnc($root_device),
-        '/dev/disk/by-id/*guixroot*',
-        '/dev/sdb /dev/vdb /dev/xvdb',
-    );
-    my $resolve_device = join("\n",
-        'root_dev=;',
-        'expected_bytes=' . shell_quote($root_bytes) . ';',
-        'for cand in ' . join(' ', @root_device_candidates) . '; do',
-        '[ -e "$cand" ] || continue;',
-        'real="$(readlink -f "$cand")";',
-        '[ -b "$real" ] || continue;',
-        'size="$(blockdev --getsize64 "$real")";',
-        'if [ "$size" = "$expected_bytes" ]; then root_dev="$cand"; break; fi;',
-        'done;',
-        '[ -n "$root_dev" ];',
-        'echo "$root_dev" | tee /root/openqa-guix-root-device');
-    dom0_assert_script_run(checked_shell_command($resolve_device), timeout => 120);
-
-    if ($install_mode eq 'rpm') {
-        my $rpm_install_cmd = join("\n",
-            rpm_asset_mount_command($rpm_device),
-            'rpm_path="$(find /mnt/guix-template-rpm -maxdepth 1 -type f -name ' . shell_quote('qubes-template-*.rpm') . ' -print -quit)";',
-            '[ -n "$rpm_path" ];',
-            'cp "$rpm_path" /root/;',
-            'rpm_copy="/root/$(basename "$rpm_path")";',
-            'qvm-template --yes install --nogpgcheck "$rpm_copy" 2>&1 | tee /root/openqa-guix-import.log');
-        dom0_assert_script_run(checked_shell_command($rpm_install_cmd), timeout => 1800);
-        my $postinstall_diag_cmd = join("\n",
-            'if grep -q -i "qubes[.]postinstall service failed" /root/openqa-guix-import.log; then',
-            '/root/diagnose-guix-postinstall-dom0.sh ' . shell_quote($template) . ' 2>&1 | tee /root/openqa-guix-postinstall-diagnostics.log;',
-            'fi');
-        dom0_assert_script_run(checked_shell_command($postinstall_diag_cmd), timeout => 900);
-        my $postinstall_status = dom0_script_run(checked_shell_command(
-            '! grep -q -i -e "permissionerror" -e "failed to set default application list" -e "qubes[.]postinstall service failed" /root/openqa-guix-import.log'),
-            timeout => 60);
-        if (!defined $postinstall_status || $postinstall_status != 0) {
-            upload_dom0_logs();
-            die "qvm-template post-install failed";
-        }
-
-    } else {
-        my $import_cmd = join(' ',
-            'root_dev="$(cat /root/openqa-guix-root-device)";',
-            '/root/import-native-rootfs-dom0.sh',
-            '--image "$root_dev"',
-            '--name', shell_quote($template),
-            '--root-size', shell_quote($root_size),
-            '2>&1 | tee /root/openqa-guix-import.log');
-        dom0_assert_script_run(checked_shell_command($import_cmd), timeout => 1800);
-    }
-
-    if (get_var('GUIX_BOOTSTRAP_UPDATE_TARGET', '0') eq '1') {
-        die "GUIX_BOOTSTRAP_UPDATE_TARGET=1 requires GUIX_INSTALL_MODE=rpm"
-            unless $install_mode eq 'rpm';
-        my $bootstrap_update_target_invocation = join(' ',
-            '/root/bootstrap-qubes-update-target-dom0.sh',
-            '--target', shell_quote(get_var('GUIX_UPDATE_TARGET_NAME', 'sys-net')),
-            '--network-mode', shell_quote(get_var('GUIX_UPDATE_TARGET_NETWORK_MODE', 'auto')),
-            '--template-rpm "$update_target_rpm"',
-            '2>&1 | tee /root/openqa-guix-update-target-bootstrap.log ' . $serial_output);
-        my $bootstrap_update_target_cmd = join("\n",
-            rpm_asset_mount_command($rpm_device),
-            'update_target_rpm="$(find /mnt/guix-template-rpm/update-target -maxdepth 1 -type f -name ' . shell_quote('qubes-template-*.rpm') . ' -print -quit)";',
-            '[ -n "$update_target_rpm" ];',
-            $bootstrap_update_target_invocation);
-        my $bootstrap_update_target_status = dom0_script_run(checked_shell_command($bootstrap_update_target_cmd), timeout => 1800);
-        if (!defined $bootstrap_update_target_status || $bootstrap_update_target_status != 0) {
-            upload_dom0_logs();
-            die "Qubes update target bootstrap failed";
-        }
-    }
-
-    my $system_tests = '';
-    if (get_var('GUIX_RUN_QUBES_SYSTEM_TESTS', '0') eq '1') {
-        $system_tests = join(' ',
-            '--run-system-tests',
-            '--system-tests',
-            shell_quote(get_var('GUIX_QUBES_SYSTEM_TESTS', 'qubes.tests.integ.qrexec:14400 qubes.tests.integ.vm_qrexec_gui:14400')));
-    }
-
-    my $command_checks = '';
-    for my $command (grep { length } split(/\s+/, $expect_commands)) {
-        $command_checks .= ' --expect-command ' . shell_quote($command);
-    }
-
-    my $desktop_checks = '';
-    for my $desktop (grep { length } split(/\s+/, $expect_desktops)) {
-        $desktop_checks .= ' --expect-desktop ' . shell_quote($desktop);
-    }
-
-    my $appvm_netvm_arg = '';
-    if (length $appvm_netvm) {
-        $appvm_netvm_arg = '--appvm-netvm ' . shell_quote($appvm_netvm);
-    }
-
-    my $test_cmd = join(' ',
-        get_var('GUIX_RUN_QUBES_SYSTEM_TESTS', '0') eq '1'
-            ? 'GUIX_NOSE2_RPM=/root/python3-nose2.rpm QUBES_DOM0_TEST_USER=' . shell_quote($testapi::username)
-            : '',
-        '/root/test-native-guix-template-dom0.sh',
-        '--template', shell_quote($template),
-        '--appvm', shell_quote($appvm),
-        $appvm_netvm_arg,
-        $command_checks,
-        $desktop_checks,
-        $system_tests,
-        '2>&1 | tee /root/openqa-guix-smoke.log ' . $serial_output);
-    my $smoke_status = dom0_script_run(checked_shell_command($test_cmd), timeout => $test_timeout);
-    if (!defined $smoke_status || $smoke_status != 0) {
-        upload_dom0_logs();
-        die "native Guix TemplateVM smoke test failed";
-    }
-
-    my $proxy_config_cmd = join(' ',
-        '/root/test-guix-update-proxy-config-dom0.sh',
-        '--template', shell_quote($template),
-        '2>&1 | tee /root/openqa-guix-update-proxy-config.log ' . $serial_output);
-    my $proxy_config_status = dom0_script_run(checked_shell_command($proxy_config_cmd), timeout => 900);
-    if (!defined $proxy_config_status || $proxy_config_status != 0) {
-        upload_dom0_logs();
-        die "Guix update proxy config check failed";
-    }
-
-    if (get_var('GUIX_RUN_PROXY_STUB_DOWNLOAD_TEST', '0') eq '1') {
-        my $proxy_stub_download_cmd = join(' ',
-            '/root/test-guix-update-proxy-stub-download-dom0.sh',
-            '--template', shell_quote($template),
-            '--download-url', shell_quote(get_var('GUIX_PROXY_STUB_DOWNLOAD_URL', 'http://qubes-guix-test/')),
-            '--timeout', shell_quote(get_var('GUIX_PROXY_DOWNLOAD_TIMEOUT', '240')),
-            '2>&1 | tee /root/openqa-guix-update-proxy-stub-download.log ' . $serial_output);
-        my $proxy_stub_download_status = dom0_script_run(checked_shell_command($proxy_stub_download_cmd), timeout => 1200);
-        if (!defined $proxy_stub_download_status || $proxy_stub_download_status != 0) {
-            upload_dom0_logs();
-            die "Guix update proxy stub download check failed";
-        }
-    }
-
-    if (get_var('GUIX_RUN_PROXY_DOWNLOAD_TEST', '0') eq '1') {
-        my $proxy_download_cmd = join(' ',
-            '/root/test-guix-update-proxy-download-dom0.sh',
-            '--template', shell_quote($template),
-            '--download-url', shell_quote(get_var('GUIX_PROXY_DOWNLOAD_URL', 'https://guix.gnu.org/')),
-            '--timeout', shell_quote(get_var('GUIX_PROXY_DOWNLOAD_TIMEOUT', '240')),
-            '2>&1 | tee /root/openqa-guix-update-proxy-download.log ' . $serial_output);
-        my $proxy_download_status = dom0_script_run(checked_shell_command($proxy_download_cmd), timeout => 900);
-        if (!defined $proxy_download_status || $proxy_download_status != 0) {
-            upload_dom0_logs();
-            die "Guix update proxy download check failed";
-        }
-    }
-
-    if (get_var('GUIX_RUN_CENTRAL_VMUPDATE_TEST', '0') eq '1') {
-        my $central_vmupdate_cmd = join(' ',
-            '/root/test-guix-central-vmupdate-dom0.sh',
-            '--template', shell_quote($template),
-            '--timeout', shell_quote(get_var('GUIX_CENTRAL_VMUPDATE_TIMEOUT', '3600')),
-            '--proxy-probe-url', shell_quote(get_var('GUIX_CENTRAL_VMUPDATE_PROXY_PROBE_URL', 'https://git.savannah.gnu.org/git/guix.git')),
-            '--log-dir', shell_quote('/root/openqa-guix-central-vmupdate'),
-            '2>&1 | tee /root/openqa-guix-central-vmupdate.log ' . $serial_output);
-        my $central_vmupdate_status = dom0_script_run(checked_shell_command($central_vmupdate_cmd), timeout => get_var('GUIX_CENTRAL_VMUPDATE_TIMEOUT', '3600') + 600);
-        if (!defined $central_vmupdate_status || $central_vmupdate_status != 0) {
-            upload_dom0_logs();
-            die "Guix central vmupdate check failed";
-        }
-    }
+    stage_rpm_asset_files($rpm_device);
+    cleanup_guix_vms($template, $appvm);
+    install_template_rpm($rpm_device, $template);
+    run_template_smoke($template, $appvm, $appvm_netvm, $test_timeout, $serial_output);
+    run_update_proxy_checks($template, $run_proxy_download, $run_proxy_pull, $serial_output);
+    run_central_vmupdate_check($template, $run_central_vmupdate, $serial_output);
 
     dom0_assert_script_run('timeout 60 qvm-ls --raw-list | grep -Fx ' . shell_quote($template), timeout => 90);
     upload_dom0_logs();

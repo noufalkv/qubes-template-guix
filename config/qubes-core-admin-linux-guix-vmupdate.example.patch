@@ -67,6 +67,7 @@ index 0000000..5b12c2d
 +    PROGRESS_REPORTING = False
 +
 +    SYSTEM_CONFIG = "/etc/config.scm"
++    CHANNEL_DIR = "/etc/qubes-guix-channel"
 +    CURRENT_SYSTEM = "/run/current-system"
 +    CURRENT_CONFIGURATION = "/run/current-system/configuration.scm"
 +    CURRENT_PROVENANCE = "/run/current-system/provenance"
@@ -338,11 +339,12 @@ index 0000000..5b12c2d
 +        """
 +        Detect the common Guix TemplateVM no-op update case cheaply.
 +
-+        The native template installs a self-contained /etc/config.scm.  If the
-+        running generation configuration is still embedded in that file, a
-+        central updater run has no new system definition to apply.  Avoiding a
-+        full no-op reconfigure matters because Guix graph evaluation can take
-+        tens of minutes in nested openQA.
++        The native template installs /etc/config.scm and the Qubes Guix
++        channel module under /etc/qubes-guix-channel.  If the running
++        generation configuration is still embedded in that file, a central
++        updater run has no new system definition to apply.  Avoiding a full
++        no-op reconfigure matters because Guix graph evaluation can take tens
++        of minutes in nested openQA.
 +        """
 +        if not os.path.exists(self.CURRENT_SYSTEM):
 +            return False
@@ -370,8 +372,11 @@ index 0000000..5b12c2d
 +        """
 +        return [
 +            "system",
++            "-L",
++            self.CHANNEL_DIR,
 +            "reconfigure",
 +            "--no-bootloader",
++            "--allow-downgrades",
 +            self.SYSTEM_CONFIG,
 +        ]
 +
@@ -694,7 +699,7 @@ index 0000000..8d8a8b0
 +        configured_source=None):
 +    if configured_source is None:
 +        configured_source = (
-+            ";; generated wrapper\n"
++            ";; local comment before current configuration\n"
 +            f"{current_source}"
 +        )
 +    Path(GUIXCLI.SYSTEM_CONFIG).write_text(configured_source,
@@ -749,8 +754,11 @@ index 0000000..8d8a8b0
 +        *GUIXCLI.GUIX_ENVIRONMENT,
 +        guix,
 +        "system",
++        "-L",
++        GUIXCLI.CHANNEL_DIR,
 +        "reconfigure",
 +        "--no-bootloader",
++        "--allow-downgrades",
 +        GUIXCLI.SYSTEM_CONFIG,
 +    ]]
 +
@@ -771,8 +779,11 @@ index 0000000..8d8a8b0
 +        *GUIXCLI.GUIX_ENVIRONMENT,
 +        guix,
 +        "system",
++        "-L",
++        GUIXCLI.CHANNEL_DIR,
 +        "reconfigure",
 +        "--no-bootloader",
++        "--allow-downgrades",
 +        GUIXCLI.SYSTEM_CONFIG,
 +    ]]
 +
@@ -791,8 +802,11 @@ index 0000000..8d8a8b0
 +        *GUIXCLI.GUIX_ENVIRONMENT,
 +        guix,
 +        "system",
++        "-L",
++        GUIXCLI.CHANNEL_DIR,
 +        "reconfigure",
 +        "--no-bootloader",
++        "--allow-downgrades",
 +        GUIXCLI.SYSTEM_CONFIG,
 +    ]]
 +    out = capsys.readouterr().out
@@ -815,8 +829,11 @@ index 0000000..8d8a8b0
 +        *GUIXCLI.GUIX_ENVIRONMENT,
 +        guix,
 +        "system",
++        "-L",
++        GUIXCLI.CHANNEL_DIR,
 +        "reconfigure",
 +        "--no-bootloader",
++        "--allow-downgrades",
 +        GUIXCLI.SYSTEM_CONFIG,
 +    ]]
 +
@@ -835,8 +852,11 @@ index 0000000..8d8a8b0
 +        *GUIXCLI.GUIX_ENVIRONMENT,
 +        guix,
 +        "system",
++        "-L",
++        GUIXCLI.CHANNEL_DIR,
 +        "reconfigure",
 +        "--no-bootloader",
++        "--allow-downgrades",
 +        GUIXCLI.SYSTEM_CONFIG,
 +    ]]
 +
@@ -878,7 +898,7 @@ index 0000000..8d8a8b0
 +
 +    assert result.code == EXIT.ERR
 +    assert "Guix command failed with exit code 1:" in result.err
-+    assert "system reconfigure --no-bootloader" in result.err
++    assert "system -L /etc/qubes-guix-channel reconfigure --no-bootloader --allow-downgrades" in result.err
 +
 +
 +def test_upgrade_uses_qubes_update_proxy(tmp_path, monkeypatch):
@@ -904,8 +924,11 @@ index 0000000..8d8a8b0
 +        "NO_PROXY=127.0.0.1,localhost",
 +        guix,
 +        "system",
++        "-L",
++        GUIXCLI.CHANNEL_DIR,
 +        "reconfigure",
 +        "--no-bootloader",
++        "--allow-downgrades",
 +        GUIXCLI.SYSTEM_CONFIG,
 +    ]]
 +
@@ -943,8 +966,11 @@ index 0000000..8d8a8b0
 +
 +    assert manager.get_action(remove_obsolete=True) == [
 +        "system",
++        "-L",
++        GUIXCLI.CHANNEL_DIR,
 +        "reconfigure",
 +        "--no-bootloader",
++        "--allow-downgrades",
 +        GUIXCLI.SYSTEM_CONFIG,
 +    ]
 +
@@ -1101,8 +1127,11 @@ index 0000000..8d8a8b0
 +        *GUIXCLI.GUIX_ENVIRONMENT,
 +        guix,
 +        "system",
++        "-L",
++        GUIXCLI.CHANNEL_DIR,
 +        "reconfigure",
 +        "--no-bootloader",
++        "--allow-downgrades",
 +        GUIXCLI.SYSTEM_CONFIG,
 +    ]]
 +    out = capsys.readouterr().out

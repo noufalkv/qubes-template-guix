@@ -16,35 +16,27 @@ assumptions to Guix System and Shepherd.
   the same split `root.img.part.NN` payload shape expected by `qvm-template`.
 - Guix store paths are immutable, but Qubes VM agents still require stable FHS
   paths such as `/usr/lib/qubes`, `/etc/qubes-rpc`, `/run/qubes`, `/rw`,
-  `/home`, and `/usr/local`.  The compatibility services in `config.scm` create
-  those paths inside the VM only.
+  `/home`, and `/usr/local`.  The compatibility services in `qubes/vm.scm`
+  create those paths inside the VM only.
 
 ## Validation Infrastructure Scope
 
-Nested-dom0 and openQA scripts are development and release validation
+openQA and dom0 smoke scripts are development and release validation
 infrastructure.  They are not installed into the TemplateVM image, do not add a
 new dom0 service, and should not be treated as part of the runtime trusted
 computing base of a published Guix template.  They still need ordinary review
-before use on a build host because they create VMs, copy artifacts, and run
-dom0-side test commands.
+before use on a build host because they copy artifacts and run dom0-side test
+commands.
 
-`scripts/import-native-rootfs-dom0.sh` includes a file-pool truncate fallback
-for Qubes storage backends that reject root-volume shrinking through
-`qvm-volume resize -f`.  That fallback is scoped to a TemplateVM the script has
-just created and refuses to run if the target VM already exists.  It is only a
-root-image smoke-test helper; the release path is the Template Manager RPM
-installed through `qvm-template`.
-
-`scripts/setup-openqa-guix-template-test.sh` is intended for a dedicated
-openQA review host.  It overlays the local test module into the Qubes openQA
-test tree, refreshes mutable HDD assets, writes local openQA API credentials,
-updates `workers.ini`, and restarts openQA services.  Do not run it on a shared
-or production openQA deployment without reviewing those host-local changes.
+`scripts/run-openqa-template-rpm.sh` assumes an existing openQA host.  It copies
+the local Guix test files into the Qubes openQA test tree, refreshes mutable HDD
+assets, and schedules an RPM-mode job, but it does not create API credentials,
+rewrite worker configuration, or restart openQA services.
 
 ## Source Integrity
 
 - Qubes VM agent sources are fetched from QubesOS Git repositories by exact
-  commit and Guix recursive content hash in `config.scm`.
+  commit and Guix recursive content hash in `qubes/vm.scm`.
 - `scripts/check-qubes-pins.sh` compares the pinned commits with live upstream
   release tags for the intended Qubes release series.
 - `config/channels.scm` pins the Guix channel used for release-quality builds.
@@ -65,9 +57,9 @@ or production openQA deployment without reviewing those host-local changes.
   treated as compatibility requirements, not new policy invented by this
   template.
 - The updates proxy implementation forwards to Qubes `qubes.UpdatesProxy`
-  instead of creating an independent network updater.  Guix-specific setup uses
-  `guix-configuration` for the daemon proxy and a generated client wrapper, so
-  the template does not carry a separate updater policy.
+  instead of creating an independent network updater.  Guix update operations
+  that need the Qubes proxy set an explicit proxy environment; ordinary Guix
+  commands are not hidden behind a global wrapper.
 - Swap uses `/dev/xvdc1`, and private volume persistence uses the standard
   Qubes `/dev/xvdb -> /rw`, `/rw/home -> /home`, and
   `/rw/usrlocal -> /usr/local` model.
@@ -90,20 +82,10 @@ The highest-risk rows for security review are:
 Those changes should be kept small and dropped whenever upstream Qubes gains a
 native mechanism that removes the Guix-specific need.
 
-## What Is Not Yet Proven
+## Evidence Boundary
 
-The following must not be presented as final release proof until the publication
-branch or release object has fresh evidence:
-
-- RPM-mode openQA reruns for both `guix` and `guix-minimal`.
-- default update-target proxy forwarding rerun from the publication branch or
-  release object.
-- runtime evidence that the generated Guix daemon/client proxy configuration is
-  active, plus real Guix update tooling consuming the Qubes update proxy.
-- Broader usability checks such as audio, time sync, keymap sync, DispVM, NetVM,
-  and ProxyVM behavior.
-
-Until those are complete, the correct status is a reviewable prototype with
-build, packaging, nested-dom0 lifecycle, nested-dom0 smoke, recorded RPM-mode
-openQA, and recorded default update-target proxy evidence, not a published or
-security-reviewed Qubes community template.
+Security review should treat generated artifacts, openQA, qvm-template
+lifecycle, and live TemplateVM/AppVM behavior as separate evidence classes.
+`VALIDATION.md` records which of those classes are current.  Until the missing
+runtime gates are refreshed from the publication source state, this is a
+reviewable prototype, not a security-reviewed Qubes community template.
