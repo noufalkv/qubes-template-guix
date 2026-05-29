@@ -35,23 +35,23 @@ Non-goals for the first review:
 | Expectation | Local artifact | Current status |
 | --- | --- | --- |
 | Open-source licensing | `COPYING`, SPDX headers, RPM metadata, Guix package licenses | Present |
-| Guix-native implementation | `.guix-channel`, `qubes/vm.scm`, `config/qubes-system.tmpl` | Present; repository channel module plus a rendered `/etc/config.scm` operating-system entrypoint |
+| Guix-native implementation | `.guix-channel`, `modules/qubes/packages.scm`, `config/qubes-system.tmpl` | Present; repository channel module plus a rendered `/etc/config.scm` operating-system entrypoint |
 | Pinned Guix input | `config/channels.scm`, `scripts/build-native-rootfs.sh` | Present; used for build-scoped authenticated `guix pull`, not installed as root/user state |
-| Pinned Qubes sources | `qubes/vm.scm`, `scripts/check-qubes-pins.sh` | Present; freshness check records upstream tag state |
+| Pinned Qubes sources | `modules/qubes/packages.scm`, `scripts/check-qubes-pins.sh` | Present; freshness check records upstream tag state |
 | Builder-shaped pipeline | `Makefile`, `builder-v2-template/`, `scripts/builder-v2-template-adapter.sh` | Present locally; upstream Builder acceptance remains external |
 | Qubes release-config sketch | `config/qubes-release-configs-guix.example.patch` | Draft only; publication owner and metadata remain gates |
 | Central updater sketch | `config/qubes-core-admin-linux-guix-vmupdate.example.patch` | Draft only; needs fresh central-update runtime evidence |
 | Template RPM contract | `scripts/package-native-template-rpm.sh`, `tests/template-rpm-payload-check.sh` | Local artifact checks exercise generated RPM payloads |
-| Runtime integration | `qubes/vm.scm`, `config/qubes-system.tmpl`, dom0/openQA scripts, `VALIDATION.md` | Runtime reruns required before publication |
+| Runtime integration | `modules/qubes/packages.scm`, `config/qubes-system.tmpl`, dom0/openQA scripts, `VALIDATION.md` | Runtime reruns required before publication |
 | Maintenance story | `MAINTENANCE.md` | Policy documented; publication owner deferred |
 | Security framing | `SECURITY.md`, `ADAPTATION_INVENTORY.md` | Present |
 
 ## Patch Review Order
 
 1. Guix package definitions and source pins:
-   `qubes/vm.scm`, `scripts/check-qubes-pins.sh`.
+   `modules/qubes/packages.scm`, `scripts/check-qubes-pins.sh`.
 2. Runtime service mapping:
-   `qubes/vm.scm`.
+   `modules/qubes/packages.scm`.
 3. Image and RPM packaging:
    `scripts/build-native-rootfs.sh`,
    `scripts/package-native-template-rpm.sh`,

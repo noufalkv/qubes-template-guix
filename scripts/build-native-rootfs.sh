@@ -98,19 +98,26 @@ refresh_builder_guix() {
 
 write_installed_config() {
     as_root install -m 0644 "$config" "$mount_dir/etc/config.scm"
+    write_guix_channels
+}
+
+write_guix_channels() {
+    as_root mkdir -p "$mount_dir/etc/guix"
+    as_root install -m 0644 "$repo_root/config/guix-channels.scm" \
+        "$mount_dir/etc/guix/channels.scm"
 }
 
 install_channel_sources() {
     local channel_dir="$mount_dir/etc/qubes-guix-channel"
 
     as_root rm -rf "$channel_dir"
-    as_root mkdir -p "$channel_dir/qubes"
+    as_root mkdir -p "$channel_dir"
     as_root install -m 0644 "$repo_root/.guix-channel" "$channel_dir/.guix-channel"
-    as_root install -m 0644 "$repo_root/qubes/vm.scm" "$channel_dir/qubes/vm.scm"
+    as_root cp -a "$repo_root/modules" "$channel_dir/modules"
+    as_root chmod -R u+rwX,go+rX "$channel_dir/modules"
 }
 
 remove_runtime_guix_state() {
-    as_root rm -f "$mount_dir/etc/guix/channels.scm"
     as_root rm -f "$mount_dir/root/.config/guix/current"
     as_root rm -f "$mount_dir/home/user/.config/guix/current"
     as_root find "$mount_dir/var/guix/profiles/per-user" \
@@ -216,8 +223,10 @@ check_requirements() {
     [ -r "$config" ] || die "missing Guix system config: $config"
     [ -r "$repo_root/.guix-channel" ] ||
         die "missing Guix channel metadata: $repo_root/.guix-channel"
-    [ -r "$repo_root/qubes/vm.scm" ] ||
-        die "missing Qubes Guix channel module: $repo_root/qubes/vm.scm"
+    [ -r "$repo_root/modules/qubes/packages.scm" ] ||
+        die "missing Qubes Guix channel module: $repo_root/modules/qubes/packages.scm"
+    [ -r "$repo_root/config/guix-channels.scm" ] ||
+        die "missing installed channels file: $repo_root/config/guix-channels.scm"
 }
 
 validate_install_dir() {
@@ -245,7 +254,7 @@ prepare_target_root() {
 }
 
 initialize_guix_system() {
-    as_root "$guix_bin" system -L "$repo_root" init --no-bootloader \
+    as_root "$guix_bin" system -L "$repo_root/modules" init --no-bootloader \
         "$config" "$mount_dir"
     as_root test -x "$mount_dir/var/guix/profiles/system/profile/bin/sh" ||
         die "Guix system profile does not provide bin/sh"

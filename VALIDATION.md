@@ -9,7 +9,7 @@ AppVM behavior.  Local maintenance commands are not runtime evidence.
 
 ## Current Source State
 
-- `.guix-channel` and `qubes/vm.scm` make this repository a Guix channel for
+- `.guix-channel` and `modules/qubes/packages.scm` make this repository a Guix channel for
   Qubes VM package and service definitions.
 - `config/qubes-system.tmpl` is the operating-system template; it is rendered
   per variant by `scripts/render-config.sh` and the result is installed as

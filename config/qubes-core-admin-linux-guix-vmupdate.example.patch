@@ -67,7 +67,7 @@ index 0000000..5b12c2d
 +    PROGRESS_REPORTING = False
 +
 +    SYSTEM_CONFIG = "/etc/config.scm"
-+    CHANNEL_DIR = "/etc/qubes-guix-channel"
++    CHANNEL_DIR = "/etc/qubes-guix-channel/modules"
 +    CURRENT_SYSTEM = "/run/current-system"
 +    CURRENT_CONFIGURATION = "/run/current-system/configuration.scm"
 +    CURRENT_PROVENANCE = "/run/current-system/provenance"
@@ -898,7 +898,7 @@ index 0000000..8d8a8b0
 +
 +    assert result.code == EXIT.ERR
 +    assert "Guix command failed with exit code 1:" in result.err
-+    assert "system -L /etc/qubes-guix-channel reconfigure --no-bootloader --allow-downgrades" in result.err
++    assert "system -L /etc/qubes-guix-channel/modules reconfigure --no-bootloader --allow-downgrades" in result.err
 +
 +
 +def test_upgrade_uses_qubes_update_proxy(tmp_path, monkeypatch):

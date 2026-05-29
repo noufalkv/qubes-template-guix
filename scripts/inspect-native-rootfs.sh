@@ -255,7 +255,7 @@ verify_profile_payload() {
 verify_installed_channel_sources() {
     [ -r "$mount_dir/etc/qubes-guix-channel/.guix-channel" ] ||
         die "missing installed Qubes Guix channel metadata"
-    [ -r "$mount_dir/etc/qubes-guix-channel/qubes/vm.scm" ] ||
+    [ -r "$mount_dir/etc/qubes-guix-channel/modules/qubes/packages.scm" ] ||
         die "missing installed Qubes Guix channel module"
 }
 

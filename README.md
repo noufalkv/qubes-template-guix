@@ -19,9 +19,14 @@ This is a reviewable prototype, not a published Qubes community template.
 
 | File | Purpose |
 | --- | --- |
-| `.guix-channel` | Channel metadata for this repository's Qubes VM package/service module. |
-| `qubes/vm.scm` | Guix channel module: Qubes VM tool packages and Shepherd services, plus the package sets and OS building blocks the template uses. |
+| `.guix-channel` | Channel metadata (modules live under `modules/`, keyring on the `keyring` branch). |
+| `.guix-authorizations` | OpenPGP signers authorized to sign channel commits for `guix pull`. |
+| `modules/qubes/packages.scm` | Qubes VM packages and package sets. |
+| `modules/qubes/services.scm` | Qubes VM Shepherd services and service lists. |
+| `modules/qubes/system.scm` | OS building blocks: privileged programs, system service stack, host name. |
+| `modules/qubes/vm.scm` | Umbrella module re-exporting the three modules above. |
 | `config/qubes-system.tmpl` | GNU Guix System config template; `scripts/render-config.sh` substitutes the variant and writes the per-variant `config.scm` installed as `/etc/config.scm`. |
+| `config/guix-channels.scm` | Installed as `/etc/guix/channels.scm` so `guix pull` can update the Qubes channel. |
 | `scripts/render-config.sh` | Render `config/qubes-system.tmpl` to a concrete operating-system file for a variant. |
 | `config/channels.scm` | Pinned Guix channel used only while generating template images. |
 | `builder-v2-template/` | Builder v2 content-script shape and variant appmenu allowlists. |
@@ -44,9 +49,11 @@ guix pull -p <temporary-profile> --allow-downgrades -C config/channels.scm
 
 The refreshed Guix command is used only for template generation.  The generated
 template does not install the pinned channel as root or user `guix pull` state.
-The template does install this repository's channel module under
-`/etc/qubes-guix-channel` so `/etc/config.scm` can be reconfigured later without
-depending on the builder checkout.
+The image installs this repository's channel modules under
+`/etc/qubes-guix-channel/modules` so `/etc/config.scm` can be reconfigured
+offline with `guix system -L /etc/qubes-guix-channel/modules reconfigure
+/etc/config.scm`, and it ships `/etc/guix/channels.scm` so a user can instead
+`guix pull` the Qubes channel and update the idiomatic way.
 
 `config/channels.scm` uses Guix's official Codeberg channel URL.  That is an
 upstream channel pin for the builder, not a checkout or file-channel rewrite.
@@ -123,7 +130,7 @@ desktop file is `xterm.desktop`, because Guix does not provide one.
 
 ## Changing Packages
 
-Package selection lives in the channel module `qubes/vm.scm`:
+Package selection lives in the channel module `modules/qubes/packages.scm`:
 
 - shared runtime packages: `%qubes-common-packages`;
 - normal desktop packages: `%qubes-normal-desktop-packages`;
@@ -132,12 +139,12 @@ Package selection lives in the channel module `qubes/vm.scm`:
 
 The system definition is `config/qubes-system.tmpl`, a standard
 `operating-system` form that imports `(qubes vm)` and wires its package sets,
-services, bootloader, and privileged programs.  `scripts/render-config.sh`
-substitutes the variant token and writes the concrete `config.scm` that is
-installed as `/etc/config.scm`; the installed image also carries the channel
-module under `/etc/qubes-guix-channel`, so `guix system reconfigure
-/etc/config.scm` works later without the builder checkout.  Build-time
-evaluation uses the same module from the repository with `guix system -L .`.
+services, and privileged programs.  `scripts/render-config.sh` substitutes the
+variant token and writes the concrete `config.scm` installed as
+`/etc/config.scm`.  The image also carries the channel modules under
+`/etc/qubes-guix-channel/modules` (for offline `guix system -L … reconfigure`)
+and `/etc/guix/channels.scm` (for `guix pull`).  Build-time evaluation uses the
+same modules with `guix system -L modules`.
 
 After adding a package with a desktop entry, add that desktop-file ID to the
 matching appmenu allowlist under `builder-v2-template/`.  Use package-provided

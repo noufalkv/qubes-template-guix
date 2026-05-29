@@ -16,7 +16,7 @@ assumptions to Guix System and Shepherd.
   the same split `root.img.part.NN` payload shape expected by `qvm-template`.
 - Guix store paths are immutable, but Qubes VM agents still require stable FHS
   paths such as `/usr/lib/qubes`, `/etc/qubes-rpc`, `/run/qubes`, `/rw`,
-  `/home`, and `/usr/local`.  The compatibility services in `qubes/vm.scm`
+  `/home`, and `/usr/local`.  The compatibility services in `modules/qubes/packages.scm`
   create those paths inside the VM only.
 
 ## Validation Infrastructure Scope
@@ -36,7 +36,7 @@ rewrite worker configuration, or restart openQA services.
 ## Source Integrity
 
 - Qubes VM agent sources are fetched from QubesOS Git repositories by exact
-  commit and Guix recursive content hash in `qubes/vm.scm`.
+  commit and Guix recursive content hash in `modules/qubes/packages.scm`.
 - `scripts/check-qubes-pins.sh` compares the pinned commits with live upstream
   release tags for the intended Qubes release series.
 - `config/channels.scm` pins the Guix channel used for release-quality builds.

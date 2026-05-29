@@ -732,7 +732,7 @@ test ! -L /etc/qubes-rpc
 	test -d /etc/qubes/post-install.d
 	test ! -L /etc/qubes/post-install.d
 	test -r /etc/qubes-guix-channel/.guix-channel
-	test -r /etc/qubes-guix-channel/qubes/vm.scm
+	test -r /etc/qubes-guix-channel/modules/qubes/packages.scm
 	test -x /etc/qubes-rpc/qubes.WaitForSession
 test -x /etc/qubes-rpc/qubes.VMShell
 EOF

@@ -361,7 +361,7 @@ set -eu
 
 test -e /run/current-system
 test -r /etc/config.scm
-test -r /etc/qubes-guix-channel/qubes/vm.scm
+test -r /etc/qubes-guix-channel/modules/qubes/packages.scm
 test -x /usr/bin/python3
 test -x /usr/lib/qubes/upgrades-installed-check
 test -x /usr/lib/qubes/upgrades-status-notify
