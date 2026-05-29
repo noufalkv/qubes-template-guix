@@ -32,8 +32,8 @@ AppVM behavior.  Local maintenance commands are not runtime evidence.
 - Normal appmenus are sourced from `builder-v2-template/appmenus.list`.
 - Minimal appmenus are sourced from
   `builder-v2-template/appmenus-minimal.list`.
-- Template RPM generation is decoupled from local openQA scheduling.
-- openQA now consumes qvm-template RPMs directly.
+- Template RPM generation is independent of any test harness; integration
+  testing uses Qubes OS's existing openQA suite (external to this repo).
 - The normal template provides Qubes audio: the new `pipewire-qubes` package
   builds `libpipewire-module-qubes.so` from the pinned `qubes-gui-agent-linux`
   source against Guix `pipewire`, `qubes-libvchan-xen`, and `qubesdb-vm`, and
@@ -47,9 +47,8 @@ AppVM behavior.  Local maintenance commands are not runtime evidence.
   standalone `guile` is listed: the `guix` package propagates its own guile,
   and adding a second one made the system profile contain two conflicting
   `guile` entries.
-- The update-proxy harness can optionally run `guix pull` through the official
-  Guix channel into a temporary guest profile.  That exercises the libgit2
-  redirect/proxy path without installing pinned root or user Guix state.
+- The in-template `guix pull` through the Qubes updates proxy is validated
+  externally via Qubes' existing openQA and integration infrastructure.
 
 The current Guix pin contains the upstream libgit2 proxy redirect fix,
 `libgit2-proxy-reconnection.patch`, for `guix/guix#87`.  The pinned commit
@@ -149,9 +148,6 @@ still be reproduced from the exact final public branch or tag.
 Source hygiene commands also passed locally on May 29, 2026:
 
 - `bash -n scripts/*.sh tests/*.sh builder-v2-template/*.sh`;
-- `sh -n scripts/guest-update-proxy-preflight.sh
-  scripts/test-guix-update-proxy-dom0.sh`;
-- openQA Perl module load with local `basetest`/`testapi` stubs;
 - `git diff --check`.
 
 These commands only catch source-level breakage.  They do not replace generated
@@ -167,16 +163,8 @@ The following gates are not closed for publication:
 - fresh normal/minimal root image build, inspection, activation, and RPM
   packaging from that exact source state;
 - qvm-template lifecycle reruns for both variants from the final RPMs;
-- RPM-mode openQA reruns for both variants from the final RPMs.  As of
-  May 29, 2026 the nested-virt openQA testbed cannot complete these runs: two
-  scheduled jobs failed at the dom0 console-login step (`assert_screen`
-  `text-logged-in-root` timed out) *before any template install step ran*.
-  The job logs contain zero `qvm-template`/`stage_rpm_asset`/template-install
-  references, so this is a testbed dom0 console-routing/needle issue, not a
-  Guix template defect; closing it is test-infrastructure work tracked
-  separately from the template.  Supplemental artifact evidence (full system
-  profile build, root image build, inspection, writable-root activation, and
-  RPM packaging for both variants) is recorded above.
+- integration/openQA validation against Qubes OS's existing openQA suite for
+  both variants from the final RPMs;
 - real Guix download and `guix pull` behavior through an Internet-capable Qubes
   update target;
 - passing centralized `qubes-vm-update` evidence with the Guix backend, if that

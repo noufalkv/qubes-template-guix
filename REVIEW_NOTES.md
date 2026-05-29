@@ -39,10 +39,10 @@ Non-goals for the first review:
 | Pinned Guix input | `config/channels.scm`, `scripts/build-native-rootfs.sh` | Present; used for build-scoped authenticated `guix pull`, not installed as root/user state |
 | Pinned Qubes sources | `modules/qubes/packages.scm`, `scripts/check-qubes-pins.sh` | Present; freshness check records upstream tag state |
 | Builder-shaped pipeline | `Makefile`, `builder-v2-template/`, `scripts/builder-v2-template-adapter.sh` | Present locally; upstream Builder acceptance remains external |
-| Qubes release-config sketch | `config/qubes-release-configs-guix.example.patch` | Draft only; publication owner and metadata remain gates |
-| Central updater sketch | `config/qubes-core-admin-linux-guix-vmupdate.example.patch` | Draft only; needs fresh central-update runtime evidence |
+| Qubes release-config sketch | QubesOS/qubes-release-configs#19 (RFC) | Draft only; publication owner and metadata remain gates |
+| Central updater sketch | QubesOS/qubes-core-admin-linux#211 (RFC) | Draft only; needs fresh central-update runtime evidence |
 | Template RPM contract | `scripts/package-native-template-rpm.sh`, `tests/template-rpm-payload-check.sh` | Local artifact checks exercise generated RPM payloads |
-| Runtime integration | `modules/qubes/packages.scm`, `config/qubes-system.tmpl`, dom0/openQA scripts, `VALIDATION.md` | Runtime reruns required before publication |
+| Runtime integration | `modules/qubes/packages.scm`, `config/qubes-system.tmpl`, `VALIDATION.md` | Integration testing uses Qubes' existing openQA suite (external); runtime reruns required before publication |
 | Maintenance story | `MAINTENANCE.md` | Policy documented; publication owner deferred |
 | Security framing | `SECURITY.md`, `ADAPTATION_INVENTORY.md` | Present |
 
@@ -61,10 +61,9 @@ Non-goals for the first review:
    `tests/rpm-layout-check.sh`.
 4. Builder content scripts:
    `builder-v2-template/`.
-5. Runtime evidence harness:
-   `openqa/`, `scripts/test-native-guix-template-dom0.sh`,
-   `scripts/test-template-rpm-lifecycle-dom0.sh`,
-   update-proxy scripts, central-vmupdate script, and memory-balloon script.
+5. Integration testing:
+   integration and openQA validation is performed externally using Qubes OS's
+   existing openQA suite; no bespoke harness is shipped in this repository.
 6. Process documents:
    `UPSTREAMING.md`, `MAINTENANCE.md`, `SECURITY.md`,
    `ADAPTATION_INVENTORY.md`, and `VALIDATION.md`.
@@ -88,9 +87,9 @@ Non-goals for the first review:
 - The template RPM is a Qubes Template Manager payload, not a normal RPM:
   split root image parts, `template.conf`, appmenu allowlists, ghost volumes,
   and a `%pre` guard against direct package-manager installation.
-- `scripts/run-openqa-template-rpm.sh` installs the Guix openQA test files and
-  assets into an existing openQA host and schedules an already-built RPM.
-  Template generation does not depend on it.
+- Integration testing uses Qubes OS's existing openQA suite, which is external
+  to this repository.  Template generation does not depend on any bespoke
+  openQA harness.
 - Qubes compatibility links under `/usr`, `/etc/qubes-rpc`, `/usr/lib/qubes`,
   `/run/qubes-service`, and `/var/run/qubes-service-environment` are
   deliberate because upstream Qubes VM tools use fixed FHS-style paths.

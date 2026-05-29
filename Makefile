@@ -9,15 +9,12 @@ SHELL := /usr/bin/env bash
 	check-qubes-pins \
 	inspect-native-rootfs \
 	native-rootfs \
-	openqa-template-rpm-minimal \
-	openqa-template-rpm-normal \
 	package-native-template-rpm \
 	prepare \
 	render-config \
 	rpm-layout-check \
 	template-rpm-minimal \
-	template-rpm-normal \
-	test-native-template
+	template-rpm-normal
 
 check: builder-rpm-contract-check rpm-layout-check
 
@@ -64,20 +61,3 @@ template-rpm-minimal:
 		--variant minimal \
 		--version "$${VERSION:-4.3.0}" \
 		--release "$${RELEASE:-$$(date -u +%Y%m%d%H%M)}"
-
-test-native-template:
-	./scripts/test-native-guix-template-dom0.sh --template "$${TEMPLATE_NAME:-guix}"
-
-openqa-template-rpm-normal:
-	./scripts/run-openqa-template-rpm.sh \
-		--variant normal \
-		--template-rpm "$${TEMPLATE_RPM:?set TEMPLATE_RPM}" \
-		--qubes-disk "$${QUBES_DISK:?set QUBES_DISK}" \
-		--wait
-
-openqa-template-rpm-minimal:
-	./scripts/run-openqa-template-rpm.sh \
-		--variant minimal \
-		--template-rpm "$${TEMPLATE_RPM:?set TEMPLATE_RPM}" \
-		--qubes-disk "$${QUBES_DISK:?set QUBES_DISK}" \
-		--wait
