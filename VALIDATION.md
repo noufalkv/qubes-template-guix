@@ -154,6 +154,48 @@ Source hygiene commands also passed locally on May 29, 2026:
 These commands only catch source-level breakage.  They do not replace generated
 artifact checks or runtime gates.
 
+## Official openQA Integration Testing
+
+On May 29, 2026 the template was exercised against Qubes OS's own openQA
+integration-test suite, on a nested-virt openQA host, replicating the official
+setup rather than any bespoke harness:
+
+- The official `QubesOS/openqa-tests-qubesos` repository is the test source
+  (unmodified), pinned to the same upstream commit our reference job used.  Jobs
+  were created with the official `openqa-clone-job` from real upstream jobs
+  (`CLONED_FROM=https://openqa.qubes-os.org/tests/...`), using the official
+  `templates` flavor variables (`DISTRI=qubesos`, `VERSION=4.3`,
+  `TEST_TEMPLATES="guix guix-minimal"`, `TEST=system_tests_*`).
+- That harness runs the official Qubes integration suites
+  (`qubes.tests.integ.*`: network, audio, storage, grub, salt, dom0_update,
+  vm_update, extra) via `nose2`, through the official module chain
+  (`startup` -> `switch_template` -> `update_templates` -> `system_tests`).
+- The flow boots a real Qubes R4.3 dom0, passes `startup` and
+  `switch_template`, reaches `update_templates`, and runs the official
+  `qvm-template install --nogpgcheck` of the template RPM.
+
+Two setup adaptations were required to drive the official flow on this host,
+neither of which modifies the harness or the template:
+
+- The reused dom0 disk had a stale `default-template` pointing at a
+  not-yet-installed `guix`; resetting it to an existing base template
+  (`fedora-43-xfce`) lets the official `switch_template` proceed.  Template
+  scoping stays on `guix`/`guix-minimal` via `TEST_TEMPLATES`.
+- The official `update_templates.pm` fetches the RPM with `curl URL` (no `-L`),
+  so a GitHub release URL (HTTP 302) yields an empty file.  Serving the RPMs
+  from a direct, non-redirecting URL (a local HTTP server on the openQA host,
+  reachable from the dom0 as `http://10.0.2.2:8080/...`) lets the unmodified
+  curl fetch them.
+
+Remaining limit: a full green integration run was not obtained on this single
+nested-virt host.  Transferring the ~0.9-1.2 GB template RPM through the nested
+QEMU user-mode (slirp) NAT with the harness's no-retry `curl`, plus
+intermittent serial-console instability under os-autoinst, prevents reliable
+completion of the large download / install step.  These are properties of a
+single nested-virt worker, not of the template or the test definitions;
+clearing them needs stable, non-slirp openQA infrastructure of the kind the
+Qubes project runs (bridged/tap networking on a dedicated worker).
+
 ## Known Gaps
 
 The following gates are not closed for publication:
