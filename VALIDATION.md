@@ -33,7 +33,8 @@ AppVM behavior.  Local maintenance commands are not runtime evidence.
 - Minimal appmenus are sourced from
   `builder-v2-template/appmenus-minimal.list`.
 - Template RPM generation is independent of any test harness; integration
-  testing uses Qubes OS's existing openQA suite (external to this repo).
+  testing is delegated to Qubes OS's existing openQA suite (external to this
+  repo).
 - The normal template provides Qubes audio: the new `pipewire-qubes` package
   builds `libpipewire-module-qubes.so` from the pinned `qubes-gui-agent-linux`
   source against Guix `pipewire`, `qubes-libvchan-xen`, and `qubesdb-vm`, and
