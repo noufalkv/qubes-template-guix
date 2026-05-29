@@ -14,8 +14,8 @@ not yet a publishable Qubes community template.
 3. Read `VALIDATION.md` before relying on any validation claim.  It separates
    local contract checks, pin/provenance notes, local artifact and externally-run
    Qubes openQA evidence, and unpassed release gates.
-4. Read `UPSTREAMING.md` and `config/README.md` for the upstream Builder v2
-   and release-config RFC path.
+4. Read `UPSTREAMING.md` for the upstream Builder v2 and release-config RFC
+   path.
 
 ## Review Chunks
 
@@ -27,7 +27,7 @@ not yet a publishable Qubes community template.
   `scripts/test-native-rootfs-activation.sh`, and
   `scripts/package-native-template-rpm.sh`.
 - Builder and release-config sketches:
-  `builder-v2-template/` and `config/README.md`.
+  `builder-v2-template/`.
   Upstream Builder v2 / release-config / central-updater integration is tracked
   as separate Qubes RFCs (QubesOS/qubes-builderv2#245,
   QubesOS/qubes-core-admin-linux#211, QubesOS/qubes-release-configs#19);
