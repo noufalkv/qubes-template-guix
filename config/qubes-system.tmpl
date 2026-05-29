@@ -15,31 +15,8 @@
 (use-modules (gnu)
              (gnu bootloader)
              (gnu bootloader grub)
-             (gnu services)
              (gnu system nss)
-             (guix channels)
              (qubes vm))
-
-;; Channel this template is built from.  Declaring it in guix-configuration
-;; writes /etc/guix/channels.scm in the installed system, so a user can run
-;; "guix pull" to update the Qubes modules the idiomatic way instead of being
-;; pinned to the image's modules forever.  No commit is pinned here so pulls
-;; track the branch; release reproducibility comes from the build-time
-;; config/channels.scm instead.  During development this points at the GitHub
-;; mirror; it should move to the Qubes-hosted URL for publication.
-(define %qubes-channel
-  (channel
-   (name 'qubes)
-   (url "https://github.com/noufalkv/qubes-template-guix.git")
-   (branch "main")
-   (introduction
-    (make-channel-introduction
-     "0e2aef5aca27851bd9d00b4c036f790b1c2ad979"
-     (openpgp-fingerprint
-      "9A23 32D1 567B EEB5 57BB  53DF 559B 1DC4 CA0D 77FF")))))
-
-(define %qubes-channels
-  (cons %qubes-channel %default-channels))
 
 (operating-system
   (host-name (qubes-host-name '@VARIANT@))
@@ -93,16 +70,11 @@
 user ALL=(ALL) NOPASSWD:ALL
 "))
 
-  ;; Full Qubes VM service stack (identical for both variants).  The
-  ;; guix-service-type is extended so the system guix knows the Qubes channel
-  ;; for reconfiguration; the build also writes /etc/guix/channels.scm into the
-  ;; image (see scripts/build-native-rootfs.sh) so "guix pull" works out of the
-  ;; box.  The system guix package itself is left unchanged to avoid rebuilds.
-  (services
-   (modify-services %qubes-system-services
-     (guix-service-type
-      config => (guix-configuration
-                 (inherit config)
-                 (channels %qubes-channels)))))
+  ;; Full Qubes VM service stack (identical for both variants).  The Qubes
+  ;; update channel is defined once in config/guix-channels.scm, which the build
+  ;; installs as /etc/guix/channels.scm (see scripts/build-native-rootfs.sh) so
+  ;; "guix pull" updates the Qubes modules the idiomatic way.  The system guix
+  ;; package itself is left unchanged to avoid rebuilds.
+  (services %qubes-system-services)
 
   (name-service-switch %mdns-host-lookup-nss))
