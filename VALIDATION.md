@@ -132,6 +132,17 @@ May 29, 2026:
   label); a full standalone QEMU boot is not representative because the template
   is booted by the dom0-supplied kernel and Qubes volume attachment.
 
+The final normal image was also booted to userspace under QEMU (host CPU,
+virtio root by `guix-root` label, the image's own system loaded via
+`gnu.load`).  The serial log shows the Guix boot program run, `/etc` populated
+from the system's etc closure, privileged programs set up, `/etc/machine-id`
+created, then **GNU Shepherd 1.0.9 running as PID 1**, loading its
+configuration and starting services: `root`, `root-file-system`, `host-name`
+(value `"guix-qubes"`), and `pam`, followed by `eudev` starting.  This is live
+boot-to-userspace evidence for the final artifact; full GUI/audio/qrexec
+behavior still requires a real Qubes dom0 (and AudioVM) and remains a
+publication gate.
+
 This is generated-artifact evidence from a working tree.  Release evidence must
 still be reproduced from the exact final public branch or tag.
 
