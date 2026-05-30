@@ -74,7 +74,29 @@
              %qubes-normal-desktop-packages
              %qubes-common-packages
              qubes-variant-packages
+            %qubes-network-sysctl-settings
             xterm-desktop-entry))
+
+;; Network interface sysctl hardening applied to every Qubes-managed VIF.
+;; Single source of truth shared by the boot-time all-interfaces applier
+;; (qubes-network-sysctl), the post-boot per-managed-VIF applier
+;; (qubes-network-uplink), both in (qubes services), and the hotplug
+;; per-interface helper installed from qubes-vm-core below.  Defined here in
+;; the leaf package module because (qubes services) already depends on
+;; (qubes packages); defining it the other way around would create a module
+;; import cycle.
+(define %qubes-network-sysctl-settings
+  '(("ipv4" "accept_source_route" . "0")
+    ("ipv4" "accept_redirects" . "0")
+    ("ipv4" "secure_redirects" . "0")
+    ("ipv4" "send_redirects" . "0")
+    ("ipv4" "drop_unicast_in_l2_multicast" . "1")
+    ("ipv6" "accept_source_route" . "-1")
+    ("ipv6" "accept_redirects" . "0")
+    ("ipv6" "accept_ra" . "0")
+    ("ipv6" "accept_dad" . "0")
+    ("ipv6" "autoconf" . "0")
+    ("ipv6" "drop_unicast_in_l2_multicast" . "1")))
 
 (define %qvm-template-repo-query-guix
   (plain-file
@@ -1470,23 +1492,15 @@ information reporter used by Qubes memory ballooning.")
                 (write-guile-script
                  (string-append qubes-libdir
                                 "/qubes-network-interface-sysctl")
+                 ;; '#$ splices the shared %qubes-network-sysctl-settings list
+                 ;; (host side) into this build-side quoted helper, so the
+                 ;; generated script carries a self-contained literal table.
                  '(begin
                     (use-modules (ice-9 match)
                                  (srfi srfi-1)
                                  (srfi srfi-13))
 
-                    (define settings
-                      '(("ipv4" "accept_source_route" . "0")
-                        ("ipv4" "accept_redirects" . "0")
-                        ("ipv4" "secure_redirects" . "0")
-                        ("ipv4" "send_redirects" . "0")
-                        ("ipv4" "drop_unicast_in_l2_multicast" . "1")
-                        ("ipv6" "accept_source_route" . "-1")
-                        ("ipv6" "accept_redirects" . "0")
-                        ("ipv6" "accept_ra" . "0")
-                        ("ipv6" "accept_dad" . "0")
-                        ("ipv6" "autoconf" . "0")
-                        ("ipv6" "drop_unicast_in_l2_multicast" . "1")))
+                    (define settings '#$%qubes-network-sysctl-settings)
 
                     (define (warn message)
                       (display message (current-error-port))

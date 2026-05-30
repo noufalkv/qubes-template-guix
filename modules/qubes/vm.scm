@@ -22,6 +22,7 @@
                %qubes-normal-desktop-packages
                %qubes-common-packages
                qubes-variant-packages
+               %qubes-network-sysctl-settings
                %qubes-privileged-programs
                %qubes-system-services
                qubes-host-name
