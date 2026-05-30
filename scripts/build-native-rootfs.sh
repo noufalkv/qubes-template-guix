@@ -29,7 +29,7 @@ Builds a native Guix System root image for Qubes.
 Options:
   --variant NAME    Template variant: normal or minimal. Default: normal
   --config FILE     Guix operating-system file. Default: rendered from
-                    config/qubes-system.tmpl for the chosen variant.
+                    config/qubes-os-normal.scm or config/qubes-os-minimal.scm.
   --output FILE     Output ext4 image. Default: root.img or root-minimal.img
   --size SIZE       Image size passed to truncate. Default: 20G, matching the
                     current Qubes builder template-root-size default.
@@ -197,12 +197,11 @@ resolve_defaults() {
     variant="$("$repo_root/scripts/template-variant.sh" "$variant" variant)"
 
     if [ -z "$config" ]; then
-        rendered_config="$(mktemp "$repo_root/work.config.XXXXXX.scm")"
-        "$repo_root/scripts/render-config.sh" \
-            --variant "$variant" \
-            --template "$repo_root/config/qubes-system.tmpl" \
-            --output "$rendered_config" >&2
-        config="$rendered_config"
+        case "$variant" in
+            normal) config="$repo_root/config/qubes-os-normal.scm" ;;
+            minimal) config="$repo_root/config/qubes-os-minimal.scm" ;;
+            *) die "unsupported variant: $variant" ;;
+        esac
     fi
 
     case "$variant" in

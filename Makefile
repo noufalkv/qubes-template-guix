@@ -11,7 +11,6 @@ SHELL := /usr/bin/env bash
 	native-rootfs \
 	package-native-template-rpm \
 	prepare \
-	render-config \
 	rpm-layout-check \
 	template-rpm-minimal \
 	template-rpm-normal
@@ -30,10 +29,6 @@ check-qubes-pins:
 prepare:
 	@:
 
-render-config:
-	./scripts/render-config.sh \
-		--variant "$${VARIANT:-normal}" \
-		--output "$${OUTPUT:-config.$${VARIANT:-normal}.scm}"
 
 build-rootimg:
 	./scripts/builder-v2-template-adapter.sh build-rootimg
