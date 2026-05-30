@@ -9,7 +9,8 @@ services.
 Variants:
 
 - `guix`: GUI-capable template with Xorg, `xfce4-terminal`, `xterm`, Thunar,
-  Mousepad, Evince, and Qubes audio (PipeWire/WirePlumber).
+  Mousepad, Evince, Qubes audio (PipeWire/WirePlumber), and `dnsmasq` so it can
+  act as a network provider (NetVM/ProxyVM).
 - `guix-minimal`: GUI-capable minimal template with Xorg and `xterm`.
 
 This is a reviewable prototype, not a published Qubes community template.
@@ -134,6 +135,7 @@ Package selection lives in the channel module `modules/qubes/packages.scm`:
 - shared runtime packages: `%qubes-common-packages`;
 - normal desktop packages: `%qubes-normal-desktop-packages`;
 - normal audio packages: `%qubes-normal-audio-packages`;
+- normal network-provider packages: `%qubes-normal-network-packages`;
 - variant selection: `qubes-variant-packages`.
 
 The system definition is `config/qubes-system.tmpl`, a standard
