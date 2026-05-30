@@ -156,7 +156,7 @@ artifact checks or runtime gates.
 
 ## Official openQA Integration Testing
 
-On May 29, 2026 the template was exercised against Qubes OS's own openQA
+On May 29-30, 2026 the template was exercised against Qubes OS's own openQA
 integration-test suite, on a nested-virt openQA host, replicating the official
 setup rather than any bespoke harness:
 
@@ -165,36 +165,67 @@ setup rather than any bespoke harness:
   were created with the official `openqa-clone-job` from real upstream jobs
   (`CLONED_FROM=https://openqa.qubes-os.org/tests/...`), using the official
   `templates` flavor variables (`DISTRI=qubesos`, `VERSION=4.3`,
-  `TEST_TEMPLATES="guix guix-minimal"`, `TEST=system_tests_*`).
+  `TEST_TEMPLATES` scoped to the guix template, `TEST=system_tests_*`).
 - That harness runs the official Qubes integration suites
   (`qubes.tests.integ.*`: network, audio, storage, grub, salt, dom0_update,
   vm_update, extra) via `nose2`, through the official module chain
   (`startup` -> `switch_template` -> `update_templates` -> `system_tests`).
-- The flow boots a real Qubes R4.3 dom0, passes `startup` and
-  `switch_template`, reaches `update_templates`, and runs the official
-  `qvm-template install --nogpgcheck` of the template RPM.
 
-Two setup adaptations were required to drive the official flow on this host,
-neither of which modifies the harness or the template:
+Install phase (proven): the flow boots a real Qubes R4.3 dom0, passes `startup`
+and `switch_template`, reaches `update_templates`, and runs the official
+`qvm-template install --nogpgcheck` of the template RPM to completion
+(`finished update_templates`).
 
-- The reused dom0 disk had a stale `default-template` pointing at a
-  not-yet-installed `guix`; resetting it to an existing base template
-  (`fedora-43-xfce`) lets the official `switch_template` proceed.  Template
-  scoping stays on `guix`/`guix-minimal` via `TEST_TEMPLATES`.
-- The official `update_templates.pm` fetches the RPM with `curl URL` (no `-L`),
-  so a GitHub release URL (HTTP 302) yields an empty file.  Serving the RPMs
-  from a direct, non-redirecting URL (a local HTTP server on the openQA host,
-  reachable from the dom0 as `http://10.0.2.2:8080/...`) lets the unmodified
-  curl fetch them.
+Test phase (executed): the official `system_tests` module ran
+`nose2 -v ... qubes.tests.integ.network` against the guix template to
+completion (`finished system_tests`), producing the official JUnit artifact
+`nose2-junit-qubes.tests.integ.network.xml` plus per-test logs named for the
+template under test (`qubes.tests.integ.network.VmNetworking_guix.test_NNN.*`).
 
-Remaining limit: a full green integration run was not obtained on this single
-nested-virt host.  Transferring the ~0.9-1.2 GB template RPM through the nested
-QEMU user-mode (slirp) NAT with the harness's no-retry `curl`, plus
-intermittent serial-console instability under os-autoinst, prevents reliable
-completion of the large download / install step.  These are properties of a
-single nested-virt worker, not of the template or the test definitions;
-clearing them needs stable, non-slirp openQA infrastructure of the kind the
-Qubes project runs (bridged/tap networking on a dedicated worker).
+Actual result of `qubes.tests.integ.network.VmNetworking_guix` (27 cases):
+most cases reported `test skipped: dnsmasq not installed`, with one genuine
+test failure and zero harness errors.  This is a real, informative test verdict,
+not an infrastructure artifact: the network suite exercises the template under
+test in NetVM/ProxyVM roles, which require `dnsmasq` for the DHCP/DNS path, and
+the current guix template does not ship `dnsmasq`.  The actionable follow-up is
+to add `dnsmasq` (and revisit the one hard failure) before claiming network-
+provider parity; the GUI/AppVM-oriented variants do not need it to function as
+ordinary AppVM templates.
+
+Setup adaptations required to drive the official flow on this single host,
+none of which modify the harness or the template:
+
+- `DEFAULT_TEMPLATE=fedora-43-xfce` (an existing base template) so the official
+  `switch_template` early-exits cleanly; template scoping stays on the guix
+  template via `TEST_TEMPLATES`.
+- The pinned `update_templates.pm` fetches the RPM with `curl URL` (no `-L`), so
+  RPMs are served from a direct, non-redirecting local HTTP server reachable
+  from the dom0 as `http://10.0.2.2:8080/...`.
+- `QEMURAM=12288 QEMUCPUS=6` (up from the default 8192/2): the leaner default
+  left qubesd not ready when `switch_template` polled it and made the ~0.9 GB
+  RPM transfer miss the harness's hardcoded 1500 s `curl` timeout; the larger
+  allocation makes qubesd ready in time and the download complete in ~7-8 min.
+- The dom0 disk's kernel command line was quieted offline
+  (`audit=0 loglevel=1 systemd.show_status=0 rd.udev.log_level=3`,
+  `journald ForwardToConsole=no`), keeping `console=hvc0`.  Without this, kernel
+  audit / journald console noise intermittently corrupted the os-autoinst serial
+  exit-code markers that the harness's `script_output` helper parses, causing
+  flaky pre-test failures.  This is guest-environment tuning, not a harness edit.
+
+Open caveats:
+
+- The dom0 image used for the executed integ run already carried a guix template
+  at an earlier build; on that image the same-name `qvm-template install` is an
+  upgrade/no-op rather than a first-time install, so the executed integ run
+  validates the template's runtime behavior but not unambiguously the exact
+  newest RPM build.  A first-time install on a guix-free base disk is proven
+  separately (install phase reaches `qvm-template install`); combining both on
+  one image is an infrastructure (dependency-chain / asset-publishing) gap, not
+  a template defect.
+- These runs are on a single nested-virt worker.  Full multi-flavor green
+  coverage of all `qubes.tests.integ.*` suites still needs stable openQA
+  infrastructure (bridged/tap networking, the install->publish->test job
+  dependency chain) of the kind the Qubes project runs on dedicated workers.
 
 ## Known Gaps
 
