@@ -3,8 +3,8 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-PATH="/usr/sbin:/sbin:$PATH"
-export PATH
+# shellcheck source=tests/test-lib.sh
+. "$repo_root/tests/test-lib.sh"
 
 work_dir=""
 image=""
@@ -26,10 +26,9 @@ prepare_root_image() {
     image_tree="$work_dir/image-tree"
     rpm_out="$work_dir/dist"
 
-    mkdir -p "$image_tree/etc" "$rpm_out"
-    printf 'Guix RPM layout root image\n' > "$image_tree/etc/guix-template-test"
-    truncate -s 64M "$image"
-    mke2fs -q -t ext4 -d "$image_tree" "$image"
+    mkdir -p "$rpm_out"
+    tlib_make_root_image "$image" "$image_tree" \
+        "etc/guix-template-test" "Guix RPM layout root image"
 }
 
 check_template_rpm() {

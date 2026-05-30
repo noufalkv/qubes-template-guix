@@ -3,8 +3,8 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-PATH="/usr/sbin:/sbin:$PATH"
-export PATH
+# shellcheck source=tests/test-lib.sh
+. "$repo_root/tests/test-lib.sh"
 
 work_dir=""
 version="4.3.0"
@@ -33,11 +33,9 @@ check_adapter_rpm() {
     local rpm_file="$artifacts/rpmbuild/RPMS/noarch/qubes-template-$template_name-$version-$release.noarch.rpm"
     local rpm_path
 
-    mkdir -p "$(dirname -- "$root_image")" "$image_tree/etc"
-    printf 'Builder adapter root for %s\n' "$template_name" \
-        > "$image_tree/etc/guix-builder-adapter-test"
-    truncate -s 64M "$root_image"
-    mke2fs -q -t ext4 -d "$image_tree" "$root_image"
+    mkdir -p "$(dirname -- "$root_image")"
+    tlib_make_root_image "$root_image" "$image_tree" \
+        "etc/guix-builder-adapter-test" "Builder adapter root for $template_name"
 
     rpm_path="$(env \
         ARTIFACTS_DIR="$artifacts" \
