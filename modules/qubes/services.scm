@@ -938,18 +938,7 @@
 (define (qubes-network-sysctl-program)
   (qubes-vm-service-program
    "qubes-network-sysctl"
-   (define network-sysctl-settings
-     '(("ipv4" "accept_source_route" . "0")
-       ("ipv4" "accept_redirects" . "0")
-       ("ipv4" "secure_redirects" . "0")
-       ("ipv4" "send_redirects" . "0")
-       ("ipv4" "drop_unicast_in_l2_multicast" . "1")
-       ("ipv6" "accept_source_route" . "-1")
-       ("ipv6" "accept_redirects" . "0")
-       ("ipv6" "accept_ra" . "0")
-       ("ipv6" "accept_dad" . "0")
-       ("ipv6" "autoconf" . "0")
-       ("ipv6" "drop_unicast_in_l2_multicast" . "1")))
+   (define network-sysctl-settings '#$%qubes-network-sysctl-settings)
 
    (define (interface-names family)
      (let ((directory (string-append "/proc/sys/net/" family "/conf")))
@@ -1167,18 +1156,7 @@
   (qubes-vm-service-program
    "qubes-network-uplink"
    (define ip "/run/current-system/profile/sbin/ip")
-   (define network-sysctl-settings
-     '(("ipv4" "accept_source_route" . "0")
-       ("ipv4" "accept_redirects" . "0")
-       ("ipv4" "secure_redirects" . "0")
-       ("ipv4" "send_redirects" . "0")
-       ("ipv4" "drop_unicast_in_l2_multicast" . "1")
-       ("ipv6" "accept_source_route" . "-1")
-       ("ipv6" "accept_redirects" . "0")
-       ("ipv6" "accept_ra" . "0")
-       ("ipv6" "accept_dad" . "0")
-       ("ipv6" "autoconf" . "0")
-       ("ipv6" "drop_unicast_in_l2_multicast" . "1")))
+   (define network-sysctl-settings '#$%qubes-network-sysctl-settings)
 
    (define (iface-mac iface)
      (and iface
