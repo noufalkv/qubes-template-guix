@@ -594,20 +594,31 @@ vchan and qrexec components, without Xen hypervisor tools, QEMU, or firmware.")
                  (invoke (string-append #$patchelf "/bin/patchelf")
                          "--set-rpath" rpath target)))
              '("xenstore-read" "xenstore-write"))
-            (for-each
-             (lambda (script)
-               (let ((target (string-append out-scripts "/" script)))
-                 (copy-file (string-append xen-scripts "/" script) target)
-                 (chmod target #o755)
-                 (substitute* target
-                   ((#$xen) #$output))))
-             '("hotplugpath.sh"
-               "locking.sh"
-               "logging.sh"
-               "vif-common.sh"
-               "xen-hotplug-common.sh"
-               "xen-network-common.sh"
-               "xen-script-common.sh"))))))
+             ;; upstream: xen.git tools/hotplug/Linux/init.d/xen-scripts —
+             ;; these helper scripts hardcode the Xen install prefix; rewrite it
+             ;; to this package's store path.  Only some scripts embed the
+             ;; prefix, so accumulate matches across the whole set and fail
+             ;; loudly only if upstream drift removes it from all of them.
+             (let ((matched 0))
+               (for-each
+                (lambda (script)
+                  (let ((target (string-append out-scripts "/" script)))
+                    (copy-file (string-append xen-scripts "/" script) target)
+                    (chmod target #o755)
+                    (substitute* target
+                      ((#$xen)
+                       (set! matched (+ matched 1))
+                       #$output))))
+                '("hotplugpath.sh"
+                  "locking.sh"
+                  "logging.sh"
+                  "vif-common.sh"
+                  "xen-hotplug-common.sh"
+                  "xen-network-common.sh"
+                  "xen-script-common.sh"))
+               (unless (> matched 0)
+                 (error "substitute* found no matches"
+                        "xen/scripts:xen-network-hotplug-tools")))))))
     (native-inputs (list patchelf))
     (inputs (list xen-vchan-libs))
     (home-page "https://xenproject.org/")
@@ -742,12 +753,19 @@ information reporter used by Qubes memory ballooning.")
           (delete 'configure)
           (add-after 'unpack 'run-vm-daemon-in-foreground
             (lambda _
-              ;; Shepherd tracks the process it starts.  The upstream daemon
-              ;; forks when built without systemd support, which leaves
-              ;; duplicate VM-side QubesDB daemons racing for the same vchan.
-              (substitute* "daemon/db-daemon.c"
-                (("    if \\(1\\) \\{")
-                 "    if (0) {"))))
+               ;; Shepherd tracks the process it starts.  The upstream daemon
+               ;; forks when built without systemd support, which leaves
+               ;; duplicate VM-side QubesDB daemons racing for the same vchan.
+               ;; upstream: qubes-core-qubesdb daemon/db-daemon.c — the daemonize
+               ;; branch guarded by "if (1)".
+               (let ((matched 0))
+                 (substitute* "daemon/db-daemon.c"
+                   (("    if \\(1\\) \\{")
+                    (set! matched (+ matched 1))
+                    "    if (0) {"))
+                 (unless (> matched 0)
+                   (error "substitute* found no matches"
+                          "qubes-core-qubesdb:daemon/db-daemon.c")))))
           (replace 'build
             (lambda _
               (let ((rpath (string-append "-Wl,-rpath=" #$output "/lib")))
@@ -846,11 +864,18 @@ information reporter used by Qubes memory ballooning.")
           (delete 'configure)
           (add-after 'unpack 'support-guix-login-shell-paths
             (lambda _
-              ;; The qrexec-agent environment buffer needs to hold Guix store
-              ;; paths such as /gnu/store/...-bash-minimal/bin/bash.
-              (substitute* "agent/qrexec-agent.c"
-                (("    char env_buf\\[64\\];")
-                 "    char env_buf[PATH_MAX];"))))
+               ;; The qrexec-agent environment buffer needs to hold Guix store
+               ;; paths such as /gnu/store/...-bash-minimal/bin/bash.
+               ;; upstream: qubes-core-qrexec agent/qrexec-agent.c — the fixed
+               ;; 64-byte env_buf declaration.
+               (let ((matched 0))
+                 (substitute* "agent/qrexec-agent.c"
+                   (("    char env_buf\\[64\\];")
+                    (set! matched (+ matched 1))
+                    "    char env_buf[PATH_MAX];"))
+                 (unless (> matched 0)
+                   (error "substitute* found no matches"
+                          "qubes-core-qrexec:agent/qrexec-agent.c")))))
           (replace 'build
             (lambda _
               (invoke "make" "all-base" "PANDOC=true" "CC=gcc")
@@ -1153,39 +1178,68 @@ information reporter used by Qubes memory ballooning.")
           (delete 'configure)
           (add-after 'unpack 'normalize-guix-skel-in-home-init
             (lambda _
-              ;; Guix exposes /etc/skel as a generated symlink to a store
-              ;; directory and may include store-backed entries below it.
-              ;; Qubes' home initializer uses cp -a -T, which would otherwise
-              ;; preserve read-only store permissions in the persistent home.
-              (substitute* "init/functions"
-                (("cp \"-af\\$enable_selinux\" -T /etc/skel \"\\$home_root/\\$homedirwithouthome\"")
-                 "skel_source=$(readlink -f /etc/skel || echo /etc/skel)\n            cp \"-afL$enable_selinux\" -T \"$skel_source\" \"$home_root/$homedirwithouthome\""))))
+               ;; Guix exposes /etc/skel as a generated symlink to a store
+               ;; directory and may include store-backed entries below it.
+               ;; Qubes' home initializer uses cp -a -T, which would otherwise
+               ;; preserve read-only store permissions in the persistent home.
+               ;; upstream: qubes-core-agent-linux init/functions — the
+               ;; "cp -af$enable_selinux -T /etc/skel ..." home-skeleton copy.
+               (let ((matched 0))
+                 (substitute* "init/functions"
+                   (("cp \"-af\\$enable_selinux\" -T /etc/skel \"\\$home_root/\\$homedirwithouthome\"")
+                    (set! matched (+ matched 1))
+                    "skel_source=$(readlink -f /etc/skel || echo /etc/skel)\n            cp \"-afL$enable_selinux\" -T \"$skel_source\" \"$home_root/$homedirwithouthome\""))
+                 (unless (> matched 0)
+                   (error "substitute* found no matches"
+                          "qubes-core-agent-linux:init/functions")))))
           (add-after 'normalize-guix-skel-in-home-init 'make-guix-skel-owner-writable
             (lambda _
-              ;; Store directories are intentionally read-only.  Once copied
-              ;; into /rw, the private home skeleton must behave like normal
-              ;; per-user state so Guix and desktop tools can create entries
-              ;; below ~/.config and ~/.cache.
-              (substitute* "init/functions"
-                (("            chmod 700 \"\\$home_root/\\$homedirwithouthome\" &"
-                  all)
-                 (string-append
-                  "            chmod -R u+rwX \"$home_root/$homedirwithouthome\" || return 73\n"
-                  all
-                  )))))
+               ;; Store directories are intentionally read-only.  Once copied
+               ;; into /rw, the private home skeleton must behave like normal
+               ;; per-user state so Guix and desktop tools can create entries
+               ;; below ~/.config and ~/.cache.
+               ;; upstream: qubes-core-agent-linux init/functions — the
+               ;; "chmod 700 $home_root/$homedirwithouthome &" line.
+               (let ((matched 0))
+                 (substitute* "init/functions"
+                   (("            chmod 700 \"\\$home_root/\\$homedirwithouthome\" &"
+                     all)
+                    (set! matched (+ matched 1))
+                    (string-append
+                     "            chmod -R u+rwX \"$home_root/$homedirwithouthome\" || return 73\n"
+                     all
+                     )))
+                 (unless (> matched 0)
+                   (error "substitute* found no matches"
+                          "qubes-core-agent-linux:init/functions")))))
           (add-after 'unpack 'support-networking-without-systemd
             (lambda _
-              ;; Qubes' setup-ip applies network sysctls through
-              ;; systemd-sysctl on systemd templates.  Native Guix templates
-              ;; apply these settings with qubes-network-sysctl-service-type.
-              (substitute* "network/setup-ip"
-                (("/lib/systemd/systemd-sysctl") ":"))
-              ;; The NetVM hotplug path re-applies the same hardening to newly
-              ;; attached vif devices.  Keep that behavior by replacing only
-              ;; the systemd executable with a Guile helper installed below.
-              (substitute* "network/vif-route-qubes"
-                (("/usr/lib/systemd/systemd-sysctl")
-                 "/usr/lib/qubes/qubes-network-interface-sysctl"))))
+               ;; Qubes' setup-ip applies network sysctls through
+               ;; systemd-sysctl on systemd templates.  Native Guix templates
+               ;; apply these settings with qubes-network-sysctl-service-type.
+               ;; upstream: qubes-core-agent-linux network/setup-ip — the
+               ;; systemd-sysctl invocation.
+               (let ((matched 0))
+                 (substitute* "network/setup-ip"
+                   (("/lib/systemd/systemd-sysctl")
+                    (set! matched (+ matched 1))
+                    ":"))
+                 (unless (> matched 0)
+                   (error "substitute* found no matches"
+                          "qubes-core-agent-linux:network/setup-ip")))
+               ;; The NetVM hotplug path re-applies the same hardening to newly
+               ;; attached vif devices.  Keep that behavior by replacing only
+               ;; the systemd executable with a Guile helper installed below.
+               ;; upstream: qubes-core-agent-linux network/vif-route-qubes —
+               ;; the systemd-sysctl invocation.
+               (let ((matched 0))
+                 (substitute* "network/vif-route-qubes"
+                   (("/usr/lib/systemd/systemd-sysctl")
+                    (set! matched (+ matched 1))
+                    "/usr/lib/qubes/qubes-network-interface-sysctl"))
+                 (unless (> matched 0)
+                   (error "substitute* found no matches"
+                          "qubes-core-agent-linux:network/vif-route-qubes")))))
           (replace 'build
             (lambda _
               (invoke "make" "-C" "qubes-rpc"
@@ -1700,17 +1754,31 @@ information reporter used by Qubes memory ballooning.")
           (delete 'configure)
           (add-after 'unpack 'patch-generated-configure-invocation
             (lambda _
-              ;; The Xorg driver helper scripts generate configure scripts
-              ;; after Guix's shebang patching phase. Invoke those generated
-              ;; scripts through the profile shell instead of relying on
-              ;; /bin/sh inside the build container.
-              (substitute* '("xf86-input-mfndev/autogen.sh"
-                             "xf86-video-dummy/autogen.sh")
-                (("\\$srcdir/configure")
-                 "${CONFIG_SHELL:-sh} $srcdir/configure"))
-              (substitute* "Makefile"
-                (("&& \\./configure")
-                 "&& ${CONFIG_SHELL:-sh} ./configure"))))
+               ;; The Xorg driver helper scripts generate configure scripts
+               ;; after Guix's shebang patching phase. Invoke those generated
+               ;; scripts through the profile shell instead of relying on
+               ;; /bin/sh inside the build container.
+               ;; upstream: qubes-gui-agent-linux xf86-input-mfndev/autogen.sh
+               ;; and xf86-video-dummy/autogen.sh — the "$srcdir/configure" call.
+               (let ((matched 0))
+                 (substitute* '("xf86-input-mfndev/autogen.sh"
+                                "xf86-video-dummy/autogen.sh")
+                   (("\\$srcdir/configure")
+                    (set! matched (+ matched 1))
+                    "${CONFIG_SHELL:-sh} $srcdir/configure"))
+                 (unless (> matched 0)
+                   (error "substitute* found no matches"
+                          "qubes-gui-agent-linux:autogen.sh")))
+               ;; upstream: qubes-gui-agent-linux Makefile — the "&& ./configure"
+               ;; invocation of the generated Xorg helper configure script.
+               (let ((matched 0))
+                 (substitute* "Makefile"
+                   (("&& \\./configure")
+                    (set! matched (+ matched 1))
+                    "&& ${CONFIG_SHELL:-sh} ./configure"))
+                 (unless (> matched 0)
+                   (error "substitute* found no matches"
+                          "qubes-gui-agent-linux:Makefile")))))
           (replace 'build
             (lambda _
               ;; Build the GUI/Xorg pieces needed for Qubes application
@@ -1791,11 +1859,20 @@ information reporter used by Qubes memory ballooning.")
               ;; split: the first-review image does not yet provide a distro
               ;; logind/xauth handoff that would otherwise authorize the
               ;; default user's Qubes session client.
-              (substitute* (string-append #$output "/usr/bin/qubes-run-xorg")
-                (("qubes-xorg-wrapper \\$DISPLAY_XORG -nolisten")
-                 "qubes-xorg-wrapper $DISPLAY_XORG -modulepath /run/current-system/profile/lib/xorg/modules -fp /run/current-system/profile/share/fonts/X11/misc -nolisten")
-                (("exec /usr/bin/qubes-gui-runuser \"\\$DEFAULT_USER\" /bin/sh -l -c \"exec /usr/bin/xinit \\$XSESSION -- /usr/lib/qubes/qubes-xorg-wrapper :0 -nolisten tcp vt07 -wr -config xorg-qubes.conf > ~/.xsession-errors 2>&1\"")
-                 "exec /usr/bin/xinit /usr/bin/qubes-gui-runuser \"$DEFAULT_USER\" /usr/bin/env DISPLAY=:0 XDG_CONFIG_DIRS=/run/current-system/profile/etc/xdg XDG_DATA_DIRS=/run/current-system/profile/share GI_TYPELIB_PATH=/run/current-system/profile/lib/girepository-1.0 PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin /usr/bin/qubes-session qubes-session -- /usr/lib/qubes/qubes-xorg-wrapper :0 -modulepath /run/current-system/profile/lib/xorg/modules -fp /run/current-system/profile/share/fonts/X11/misc -nolisten tcp vt07 -wr -config xorg-qubes.conf -ac > \"/home/$DEFAULT_USER/.xsession-errors\" 2>&1"))
+               ;; upstream: qubes-gui-agent-linux qubes-run-xorg — the
+               ;; qubes-xorg-wrapper invocation and the xinit/qubes-session exec
+               ;; line.
+               (let ((matched 0))
+                 (substitute* (string-append #$output "/usr/bin/qubes-run-xorg")
+                   (("qubes-xorg-wrapper \\$DISPLAY_XORG -nolisten")
+                    (set! matched (+ matched 1))
+                    "qubes-xorg-wrapper $DISPLAY_XORG -modulepath /run/current-system/profile/lib/xorg/modules -fp /run/current-system/profile/share/fonts/X11/misc -nolisten")
+                   (("exec /usr/bin/qubes-gui-runuser \"\\$DEFAULT_USER\" /bin/sh -l -c \"exec /usr/bin/xinit \\$XSESSION -- /usr/lib/qubes/qubes-xorg-wrapper :0 -nolisten tcp vt07 -wr -config xorg-qubes.conf > ~/.xsession-errors 2>&1\"")
+                    (set! matched (+ matched 1))
+                    "exec /usr/bin/xinit /usr/bin/qubes-gui-runuser \"$DEFAULT_USER\" /usr/bin/env DISPLAY=:0 XDG_CONFIG_DIRS=/run/current-system/profile/etc/xdg XDG_DATA_DIRS=/run/current-system/profile/share GI_TYPELIB_PATH=/run/current-system/profile/lib/girepository-1.0 PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin /usr/bin/qubes-session qubes-session -- /usr/lib/qubes/qubes-xorg-wrapper :0 -modulepath /run/current-system/profile/lib/xorg/modules -fp /run/current-system/profile/share/fonts/X11/misc -nolisten tcp vt07 -wr -config xorg-qubes.conf -ac > \"/home/$DEFAULT_USER/.xsession-errors\" 2>&1"))
+                 (unless (> matched 0)
+                   (error "substitute* found no matches"
+                          "qubes-gui-agent-linux:qubes-run-xorg")))
               ;; install-common follows the distribution FHS and places the
               ;; agent under /usr.  Guix profiles do not merge /usr/bin into
               ;; /bin, and the compatibility activation links /usr/lib/qubes
@@ -1811,40 +1888,54 @@ information reporter used by Qubes memory ballooning.")
                                  (string-append #$output "/include"))
               (let ((qubes-session
                      (string-append #$output "/bin/qubes-session")))
-                (when (file-exists? qubes-session)
-                  (substitute*
-                      qubes-session
-                    (("export QUBES_ENV_SOURCED=1\n")
-                     (string-append
-                      "export QUBES_ENV_SOURCED=1\n"
-                      "\n"
-                      "# The native Guix session is started directly from xinit,\n"
-                      "# so make the GUI/profile environment explicit before\n"
-                      "# XDG autostart launches qrexec-fork-server.  Desktop\n"
-                      "# application launches inherit that daemon environment.\n"
-                      ": \"${DISPLAY:=:0}\"\n"
-                      ": \"${XDG_RUNTIME_DIR:=/tmp/qubes-runtime-$(id -u)}\"\n"
-                      ": \"${XDG_CONFIG_DIRS:=/run/current-system/profile/etc/xdg}\"\n"
-                      ": \"${XDG_DATA_DIRS:=/run/current-system/profile/share}\"\n"
-                      ": \"${GI_TYPELIB_PATH:=/run/current-system/profile/lib/girepository-1.0}\"\n"
-                      ": \"${SSL_CERT_DIR:=/etc/ssl/certs}\"\n"
-                      ": \"${SSL_CERT_FILE:=/etc/ssl/certs/ca-certificates.crt}\"\n"
-                      ": \"${GIT_SSL_CAINFO:=/etc/ssl/certs/ca-certificates.crt}\"\n"
-                      ": \"${CURL_CA_BUNDLE:=/etc/ssl/certs/ca-certificates.crt}\"\n"
-                      ": \"${XDG_CACHE_HOME:=/var/tmp/guix-cache-${USER:-user}}\"\n"
-                      "mkdir -p \"$XDG_RUNTIME_DIR\"\n"
-                      "chmod 700 \"$XDG_RUNTIME_DIR\"\n"
-                      ": \"${DBUS_SESSION_BUS_ADDRESS:=unix:path=$XDG_RUNTIME_DIR/bus}\"\n"
-                      "if [ ! -S \"$XDG_RUNTIME_DIR/bus\" ]; then\n"
-                      "    dbus-daemon --session --address=\"$DBUS_SESSION_BUS_ADDRESS\" --fork --nopidfile\n"
-                      "fi\n"
-                      "PATH=\"/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin${PATH:+:$PATH}\"\n"
-                      "export DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS\n"
-                      "export XDG_CONFIG_DIRS XDG_DATA_DIRS GI_TYPELIB_PATH\n"
-                      "export SSL_CERT_DIR SSL_CERT_FILE GIT_SSL_CAINFO CURL_CA_BUNDLE XDG_CACHE_HOME PATH\n")))
-                  (substitute* qubes-session
-                    (("dbus-update-activation-environment --systemd --all")
-                     "dbus-update-activation-environment --all || true"))))
+                 (when (file-exists? qubes-session)
+                   ;; upstream: qubes-gui-agent-linux qubes-session — the
+                   ;; "export QUBES_ENV_SOURCED=1" environment marker.
+                   (let ((matched 0))
+                     (substitute*
+                         qubes-session
+                       (("export QUBES_ENV_SOURCED=1\n")
+                        (set! matched (+ matched 1))
+                        (string-append
+                       "export QUBES_ENV_SOURCED=1\n"
+                       "\n"
+                       "# The native Guix session is started directly from xinit,\n"
+                       "# so make the GUI/profile environment explicit before\n"
+                       "# XDG autostart launches qrexec-fork-server.  Desktop\n"
+                       "# application launches inherit that daemon environment.\n"
+                       ": \"${DISPLAY:=:0}\"\n"
+                       ": \"${XDG_RUNTIME_DIR:=/tmp/qubes-runtime-$(id -u)}\"\n"
+                       ": \"${XDG_CONFIG_DIRS:=/run/current-system/profile/etc/xdg}\"\n"
+                       ": \"${XDG_DATA_DIRS:=/run/current-system/profile/share}\"\n"
+                       ": \"${GI_TYPELIB_PATH:=/run/current-system/profile/lib/girepository-1.0}\"\n"
+                       ": \"${SSL_CERT_DIR:=/etc/ssl/certs}\"\n"
+                       ": \"${SSL_CERT_FILE:=/etc/ssl/certs/ca-certificates.crt}\"\n"
+                       ": \"${GIT_SSL_CAINFO:=/etc/ssl/certs/ca-certificates.crt}\"\n"
+                       ": \"${CURL_CA_BUNDLE:=/etc/ssl/certs/ca-certificates.crt}\"\n"
+                       ": \"${XDG_CACHE_HOME:=/var/tmp/guix-cache-${USER:-user}}\"\n"
+                       "mkdir -p \"$XDG_RUNTIME_DIR\"\n"
+                       "chmod 700 \"$XDG_RUNTIME_DIR\"\n"
+                       ": \"${DBUS_SESSION_BUS_ADDRESS:=unix:path=$XDG_RUNTIME_DIR/bus}\"\n"
+                       "if [ ! -S \"$XDG_RUNTIME_DIR/bus\" ]; then\n"
+                       "    dbus-daemon --session --address=\"$DBUS_SESSION_BUS_ADDRESS\" --fork --nopidfile\n"
+                       "fi\n"
+                       "PATH=\"/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin${PATH:+:$PATH}\"\n"
+                       "export DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS\n"
+                       "export XDG_CONFIG_DIRS XDG_DATA_DIRS GI_TYPELIB_PATH\n"
+                       "export SSL_CERT_DIR SSL_CERT_FILE GIT_SSL_CAINFO CURL_CA_BUNDLE XDG_CACHE_HOME PATH\n")))
+                     (unless (> matched 0)
+                       (error "substitute* found no matches"
+                              "qubes-gui-agent-linux:qubes-session")))
+                   ;; upstream: qubes-gui-agent-linux qubes-session — the
+                   ;; "dbus-update-activation-environment --systemd --all" call.
+                   (let ((matched 0))
+                     (substitute* qubes-session
+                       (("dbus-update-activation-environment --systemd --all")
+                        (set! matched (+ matched 1))
+                        "dbus-update-activation-environment --all || true"))
+                     (unless (> matched 0)
+                       (error "substitute* found no matches"
+                              "qubes-gui-agent-linux:qubes-session")))))
               (let* ((python-site-packages
                       (lambda (package)
                         (let* ((python-lib (string-append package "/lib"))
@@ -1861,14 +1952,21 @@ information reporter used by Qubes memory ballooning.")
                                  #$python-pycparser)))
                      (icon-sender
                       (string-append #$output "/lib/qubes/icon-sender")))
-                (when (file-exists? icon-sender)
-                  (substitute* icon-sender
-                    (("import xcffib")
-                     (string-append "import sys\n"
-                                    "sys.path[:0] = ['"
-                                    (string-join pythonpath "', '")
-                                    "']\n"
-                                    "import xcffib")))))
+                 (when (file-exists? icon-sender)
+                   ;; upstream: qubes-gui-agent-linux icon-sender — the
+                   ;; "import xcffib" statement.
+                   (let ((matched 0))
+                     (substitute* icon-sender
+                       (("import xcffib")
+                        (set! matched (+ matched 1))
+                        (string-append "import sys\n"
+                                     "sys.path[:0] = ['"
+                                     (string-join pythonpath "', '")
+                                     "']\n"
+                                     "import xcffib")))
+                     (unless (> matched 0)
+                       (error "substitute* found no matches"
+                              "qubes-gui-agent-linux:icon-sender")))))
               ;; Upstream installs these Qubes RPC entries as FHS-relative
               ;; symlinks into /usr/bin.  After normalizing /usr/bin into the
               ;; Guix profile's /bin, keep the qrexec services executable.
