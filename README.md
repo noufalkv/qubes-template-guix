@@ -14,7 +14,7 @@ Variants:
 - `guix-minimal`: GUI-capable minimal template with Xorg and `xterm`.
 
 This is a reviewable prototype, not a published Qubes community template.
-`VALIDATION.md` and `UPSTREAMING.md` list the remaining publication gates.
+`VALIDATION.md` lists the remaining publication gates.
 
 ## Important Files
 
@@ -35,9 +35,7 @@ This is a reviewable prototype, not a published Qubes community template.
 | `scripts/build-template-rpm.sh` | Build a root image, inspect it, activate it, and package a qvm-template RPM. |
 | `scripts/package-native-template-rpm.sh` | Package an existing root image as a Qubes Template Manager RPM. |
 | `VALIDATION.md` | Current artifact/runtime evidence and missing gates. |
-| `REVIEW_NOTES.md` | Maintainer-facing review map. |
-| `ADAPTATION_INVENTORY.md` | Non-obvious Guix/Qubes adaptations and rationale. |
-| `SECURITY.md` | Trust boundaries and review-sensitive behavior. |
+| `ADAPTATION_INVENTORY.md` | Non-obvious Guix/Qubes adaptations, rationale, trust boundaries, and review-sensitive behavior. |
 
 ## Build Inputs
 
@@ -212,12 +210,52 @@ QubesOS/qubes-builderv2#245, QubesOS/qubes-core-admin-linux#211, and
 QubesOS/qubes-release-configs#19.  Their patches are regenerated from accepted
 upstream branches rather than vendored here.
 
-## Review Order
+## Maintenance
 
-Start with:
+**Updating Qubes components** (for each R4.3 component bump):
 
-1. `REVIEWER_GUIDE.md`
-2. `REVIEW_NOTES.md`
-3. `ADAPTATION_INVENTORY.md`
-4. `VALIDATION.md`
-5. `UPSTREAMING.md`
+1. Run `./scripts/check-qubes-pins.sh` to compare pinned commits against current upstream tags.
+2. Update the component tag, commit, and recursive Guix hash in `%qubes-source-components` in `modules/qubes/packages.scm`.
+3. Run `make check`, then rebuild and test both variants before publishing.
+
+**Updating the Guix channel pin**:
+
+1. Update `config/channels.scm` to the desired Guix commit.
+2. Build both variants normally; `scripts/build-native-rootfs.sh` runs authenticated `guix pull` against that pin.
+3. Rebuild both root images, inspect and activate both, package both RPMs, and run RPM-mode openQA.
+
+**Channel authentication**: `.guix-authorizations` lists authorized OpenPGP fingerprints; the signer's public key lives on the `keyring` branch. When rotating a key, update `.guix-authorizations`, add the key to the `keyring` branch, and refresh the channel introduction in `config/guix-channels.scm` and `config/qubes-system.tmpl`.
+
+**Security cadence**: rebuild and publish when a pinned Qubes VM component receives a relevant R4.3 update or the pinned Guix channel needs security or compatibility updates. Each rebuild must record source commit, Guix channel commit, component pins and hashes, RPM hashes, and openQA results.
+
+**Rollback**: Qubes template rollback uses `qvm-template` to reinstall or downgrade the `qubes-template-guix*` RPM. Inside a running TemplateVM, Guix system generations can be rolled back when the user deliberately reconfigures.
+
+**Release ownership**: before stable publication, a release owner must supply a public repository URL, release-owner metadata, fresh build and runtime evidence for both variants, and a maintainer handoff plan. The current RFC/review state intentionally omits that metadata.
+
+## Review Guide
+
+Start with `ADAPTATION_INVENTORY.md` and `VALIDATION.md` before reading code.
+`ADAPTATION_INVENTORY.md` maps every non-obvious adaptation to its rationale and
+validation path.  `VALIDATION.md` separates artifact, openQA, and runtime
+evidence and lists which publication gates remain open.
+
+Review areas by file group:
+
+- **Native Guix implementation**: `.guix-channel`, `modules/qubes/packages.scm`,
+  `config/qubes-system.tmpl`, `scripts/render-config.sh`.
+- **Image and RPM tooling**: `scripts/build-native-rootfs.sh`,
+  `scripts/inspect-native-rootfs.sh`, `scripts/test-native-rootfs-activation.sh`,
+  `scripts/package-native-template-rpm.sh`.
+- **Builder and release-config sketches**: `builder-v2-template/`.
+  Upstream Builder v2 / release-config / central-updater integration is tracked
+  as separate Qubes RFCs (QubesOS/qubes-builderv2#245,
+  QubesOS/qubes-core-admin-linux#211, QubesOS/qubes-release-configs#19); patches
+  are regenerated from accepted upstream branches and are not vendored here.
+- **Process and evidence**: `VALIDATION.md`, `ADAPTATION_INVENTORY.md`.
+
+Publication gates not yet closed:
+
+- Qubes has not accepted the Builder v2, release-config, or core-admin Linux sketches.
+- Release-owner metadata is not present.
+- Integration/openQA evidence from Qubes' own suite has not been rerun against the final branch or tag.
+- Qubes maintainers have not reviewed or accepted the template.
