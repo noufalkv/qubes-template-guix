@@ -28,11 +28,8 @@
   #:use-module (gnu packages glib)
   #:use-module (gnu packages gnome)
   #:use-module (gnu packages guile)
-  #:use-module (gnu packages haskell-xyz)
-  #:use-module (gnu packages icu4c)
-  #:use-module (gnu packages image)
-  #:use-module (gnu packages imagemagick)
-  #:use-module (gnu packages libffi)
+   #:use-module (gnu packages icu4c)
+   #:use-module (gnu packages libffi)
   #:use-module (gnu packages libunistring)
   #:use-module (gnu packages linux)
   #:use-module (gnu packages networking)
@@ -445,8 +442,7 @@
     (uri (git-reference
           (url (string-append "https://github.com/QubesOS/" component ".git"))
           (commit (qubes-source-field component 2))))
-    (file-name (string-append component "-" (qubes-source-field component 1)
-                              "-checkout"))
+    (file-name (git-file-name component (qubes-source-field component 1)))
     (sha256 (base32 (qubes-source-field component 3)))))
 
 (define qubes-dom0-kernel
@@ -1278,18 +1274,18 @@ information reporter used by Qubes memory ballooning.")
                       "PYTHON=python3"
                       "DIST=guix"
                       "release=Guix")
-	              (invoke "make" "-C" "qubes-rpc" "install"
-	                      (string-append "DESTDIR=" #$output)
-	                      "BINDIR=/bin"
-	                      "LIBDIR=/lib"
-	                      "SYSCONFDIR=/etc")
-	              (invoke "make" "-C" "qubes-rpc/thunar" "install"
-	                      (string-append "DESTDIR=" #$output))
-	              (invoke "make" "-C" "network" "install"
-	                      (string-append "DESTDIR=" #$output)
-	                      "BINDIR=/bin"
-                      "LIBDIR=/lib"
-                      "SYSCONFDIR=/etc")
+                (invoke "make" "-C" "qubes-rpc" "install"
+                        (string-append "DESTDIR=" #$output)
+                        "BINDIR=/bin"
+                        "LIBDIR=/lib"
+                        "SYSCONFDIR=/etc")
+                (invoke "make" "-C" "qubes-rpc/thunar" "install"
+                        (string-append "DESTDIR=" #$output))
+                (invoke "make" "-C" "network" "install"
+                        (string-append "DESTDIR=" #$output)
+                        "BINDIR=/bin"
+                        "LIBDIR=/lib"
+                        "SYSCONFDIR=/etc")
               ;; install-corevm intentionally skips packaging-specific payloads
               ;; that RPM/Debian specs install separately.  The post-install
               ;; qrexec hooks need these helpers to report supported features,

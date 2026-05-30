@@ -25,11 +25,11 @@
             %qubes-minimal-base-services))
 
 (define (qubes-vm-compat-activation _)
-  #~(begin
-	      (use-modules (guix build utils)
-	                   (ice-9 ftw)
-	                   (ice-9 textual-ports)
-	                   (srfi srfi-13))
+    #~(begin
+      (use-modules (guix build utils)
+                   (ice-9 ftw)
+                   (ice-9 textual-ports)
+                   (srfi srfi-13))
 
       (define (empty-directory? directory)
         (null? (scandir directory
@@ -118,9 +118,9 @@
               (delete-file directory)
               (rename-file temporary directory)))))
 
-	      (define (materialize-symlinked-file file)
-	        (let ((existing (false-if-exception (lstat file))))
-	          (when (and existing (eq? (stat:type existing) 'symlink))
+      (define (materialize-symlinked-file file)
+        (let ((existing (false-if-exception (lstat file))))
+          (when (and existing (eq? (stat:type existing) 'symlink))
             (let* ((target (readlink file))
                    (absolute-target
                     (if (and (positive? (string-length target))
@@ -133,37 +133,37 @@
               (when (file-exists? absolute-target)
                 (copy-file absolute-target temporary)
                 (chmod temporary #o644)
-	                (delete-file file)
-	                (rename-file temporary file))))))
+                (delete-file file)
+                (rename-file temporary file))))))
 
-	      (define (read-text file)
-	        (call-with-input-file file get-string-all))
+      (define (read-text file)
+        (call-with-input-file file get-string-all))
 
-	      (define (write-text file text)
-	        (call-with-output-file file
-	          (lambda (port)
-	            (display text port))))
+      (define (write-text file text)
+        (call-with-output-file file
+          (lambda (port)
+            (display text port))))
 
-	      (define (install-thunar-qubes-actions)
-	        (let ((uca "/etc/xdg/Thunar/uca.xml")
-	              (qubes-uca "/usr/lib/qubes/uca_qubes.xml"))
-	          (when (and (file-exists? uca)
-	                     (file-exists? qubes-uca))
-	            (materialize-symlinked-file uca)
-	            (let ((text (read-text uca))
-	                  (actions (read-text qubes-uca)))
-	              (unless (string-contains text "/usr/lib/qubes/qvm-actions.sh")
-	                (let ((index (string-contains text "</actions>")))
-	                  (if index
-	                      (write-text
-	                       uca
-	                       (string-append (substring text 0 index)
-	                                      actions
-	                                      "\n"
-	                                      (substring text index)))
-	                      (write-text
-	                       uca
-	                       (string-append text "\n" actions "\n")))))))))
+      (define (install-thunar-qubes-actions)
+        (let ((uca "/etc/xdg/Thunar/uca.xml")
+              (qubes-uca "/usr/lib/qubes/uca_qubes.xml"))
+          (when (and (file-exists? uca)
+                     (file-exists? qubes-uca))
+            (materialize-symlinked-file uca)
+            (let ((text (read-text uca))
+                  (actions (read-text qubes-uca)))
+              (unless (string-contains text "/usr/lib/qubes/qvm-actions.sh")
+                (let ((index (string-contains text "</actions>")))
+                  (if index
+                      (write-text
+                       uca
+                       (string-append (substring text 0 index)
+                                      actions
+                                      "\n"
+                                      (substring text index)))
+                      (write-text
+                       uca
+                       (string-append text "\n" actions "\n")))))))))
 
       ;; The upstream Qubes VM tools use fixed paths. Keep those paths as
       ;; compatibility links into the current Guix system profile.
@@ -204,10 +204,10 @@
       ;; services in /etc/qubes-rpc and post-install hooks below /etc/qubes.
       ;; Keep packaged entries visible, but make the top-level directories
       ;; writable instead of immutable profile symlinks.
-	      (link-directory-contents "/run/current-system/profile/etc/qubes-rpc"
-	                               "/etc/qubes-rpc")
-	      (install-thunar-qubes-actions)
-	      ;; Qubes' init/functions still use /var/run/qubes-service* while
+      (link-directory-contents "/run/current-system/profile/etc/qubes-rpc"
+                               "/etc/qubes-rpc")
+      (install-thunar-qubes-actions)
+      ;; Qubes' init/functions still use /var/run/qubes-service* while
       ;; qubes-sysinit.sh populates /run/qubes-service*.  Bridge those paths
       ;; only on systems where /var/run is not already /run.
       (unless (same-directory-entry? "/var/run" "/run")
