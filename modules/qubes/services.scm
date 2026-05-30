@@ -24,6 +24,19 @@
             %qubes-sysctl-service
             %qubes-minimal-base-services))
 
+;; Single source of truth for the fixed Qubes compatibility symlinks.  Each
+;; (target . link) pair points an upstream Qubes fixed path at the current Guix
+;; system profile.  The qubes-vm-compat activation applier below is their one
+;; owner; it runs during system activation, before any Shepherd service starts,
+;; so per-service runtime setup no longer needs to recreate them.
+(define %qubes-compat-links
+  '(("/run/current-system/profile/bin" . "/usr/bin")
+    ("/run/current-system/profile/sbin" . "/usr/sbin")
+    ("/run/current-system/profile/share" . "/usr/share")
+    ("/run/current-system/profile/lib/qubes" . "/usr/lib/qubes")
+    ("/run/current-system/profile/lib/qubes-bind-dirs.d"
+     . "/usr/lib/qubes-bind-dirs.d")))
+
 (define (qubes-vm-compat-activation _)
     #~(begin
       (use-modules (guix build utils)
@@ -177,8 +190,9 @@
       (mkdir-p "/rw")
       (mkdir-p "/usr/local")
       (chmod "/var/tmp" #o1777)
-      ;; Guix exposes /etc/fstab as an immutable store symlink.  Qubes'
-      ;; mount-dirs script expects to add the private /rw volume there.
+      ;; Guix exposes /etc/fstab as an immutable store symlink.  Materialize it
+      ;; once here to a writable file so the qubes-mount-dirs service (the single
+      ;; runtime writer) can append the private /rw volume entry at boot.
       (materialize-symlinked-file "/etc/fstab")
       (write-text-file "/etc/acpi/events/qubes-power-button"
                        "event=button/power.*\naction=/etc/acpi/actions/qubes-poweroff\n")
@@ -188,12 +202,11 @@
 (execl \"/run/current-system/profile/sbin/halt\" \"halt\")
 ")
       (chmod "/etc/acpi/actions/qubes-poweroff" #o555)
-      (replace-symlink "/run/current-system/profile/bin" "/usr/bin")
-      (replace-symlink "/run/current-system/profile/sbin" "/usr/sbin")
-      (replace-symlink "/run/current-system/profile/share" "/usr/share")
-      (replace-symlink "/run/current-system/profile/lib/qubes" "/usr/lib/qubes")
-      (replace-symlink "/run/current-system/profile/lib/qubes-bind-dirs.d"
-                       "/usr/lib/qubes-bind-dirs.d")
+      ;; Apply the fixed Qubes compatibility symlinks from the single
+      ;; %qubes-compat-links data list.  This is the one owner of these links.
+      (for-each (lambda (pair)
+                  (replace-symlink (car pair) (cdr pair)))
+                '#$%qubes-compat-links)
       (link-directory-contents "/run/current-system/profile/etc/qubes"
                                "/etc/qubes")
       (materialize-symlinked-directory "/etc/qubes/post-install.d")
@@ -374,33 +387,6 @@
             (define (qubesdb-write path value)
               (try-run* qubesdb-write* path value))
 
-            (define (regular-or-symlink? path)
-              (let ((st (false-if-exception (lstat path))))
-                (and st (memq (stat:type st) '(regular symlink)))))
-
-            (define (same-directory-entry? left right)
-              (let ((left-stat (false-if-exception (stat left)))
-                    (right-stat (false-if-exception (stat right))))
-                (and left-stat right-stat
-                     (= (stat:dev left-stat) (stat:dev right-stat))
-                     (= (stat:ino left-stat) (stat:ino right-stat)))))
-
-            (define (same-link? target link)
-              (let ((st (false-if-exception (lstat link))))
-                (and st
-                     (eq? 'symlink (stat:type st))
-                     (string=? target (readlink link)))))
-
-            (define (replace-symlink target link)
-              (mkdir-p (dirname link))
-              (cond
-               ((same-link? target link) #t)
-               ((regular-or-symlink? link)
-                (delete-file link)
-                (symlink target link))
-               ((not (file-exists? link))
-                (symlink target link))))
-
             (define (group-gid name)
               (let ((entry (false-if-exception (getgr name))))
                 (and entry (vector-ref entry 2))))
@@ -513,12 +499,12 @@
               (let ((gid (group-gid "qubes")))
                 (when gid
                   (false-if-exception (chown "/run/qubes" -1 gid))))
-              (chmod "/run/qubes" #o775)
-              (unless (same-directory-entry? "/var/run" "/run")
-                (replace-symlink "/run/qubes" "/var/run/qubes")
-                (replace-symlink "/run/qubes-service" "/var/run/qubes-service")
-                (replace-symlink "/run/qubes-service-environment"
-                                 "/var/run/qubes-service-environment")))
+              (chmod "/run/qubes" #o775))
+
+            ;; The fixed Qubes compatibility symlinks (including the
+            ;; /var/run/qubes* bridges) are created once by the qubes-vm-compat
+            ;; activation applier, which runs before any Shepherd service.
+            ;; Service runtime setup no longer recreates them here.
 
             (define (misc-minor names)
               (let ((text (read-file "/proc/misc")))
@@ -1390,6 +1376,10 @@
    "qubes-mount-dirs"
    (define findmnt "/run/current-system/profile/bin/findmnt")
    (define mount-dirs "/usr/lib/qubes/init/mount-dirs.sh")
+   ;; Qubes tools write /etc/fstab at runtime to add the /rw mount; on Guix
+   ;; /etc/fstab is an immutable store symlink that must be materialized to a
+   ;; writable file (done once by the qubes-vm-compat activation applier) to
+   ;; permit this.  This service is the single runtime writer of the /rw entry.
    (define fstab-entry
      "/dev/xvdb /rw auto noauto,defaults,discard,nosuid,nodev 1 2\n")
 
