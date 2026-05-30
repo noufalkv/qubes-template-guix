@@ -26,9 +26,7 @@ This is a reviewable prototype, not a published Qubes community template.
 | `modules/qubes/services.scm` | Qubes VM Shepherd services and service lists. |
 | `modules/qubes/system.scm` | OS building blocks: privileged programs, system service stack, host name. |
 | `modules/qubes/vm.scm` | Umbrella module re-exporting the three modules above. |
-| `config/qubes-system.tmpl` | GNU Guix System config template; `scripts/render-config.sh` substitutes the variant and writes the per-variant `config.scm` installed as `/etc/config.scm`. |
 | `config/guix-channels.scm` | Installed as `/etc/guix/channels.scm` so `guix pull` can update the Qubes channel. |
-| `scripts/render-config.sh` | Render `config/qubes-system.tmpl` to a concrete operating-system file for a variant. |
 | `config/channels.scm` | Pinned Guix channel used only while generating template images. |
 | `builder-v2-template/` | Builder v2 content-script shape and variant appmenu allowlists. |
 | `scripts/build-native-rootfs.sh` | Build or install a Guix root filesystem. |
@@ -136,10 +134,10 @@ Package selection lives in the channel module `modules/qubes/packages.scm`:
 - normal network-provider packages: `%qubes-normal-network-packages`;
 - variant selection: `qubes-variant-packages`.
 
-The system definition is `config/qubes-system.tmpl`, a standard
+The system definition is `config/qubes-os-normal.scm` and `config/qubes-os-minimal.scm`, calling `qubes-operating-system` which is a standard
 `operating-system` form that imports `(qubes vm)` and wires its package sets,
-services, and privileged programs.  `scripts/render-config.sh` substitutes the
-variant token and writes the concrete `config.scm` installed as
+services, and privileged programs.
+These concrete configs are installed as
 `/etc/config.scm`.  The image also carries the channel modules under
 `/etc/qubes-guix-channel/modules` (for offline `guix system -L … reconfigure`)
 and `/etc/guix/channels.scm` (for `guix pull`).  Build-time evaluation uses the
@@ -224,7 +222,7 @@ upstream branches rather than vendored here.
 2. Build both variants normally; `scripts/build-native-rootfs.sh` runs authenticated `guix pull` against that pin.
 3. Rebuild both root images, inspect and activate both, package both RPMs, and run RPM-mode openQA.
 
-**Channel authentication**: `.guix-authorizations` lists authorized OpenPGP fingerprints; the signer's public key lives on the `keyring` branch. When rotating a key, update `.guix-authorizations`, add the key to the `keyring` branch, and refresh the channel introduction in `config/guix-channels.scm` and `config/qubes-system.tmpl`.
+**Channel authentication**: `.guix-authorizations` lists authorized OpenPGP fingerprints; the signer's public key lives on the `keyring` branch. When rotating a key, update `.guix-authorizations`, add the key to the `keyring` branch, and refresh the channel introduction in `config/guix-channels.scm`.
 
 **Security cadence**: rebuild and publish when a pinned Qubes VM component receives a relevant R4.3 update or the pinned Guix channel needs security or compatibility updates. Each rebuild must record source commit, Guix channel commit, component pins and hashes, RPM hashes, and openQA results.
 
@@ -242,7 +240,7 @@ evidence and lists which publication gates remain open.
 Review areas by file group:
 
 - **Native Guix implementation**: `.guix-channel`, `modules/qubes/packages.scm`,
-  `config/qubes-system.tmpl`, `scripts/render-config.sh`.
+  `config/qubes-os-normal.scm`, `config/qubes-os-minimal.scm`.
 - **Image and RPM tooling**: `scripts/build-native-rootfs.sh`,
   `scripts/inspect-native-rootfs.sh`, `scripts/test-native-rootfs-activation.sh`,
   `scripts/package-native-template-rpm.sh`.

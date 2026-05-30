@@ -26,4 +26,5 @@
                %qubes-privileged-programs
                %qubes-system-services
                qubes-host-name
+               qubes-operating-system
                xterm-desktop-entry))

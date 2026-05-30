@@ -11,8 +11,8 @@ AppVM behavior.  Local maintenance commands are not runtime evidence.
 
 - `.guix-channel` and `modules/qubes/packages.scm` make this repository a Guix channel for
   Qubes VM package and service definitions.
-- `config/qubes-system.tmpl` is the operating-system template; it is rendered
-  per variant by `scripts/render-config.sh` and the result is installed as
+- `config/qubes-os-normal.scm` and `config/qubes-os-minimal.scm` are the configurations;
+  per variant and installed as
   `/etc/config.scm`.  Generated images also install the channel module under
   `/etc/qubes-guix-channel`.
 - `config/channels.scm` pins Guix commit
@@ -50,6 +50,14 @@ AppVM behavior.  Local maintenance commands are not runtime evidence.
   `guile` entries.
 - The in-template `guix pull` through the Qubes updates proxy is validated
   externally via Qubes' existing openQA and integration infrastructure.
+- G-OPEN-2 (updates-proxy): local half done (`http_proxy`/`https_proxy`
+  exported to the updates-proxy forwarder when the `updates-proxy-setup` flag is
+  set; the export sits behind the flag guard in
+  `modules/qubes/services.scm`, so the flag-absent path and `guix-daemon`
+  itself stay unproxied per `%qubes-base-services`).  Full closure DEFERRED
+  pending qubes-core-admin-linux#211 upstream (vmupdate guix backend:
+  `guix pull` → `guix system reconfigure`) + L4 openQA evidence that
+  `bordeaux.guix.gnu.org`/`ci.guix.gnu.org` is reachable through the proxy.
 
 The current Guix pin contains the upstream libgit2 proxy redirect fix,
 `libgit2-proxy-reconnection.patch`, for `guix/guix#87`.  The pinned commit
@@ -109,7 +117,7 @@ May 29, 2026:
   `.guix-channel`, all four modules byte-compile and an authenticated
   `guix pull` of the channel (keyring branch + signed introduction commit)
   succeeds and exposes `(qubes vm)` to a pulled config.
-- Each variant's `config.scm` is rendered from `config/qubes-system.tmpl`,
+- Each variant's `config.scm` uses `qubes-operating-system`,
   builds (`guix system build`), produces a root image, passes inspection and
   writable-root activation, and is packaged into a qvm-template RPM
   (`qubes-template-guix-4.3.0-*`, `qubes-template-guix-minimal-4.3.0-*`); the
