@@ -1346,6 +1346,16 @@
      (display "qubes-updates-proxy enabled locally; not forwarding to avoid loops\n")
      (exit 0))
     (else
+     ;; Reached only when the updates-proxy-setup flag is set (the first
+     ;; cond clause exits otherwise) and this VM is not itself the proxy.
+     ;; Export the loopback proxy that this forwarder publishes on
+     ;; 127.0.0.1:8082 so substitute fetches resolve bordeaux/ci.guix.gnu.org
+     ;; via the qubes.UpdatesProxy CONNECT path instead of guest DNS, which
+     ;; has no resolver in a ProxyVM-served AppVM ("host not found").  This is
+     ;; the gated local half of G-OPEN-2; guix-daemon itself is deliberately
+     ;; left unproxied in %qubes-base-services for the flag-absent case.
+     (setenv "http_proxy" "http://127.0.0.1:8082")
+     (setenv "https_proxy" "http://127.0.0.1:8082")
      (exec* "/run/current-system/profile/bin/socat"
             "TCP-LISTEN:8082,bind=127.0.0.1,reuseaddr,fork"
             "EXEC:/usr/lib/qubes/guix-updates-proxy-forwarder")))))
