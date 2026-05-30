@@ -68,11 +68,12 @@
             xen-vchan-libs
             xen-network-hotplug-tools
             %qubes-vm-headless-packages
-            %qubes-vm-gui-packages
-            %qubes-normal-audio-packages
-            %qubes-normal-desktop-packages
-            %qubes-common-packages
-            qubes-variant-packages
+             %qubes-vm-gui-packages
+             %qubes-normal-audio-packages
+             %qubes-normal-network-packages
+             %qubes-normal-desktop-packages
+             %qubes-common-packages
+             qubes-variant-packages
             xterm-desktop-entry))
 
 (define %qvm-template-repo-query-guix
@@ -2096,6 +2097,15 @@ StartupWMClass=XTerm
   ;; minimal template, like Qubes' own minimal templates, ships without audio.
   (list pipewire wireplumber pipewire-qubes))
 
+(define %qubes-normal-network-packages
+  ;; The non-minimal template can act as a network provider (sys-net /
+  ;; sys-firewall / a custom NetVM or ProxyVM), which needs dnsmasq to serve
+  ;; DHCP and forward DNS to downstream qubes.  Qubes' own full templates ship
+  ;; dnsmasq for exactly this role; the upstream network integration tests
+  ;; (qubes.tests.integ.network) also require it in the template under test.
+  ;; The minimal template, like Qubes' own minimal templates, omits it.
+  (list dnsmasq))
+
 (define (qubes-variant-packages variant)
   (case variant
     ((minimal)
@@ -2103,6 +2113,7 @@ StartupWMClass=XTerm
     ((normal)
      (append %qubes-normal-desktop-packages
              %qubes-normal-audio-packages
+             %qubes-normal-network-packages
              %qubes-common-packages))
     (else
      (error "unsupported Qubes Guix template variant" variant))))
