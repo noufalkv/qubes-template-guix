@@ -896,8 +896,14 @@ information reporter used by Qubes memory ballooning.")
                ;; max_dst_opts_length, conf.all.*) and network/80-qubes.conf
                ;; (drop_unsolicited_na) are deliberately out of this per-interface
                ;; table's scope and are not compared here.
-               (let* ((expected (sort '#$%qubes-network-sysctl-settings
-                                       (lambda (a b) (string<? (cadr a) (cadr b)))))
+               (let* ((entry-key (lambda (entry)
+                                   (string-append (car entry) "." (cadr entry))))
+                      (sort-entries (lambda (entries)
+                                      (sort entries
+                                            (lambda (a b)
+                                              (string<? (entry-key a)
+                                                        (entry-key b))))))
+                      (expected (sort-entries '#$%qubes-network-sysctl-settings))
                       (file "network/81-qubes.conf.optional")
                       (lines (string-split (call-with-input-file file
                                              get-string-all)
@@ -921,9 +927,7 @@ information reporter used by Qubes memory ballooning.")
                                              (cons* family name value))
                                             (_ #f))))))))
                         lines))
-                      (actual (sort parsed
-                                    (lambda (a b)
-                                      (string<? (cadr a) (cadr b))))))
+                      (actual (sort-entries parsed)))
                  (unless (equal? expected actual)
                    (error
                     (string-append
