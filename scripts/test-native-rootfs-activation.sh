@@ -121,10 +121,10 @@ verify_activation_paths() {
     test -d /rw
     test -d /usr/local
     test -L /etc/ssl
-	    test -s /etc/ssl/certs/ca-certificates.crt
-	    test -r /etc/qubes-guix-channel/.guix-channel
-	    test -r /etc/qubes-guix-channel/modules/qubes/packages.scm
-	    test -f /etc/fstab
+    test -s /etc/ssl/certs/ca-certificates.crt
+    test -r /etc/qubes-guix-channel/.guix-channel
+    test -r /etc/qubes-guix-channel/modules/qubes/packages.scm
+    test -f /etc/fstab
     test ! -L /etc/fstab
     printf "\n# qubes-guix activation fstab write check\n" >> /etc/fstab
     test -L /usr/lib/qubes
