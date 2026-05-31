@@ -41,6 +41,7 @@
     #~(begin
       (use-modules (guix build utils)
                    (ice-9 ftw)
+                   (ice-9 popen)
                    (ice-9 textual-ports)
                    (srfi srfi-13))
 
@@ -149,6 +150,24 @@
                 (delete-file file)
                 (rename-file temporary file))))))
 
+      ;; QubesDB is not reachable during system activation (it runs as a later
+      ;; Shepherd service), so this helper returns #f whenever qubesdb-read is
+      ;; absent or fails.  When dom0 has already published a value it lets the
+      ;; activation apply the configured timezone immediately; otherwise the
+      ;; qubes-early-vm-config service propagates it later into the writable
+      ;; /etc/localtime materialized below.
+      (define qubesdb-read*
+        "/run/current-system/profile/bin/qubesdb-read")
+
+      (define (qubesdb-read key)
+        (false-if-exception
+         (and (file-exists? qubesdb-read*)
+              (let* ((port (open-pipe* OPEN_READ qubesdb-read* key))
+                     (text (get-string-all port))
+                     (status (close-pipe port)))
+                (and (zero? status)
+                     (string-trim-right text))))))
+
       (define (read-text file)
         (call-with-input-file file get-string-all))
 
@@ -194,6 +213,40 @@
       ;; once here to a writable file so the qubes-mount-dirs service (the single
       ;; runtime writer) can append the private /rw volume entry at boot.
       (materialize-symlinked-file "/etc/fstab")
+      ;; /etc/localtime is also an immutable store symlink on Guix (the
+      ;; operating-system timezone).  Qubes' qubes-early-vm-config.sh writes
+      ;; /etc/localtime when dom0 propagates a configured timezone, which fails
+      ;; silently against a store symlink.  Materialize it once here to a
+      ;; writable regular file so that runtime propagation can update it, and
+      ;; apply the dom0-configured timezone immediately when QubesDB already
+      ;; carries it.  The running profile does not expose a share/zoneinfo
+      ;; directory, so derive the zoneinfo base from the existing /etc/localtime
+      ;; store symlink (e.g. /gnu/store/...-tzdata/share/zoneinfo/Etc/UTC)
+      ;; before materializing it.  qubesdb-read returns #f during early
+      ;; activation (the daemon is not up yet); the qubes-early-vm-config
+      ;; service applies the value later into this now-writable file.
+      (let* ((existing (false-if-exception (lstat "/etc/localtime")))
+             (zoneinfo-base
+              (and existing
+                   (eq? (stat:type existing) 'symlink)
+                   (let* ((target (readlink "/etc/localtime"))
+                          (index (string-contains target "/zoneinfo/")))
+                     (and index
+                          (substring target 0
+                                     (+ index (string-length "/zoneinfo"))))))))
+        (materialize-symlinked-file "/etc/localtime")
+        (let ((tz (qubesdb-read "/qubes-timezone")))
+          (when (and tz (not (string-null? tz)) zoneinfo-base)
+            (let ((zoneinfo (string-append zoneinfo-base "/" tz)))
+              (when (file-exists? zoneinfo)
+                (let ((temporary "/etc/localtime.qubes-tmp"))
+                  (when (file-exists? temporary)
+                    (delete-file temporary))
+                  (copy-file zoneinfo temporary)
+                  (chmod temporary #o644)
+                  (when (file-exists? "/etc/localtime")
+                    (delete-file "/etc/localtime"))
+                  (rename-file temporary "/etc/localtime")))))))
       (write-text-file "/etc/acpi/events/qubes-power-button"
                        "event=button/power.*\naction=/etc/acpi/actions/qubes-poweroff\n")
       (write-text-file "/etc/acpi/actions/qubes-poweroff"
