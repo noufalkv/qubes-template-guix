@@ -164,6 +164,80 @@ artifact checks or runtime gates.
 
 ## Official openQA Integration Testing
 
+### Fresh run, May 31, 2026 (both variants, branch `quality-refactor` @ `fa2b4a5`)
+
+Authoritative L4 re-run for BOTH variants from the current branch, via the
+OFFICIAL `openqa-clone-job` flow (NOT `isos post`; the host has no products
+configured).  Test source `QubesOS/openqa-tests-qubesos` UNMODIFIED, casedir
+pinned `4a652e3`.  Full evidence: `.omo/evidence/task-14-openqa/`.
+
+RPMs under test (built fresh on the dev host from this branch, release
+`202605310444`; `make template-rpm-{normal,minimal}` ran build -> inspect ->
+writable-root activation -> package, both exiting 0):
+
+- `qubes-template-guix-4.3.0-202605310444.noarch.rpm` —
+  sha256 `7a953e5c02d86aebfbb0c7f1854e786d98ea874f1590293f6d1fb0b36a883ca2`.
+- `qubes-template-guix-minimal-4.3.0-202605310444.noarch.rpm` —
+  sha256 `368b653761091cac3cecad79cf672ec0b03dcd10b5b653731e2f3f58b11465f2`.
+
+Served to the nested dom0 from a DIRECT, non-redirecting HTTP server at
+`http://10.0.2.2:8080/` (the pinned `update_templates.pm` curls with no `-L`).
+Overrides: `DISTRI=qubesos VERSION=4.3 flavor=templates TEST_TEMPLATES=<variant>
+SYSTEM_TESTS="qubes.tests.integ.network:21600 qubes.tests.integ.audio:10800"
+QEMURAM=12288 QEMUCPUS=6`.  Eight jobs were run (156-164) to isolate harness
+couplings; canonical per-variant rows are **job 164 (guix)** and **job 163
+(guix-minimal)**, corroborated by jobs 158/160 (guix).
+
+Pass criterion for this run (per plan): "both variants install + execute the
+network/audio suite path to the SAME point as the prior recorded run, with no
+NEW regression."  NOT "all green."  Result against that criterion: **met for
+install + suite-setup; nose2 case execution was blocked by host/harness limits,
+identical to the baseline (no new regression).**
+
+Module-level results (openQA `jobs/<id>/details`, the authoritative phase
+verdicts; JUnit-equivalent in `task14-module-results.xml`):
+
+- **Install (`update_templates`) PASSED for BOTH variants.**  The official
+  `qvm-template install --nogpgcheck` of the FRESH RPM ran to completion from
+  the direct URL: guix job 164 (387 s; also jobs 158, 160) and guix-minimal job
+  163 (303 s).
+- **guix `switch_template` PASSED** (job 158): official switch to
+  `fedora-43-xfce` early-exits cleanly.
+- **guix `system_tests` reached the SAME stop point as the prior baseline.**
+  Job 164 read `convert_junit.py` + `split_logs.py` from `/root/extra-files`,
+  then died at the unconditional `pactl set-sink-mute 0 0` (`system_tests.pm:46`)
+  because the nested dom0 has no PulseAudio sink 0.  The prior recorded baseline
+  job 149 died at the EXACT same `pactl set-sink-mute 0 0` command.  =>
+  **No NEW regression** vs the prior run; `nose2` was not reached this round, so
+  no `nose2-junit-*.xml` was produced (there are currently 0 such files on the
+  host — the present dom0 image's `pactl` step blocks every run, baseline
+  included).
+- **guix-minimal `system_tests` was blocked at harness setup**, not by the
+  template: `system_tests_prepare_minimal.pm:83` hard-`die`s "Template
+  guix-minimal not supported by this module" because the harness's minimal
+  test-dep installer only handles `fedora` (dnf) / `debian` (apt).  This is the
+  §4 `zsystemtests.py` Guix gap mirrored in the minimal-prep module; it needs
+  upstream Guix support in openqa-tests-qubesos and must not be patched locally.
+
+Timezone (HEAD `fa2b4a5` "Apply dom0 timezone via a writable path"): the casedir
+has NO dom0-timezone-propagation integ test (only `install_oem.pm`, an OEM-install
+flow).  This change therefore has **no L4 coverage** in openQA — it was neither
+passed nor failed here (not exercised).  Lower-layer evidence is recorded under
+`.omo/evidence/task-11-*`.
+
+G-OPEN-2 (updates-proxy / central vm-update): **NOT closed; no proxy success.**
+Job 156's central `qubes-vm-update --targets=guix` was reached and the update
+agent executed, but aborted at `zsystemtests.py:76 AssertionError`
+(`COMMAND_EXIT_CODE=26`) — the test-dep installer has no Guix backend — BEFORE
+any `guix pull`/substitute fetch.  It therefore did NOT reach or resolve
+`bordeaux.guix.gnu.org` / `ci.guix.gnu.org` through `qubes.UpdatesProxy`.  The
+substitute path remains UNPROVEN end-to-end.  Evidence:
+`task14-156-qubesctl-upgrade.log`.
+
+The 7 in-tree "fixed" gaps are NOT claimed closed by this run.
+
+### Earlier run, May 29-30, 2026
+
 On May 29-30, 2026 the template was exercised against Qubes OS's own openQA
 integration-test suite, on a nested-virt openQA host, replicating the official
 setup rather than any bespoke harness:
