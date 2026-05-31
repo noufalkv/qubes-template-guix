@@ -11,6 +11,18 @@ AppVM behavior.  Local maintenance commands are not runtime evidence.
 
 - `.guix-channel` and `modules/qubes/packages.scm` make this repository a Guix channel for
   Qubes VM package and service definitions.
+- The per-interface network sysctl hardening is defined once in
+  `qubes-network-sysctl-helper-forms` (`modules/qubes/packages.scm`) and shared by all
+  three appliers (boot all-interfaces, managed uplink, and the generated
+  `qubes-network-interface-sysctl` hotplug helper), replacing three earlier copies.
+  Those writers now fail loudly when an existing `/proc` sysctl path cannot be
+  written (missing paths are still skipped), instead of silently swallowing the
+  error.  A `verify-network-sysctl-table` build phase errors if
+  `%qubes-network-sysctl-settings` drifts from upstream
+  `network/81-qubes.conf.optional`, so a component bump that changes the table
+  breaks the build with a re-sync message instead of shipping stale hardening.
+- The two `init/functions` home-skeleton adaptations are combined into one
+  fail-loud `adapt-guix-skel-in-home-init` phase with separate anchors.
 - `config/qubes-os-normal.scm` and `config/qubes-os-minimal.scm` are the configurations;
   per variant and installed as
   `/etc/config.scm`.  Generated images also install the channel module under
