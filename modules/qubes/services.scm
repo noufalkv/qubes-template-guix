@@ -988,11 +988,18 @@
            '())))
 
    (define (write-sysctl path value)
+     ;; Skip knobs whose /proc path is absent (e.g. IPv6 disabled), but fail
+     ;; loudly if an existing path cannot be written so missing hardening is
+     ;; never swallowed silently.
      (when (file-exists? path)
-       (false-if-exception
-        (call-with-output-file path
-          (lambda (port)
-            (display value port))))))
+       (catch #t
+         (lambda ()
+           (call-with-output-file path
+             (lambda (port)
+               (display value port))))
+         (lambda (key . args)
+           (warn (string-append "failed to write network sysctl: " path))
+           (exit 1)))))
 
    (define (apply-setting setting)
      (let ((family (car setting))
@@ -1236,13 +1243,20 @@
         network-sysctl-settings))
 
    (define (write-sysctl path value)
+     ;; Skip knobs whose /proc path is absent (e.g. IPv6 disabled), but fail
+     ;; loudly if an existing path cannot be written so missing hardening is
+     ;; never swallowed silently.
      (when (file-exists? path)
-       (false-if-exception
-        (call-with-output-file path
-          (lambda (port)
-            (display value port))))))
+       (catch #t
+         (lambda ()
+           (call-with-output-file path
+             (lambda (port)
+               (display value port))))
+         (lambda (key . args)
+           (warn (string-append "failed to write network sysctl: " path))
+           (exit 1)))))
 
-     (prepare-service-runtime)
+      (prepare-service-runtime)
      (try-run* ip "link" "set" "lo" "up")
      (let wait ((attempt 0))
        (let ((iface (qubes-managed-iface)))
