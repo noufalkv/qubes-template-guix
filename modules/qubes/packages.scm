@@ -130,12 +130,14 @@
      "1fybqb195kp8blk73f119lindwfvk48p7980fi6nvwhafibdlmnc")))
 
 (define (qubes-source-field component index)
+  "Return field INDEX of COMPONENT's entry in %qubes-source-components."
   (let ((entry (assoc component %qubes-source-components)))
     (unless entry
       (error "unknown Qubes source component" component))
     (list-ref entry index)))
 
 (define (qubes-release-version component)
+  "Return COMPONENT's release version, the pinned tag without a leading \"v\"."
   (let ((tag (qubes-source-field component 1)))
     (if (and (> (string-length tag) 0)
              (char=? (string-ref tag 0) #\v))
@@ -143,6 +145,7 @@
         tag)))
 
 (define (qubes-release-source component)
+  "Return a git-fetch origin for COMPONENT pinned to its commit and hash."
   (origin
     (method git-fetch)
     (uri (git-reference
