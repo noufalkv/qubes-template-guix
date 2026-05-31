@@ -20,3 +20,5 @@
 /.cocoindex_code/
 # Sisyphus loop state
 /.sisyphus/
+# Python bytecode generated when py_compile checks files/
+files/__pycache__/
