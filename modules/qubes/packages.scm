@@ -833,14 +833,15 @@ information reporter used by Qubes memory ballooning.")
     (arguments
      (list
       ;; The agent-linux tree is mostly VM filesystem, init, and hook
-      ;; integration; its validation is integration-level in a Qubes TemplateVM.
-      #:tests? #f
-      #:modules '((guix build gnu-build-system)
-                  (guix build utils)
-                  (ice-9 ftw)
-                  (ice-9 textual-ports)
-                  (srfi srfi-1)
-                  (srfi srfi-13))
+       ;; integration; its validation is integration-level in a Qubes TemplateVM.
+       #:tests? #f
+       #:modules '((guix build gnu-build-system)
+                   (guix build utils)
+                   (ice-9 ftw)
+                   (ice-9 match)
+                   (ice-9 textual-ports)
+                   (srfi srfi-1)
+                   (srfi srfi-13))
       #:phases
       #~(modify-phases %standard-phases
           (delete 'configure)
@@ -882,6 +883,53 @@ information reporter used by Qubes memory ballooning.")
                  (unless (> matched 0)
                    (error "substitute* found no matches"
                           "qubes-core-agent-linux:init/functions")))))
+          (add-after 'unpack 'verify-network-sysctl-table
+            (lambda _
+               ;; Guard against silent drift between the Scheme copy of the
+               ;; per-interface network sysctls (%qubes-network-sysctl-settings,
+               ;; shared by the boot/uplink services and the vif-route helper)
+               ;; and the upstream source of truth.  Parse the per-interface
+               ;; ("conf.*") entries of network/81-qubes.conf.optional and error
+               ;; the build if they no longer match, so a maintainer is told to
+               ;; re-sync on a component bump instead of shipping wrong hardening.
+               ;; NOTE: the system-wide entries (max_hbh_opts_length,
+               ;; max_dst_opts_length, conf.all.*) and network/80-qubes.conf
+               ;; (drop_unsolicited_na) are deliberately out of this per-interface
+               ;; table's scope and are not compared here.
+               (let* ((expected (sort '#$%qubes-network-sysctl-settings
+                                       (lambda (a b) (string<? (cadr a) (cadr b)))))
+                      (file "network/81-qubes.conf.optional")
+                      (lines (string-split (call-with-input-file file
+                                             get-string-all)
+                                           #\newline))
+                      (parsed
+                       (filter-map
+                        (lambda (line)
+                          (let ((trimmed (string-trim-both line)))
+                            (and (not (string-null? trimmed))
+                                 (not (string-prefix? "#" trimmed))
+                                 (let ((eq (string-index trimmed #\=)))
+                                   (and eq
+                                        (let* ((key (string-trim-right
+                                                     (substring trimmed 0 eq)))
+                                               (value (string-trim
+                                                       (substring trimmed
+                                                                  (+ eq 1))))
+                                               (parts (string-split key #\.)))
+                                          (match parts
+                                            (("net" family "conf" "*" name)
+                                             (cons* family name value))
+                                            (_ #f))))))))
+                        lines))
+                      (actual (sort parsed
+                                    (lambda (a b)
+                                      (string<? (cadr a) (cadr b))))))
+                 (unless (equal? expected actual)
+                   (error
+                    (string-append
+                     "%qubes-network-sysctl-settings drifted from upstream "
+                     "network/81-qubes.conf.optional; re-sync the table")
+                    'expected expected 'upstream actual)))))
           (add-after 'unpack 'support-networking-without-systemd
             (lambda _
                ;; Qubes' setup-ip applies network sysctls through
