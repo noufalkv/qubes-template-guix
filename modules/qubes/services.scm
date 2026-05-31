@@ -979,41 +979,9 @@
    "qubes-network-sysctl"
    (define network-sysctl-settings '#$%qubes-network-sysctl-settings)
 
-   (define (interface-names family)
-     (let ((directory (string-append "/proc/sys/net/" family "/conf")))
-       (or (false-if-exception
-            (scandir directory
-                     (lambda (entry)
-                       (not (member entry '("." ".."))))))
-           '())))
+   #$@(qubes-network-sysctl-helper-forms)
 
-   (define (write-sysctl path value)
-     ;; Skip knobs whose /proc path is absent (e.g. IPv6 disabled), but fail
-     ;; loudly if an existing path cannot be written so missing hardening is
-     ;; never swallowed silently.
-     (when (file-exists? path)
-       (catch #t
-         (lambda ()
-           (call-with-output-file path
-             (lambda (port)
-               (display value port))))
-         (lambda (key . args)
-           (warn (string-append "failed to write network sysctl: " path))
-           (exit 1)))))
-
-   (define (apply-setting setting)
-     (let ((family (car setting))
-           (name (cadr setting))
-           (value (cddr setting)))
-       (for-each
-        (lambda (interface)
-          (write-sysctl
-           (string-append "/proc/sys/net/" family "/conf/"
-                          interface "/" name)
-           value))
-        (interface-names family))))
-
-   (for-each apply-setting network-sysctl-settings)))
+   (apply-sysctls-to-all-ifaces network-sysctl-settings)))
 
 (define (qubes-network-sysctl-shepherd-service _)
   (list
@@ -1231,45 +1199,22 @@
                   (and (file-exists? "/sys/class/net/eth0")
                        "eth0"))))))
 
-     (define (apply-interface-sysctl iface)
-       (for-each
-        (lambda (setting)
-          (let ((family (car setting))
-                (name (cadr setting))
-                (value (cddr setting)))
-            (write-sysctl
-             (string-append "/proc/sys/net/" family "/conf/" iface "/" name)
-             value)))
-        network-sysctl-settings))
+   #$@(qubes-network-sysctl-helper-forms)
 
-   (define (write-sysctl path value)
-     ;; Skip knobs whose /proc path is absent (e.g. IPv6 disabled), but fail
-     ;; loudly if an existing path cannot be written so missing hardening is
-     ;; never swallowed silently.
-     (when (file-exists? path)
-       (catch #t
-         (lambda ()
-           (call-with-output-file path
-             (lambda (port)
-               (display value port))))
-         (lambda (key . args)
-           (warn (string-append "failed to write network sysctl: " path))
-           (exit 1)))))
-
-      (prepare-service-runtime)
-     (try-run* ip "link" "set" "lo" "up")
-     (let wait ((attempt 0))
-       (let ((iface (qubes-managed-iface)))
-         (cond
-          (iface
-           (apply-interface-sysctl iface)
-           (exec* "/usr/lib/qubes/setup-ip" "add" iface))
-          ((< attempt 300)
-           (usleep 100000)
-           (wait (+ attempt 1)))
-          (else
-           (display "No Qubes managed network interface found\n")
-           (exit 0)))))))
+   (prepare-service-runtime)
+   (try-run* ip "link" "set" "lo" "up")
+   (let wait ((attempt 0))
+     (let ((iface (qubes-managed-iface)))
+       (cond
+        (iface
+         (apply-sysctls-to-iface network-sysctl-settings iface)
+         (exec* "/usr/lib/qubes/setup-ip" "add" iface))
+        ((< attempt 300)
+         (usleep 100000)
+         (wait (+ attempt 1)))
+        (else
+         (display "No Qubes managed network interface found\n")
+         (exit 0)))))))
 
 (define (qubes-network-uplink-shepherd-service _)
   (list

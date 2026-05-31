@@ -74,6 +74,7 @@
              %qubes-common-packages
              qubes-variant-packages
             %qubes-network-sysctl-settings
+            qubes-network-sysctl-helper-forms
             xterm-desktop-entry))
 
 ;; Network interface sysctl hardening applied to every Qubes-managed VIF.
@@ -95,7 +96,57 @@
     ("ipv6" "accept_ra" . "0")
     ("ipv6" "accept_dad" . "0")
     ("ipv6" "autoconf" . "0")
-    ("ipv6" "drop_unicast_in_l2_multicast" . "1")))
+     ("ipv6" "drop_unicast_in_l2_multicast" . "1")))
+
+(define (qubes-network-sysctl-helper-forms)
+  "Return a list of definition forms implementing the shared per-interface
+network sysctl primitives.  The forms are spliced once into both the
+build-side generated /usr/lib/qubes/qubes-network-interface-sysctl helper and
+the boot/uplink Shepherd service programs in (qubes services), via gexp
+ungexp-splicing (#$@), so the write/apply logic is defined a single time.
+Each consuming surface must provide a `warn' procedure (the service prelude
+and the generated helper both do) and import (ice-9 ftw) for `scandir'."
+  '((define (sysctl-path family interface name)
+      (string-append "/proc/sys/net/" family "/conf/" interface "/" name))
+
+    (define (write-sysctl path value)
+      ;; Skip a knob whose /proc path is absent (e.g. IPv6 disabled), but
+      ;; fail loudly if an existing path cannot be written so dropped
+      ;; hardening is never swallowed silently.
+      (when (file-exists? path)
+        (catch #t
+          (lambda ()
+            (call-with-output-file path
+              (lambda (port)
+                (display value port))))
+          (lambda (key . args)
+            (warn (string-append "failed to write network sysctl: " path))
+            (exit 1)))))
+
+    (define (interface-names family)
+      (or (false-if-exception
+           (scandir (string-append "/proc/sys/net/" family "/conf")
+                    (lambda (entry)
+                      (not (member entry '("." ".."))))))
+          '()))
+
+    (define (apply-sysctls-to-iface settings interface)
+      (for-each
+       (lambda (setting)
+         (write-sysctl (sysctl-path (car setting) interface (cadr setting))
+                       (cddr setting)))
+       settings))
+
+    (define (apply-sysctls-to-all-ifaces settings)
+      (for-each
+       (lambda (setting)
+         (let ((family (car setting)))
+           (for-each
+            (lambda (interface)
+              (write-sysctl (sysctl-path family interface (cadr setting))
+                            (cddr setting)))
+            (interface-names family))))
+       settings))))
 
 (define %qvm-template-repo-query-guix
   ;; upstream: none — this rpm-md query/download helper is original to this
@@ -1207,11 +1258,14 @@ information reporter used by Qubes memory ballooning.")
                 (write-guile-script
                  (string-append qubes-libdir
                                 "/qubes-network-interface-sysctl")
-                 ;; '#$ splices the shared %qubes-network-sysctl-settings list
-                 ;; (host side) into this build-side quoted helper, so the
-                 ;; generated script carries a self-contained literal table.
+                 ;; '#$ splices the shared sysctl table and #$@ splices the
+                 ;; shared helper procedures (qubes-network-sysctl-helper-forms)
+                 ;; into this build-side helper, so the per-interface sysctl
+                 ;; logic is defined once and reused by the boot/uplink Shepherd
+                 ;; services in (qubes services).
                  '(begin
-                    (use-modules (ice-9 match)
+                    (use-modules (ice-9 ftw)
+                                 (ice-9 match)
                                  (srfi srfi-1)
                                  (srfi srfi-13))
 
@@ -1221,51 +1275,25 @@ information reporter used by Qubes memory ballooning.")
                       (display message (current-error-port))
                       (newline (current-error-port)))
 
+                    #$@(qubes-network-sysctl-helper-forms)
+
                     (define (arg-prefix arg)
                       (and (string-prefix? "--prefix=" arg)
                            (substring arg (string-length "--prefix="))))
 
-                    (define (prefix->target prefix)
+                    (define (prefix->interface prefix)
                       (match (string-split prefix #\/)
-                        (("" "net" family "conf" interface)
-                         (cons family interface))
+                        (("" "net" _ "conf" interface) interface)
                         (_ #f)))
 
-                    (define targets
-                      (delete-duplicates
-                       (filter-map prefix->target
-                                   (filter-map arg-prefix
-                                               (cdr (command-line))))
-                       equal?))
-
-                    (define (write-sysctl family interface name value)
-                      (let ((path (string-append "/proc/sys/net/" family
-                                                 "/conf/" interface "/"
-                                                 name)))
-                        (when (file-exists? path)
-                          (catch #t
-                            (lambda ()
-                              (call-with-output-file path
-                                (lambda (port)
-                                  (display value port)
-                                  (newline port))))
-                            (lambda (key . args)
-                              (warn (string-append
-                                     "failed to write network sysctl: "
-                                     path))
-                              (exit 1))))))
-
                     (for-each
-                     (match-lambda
-                       ((family . interface)
-                        (for-each
-                         (lambda (setting)
-                           (when (string=? (car setting) family)
-                             (write-sysctl family interface
-                                           (cadr setting)
-                                           (cddr setting))))
-                         settings)))
-                     targets)))
+                     (lambda (interface)
+                       (apply-sysctls-to-iface settings interface))
+                     (delete-duplicates
+                      (filter-map prefix->interface
+                                  (filter-map arg-prefix
+                                              (cdr (command-line))))
+                      string=?))))
                 (for-each
                  (lambda (helper)
                    (let ((destination (string-append qubes-libdir "/" helper)))
