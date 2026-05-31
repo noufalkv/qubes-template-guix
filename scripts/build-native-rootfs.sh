@@ -114,6 +114,13 @@ install_channel_sources() {
     as_root mkdir -p "$channel_dir"
     as_root install -m 0644 "$repo_root/.guix-channel" "$channel_dir/.guix-channel"
     as_root cp -a "$repo_root/modules" "$channel_dir/modules"
+    # Ship files/ alongside modules/ so local-file references in the channel
+    # (e.g. ../../files/qvm-template-repo-query-guix.py) resolve during
+    # offline guix system reconfigure inside the installed image.
+    if [ -d "$repo_root/files" ]; then
+        as_root cp -a "$repo_root/files" "$channel_dir/files"
+        as_root chmod -R u+rwX,go+rX "$channel_dir/files"
+    fi
     as_root chmod -R u+rwX,go+rX "$channel_dir/modules"
 }
 
