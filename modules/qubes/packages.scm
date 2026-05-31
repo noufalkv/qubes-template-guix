@@ -1157,26 +1157,34 @@ information reporter used by Qubes memory ballooning.")
                       (guix-repo-query
                        (string-append qubes-libdir
                                       "/qvm-template-repo-query-guix")))
-                  (copy-file #$%qvm-template-repo-query-guix guix-repo-query)
-                  ;; upstream: none — this helper is original to this channel
-                  ;; (files/qvm-template-repo-query-guix.py).  Rewrite its three
-                  ;; runtime anchors (python3 shebang, curl, zstd) to absolute
-                  ;; store paths; fail loudly if any anchor drifts so the
-                  ;; installed copy can never silently keep a non-store path.
-                  (let ((matched 0))
-                    (substitute* guix-repo-query
-                      (("#!/run/current-system/profile/bin/python3")
-                       (set! matched (+ matched 1))
-                       (string-append "#!" #$python "/bin/python3"))
-                      (("\\[\"curl\"")
-                       (set! matched (+ matched 1))
-                       (string-append "[\"" #$curl "/bin/curl\""))
-                      (("\\[\"zstd\"")
-                       (set! matched (+ matched 1))
-                       (string-append "[\"" #$zstd "/bin/zstd\"")))
-                    (unless (> matched 0)
-                      (error "substitute* found no matches"
-                             "qvm-template-repo-query-guix installed copy")))
+                   (copy-file #$%qvm-template-repo-query-guix guix-repo-query)
+                   ;; upstream: none — this helper is original to this channel
+                   ;; (files/qvm-template-repo-query-guix.py).  Rewrite its three
+                   ;; runtime anchors (python3 shebang, curl, zstd) to absolute
+                   ;; store paths; fail loudly per anchor so the installed copy
+                   ;; can never silently keep a non-store path on drift.
+                   (let ((python-matched 0)
+                         (curl-matched 0)
+                         (zstd-matched 0))
+                     (substitute* guix-repo-query
+                       (("#!/run/current-system/profile/bin/python3")
+                        (set! python-matched (+ python-matched 1))
+                        (string-append "#!" #$python "/bin/python3"))
+                       (("\\[\"curl\"")
+                        (set! curl-matched (+ curl-matched 1))
+                        (string-append "[\"" #$curl "/bin/curl\""))
+                       (("\\[\"zstd\"")
+                        (set! zstd-matched (+ zstd-matched 1))
+                        (string-append "[\"" #$zstd "/bin/zstd\"")))
+                     (unless (> python-matched 0)
+                       (error "substitute* found no matches"
+                              "qvm-template-repo-query-guix: python3 shebang"))
+                     (unless (> curl-matched 0)
+                       (error "substitute* found no matches"
+                              "qvm-template-repo-query-guix: curl invocation"))
+                     (unless (> zstd-matched 0)
+                       (error "substitute* found no matches"
+                              "qvm-template-repo-query-guix: zstd invocation")))
                   (chmod guix-repo-query #o755)
                   (when (path-exists? repo-query)
                     (rename-file repo-query dnf-repo-query)
@@ -1402,21 +1410,25 @@ information reporter used by Qubes memory ballooning.")
           (delete 'configure)
           (add-after 'unpack 'patch-generated-configure-invocation
             (lambda _
-               ;; The Xorg driver helper scripts generate configure scripts
-               ;; after Guix's shebang patching phase. Invoke those generated
-               ;; scripts through the profile shell instead of relying on
-               ;; /bin/sh inside the build container.
-               ;; upstream: qubes-gui-agent-linux xf86-input-mfndev/autogen.sh
-               ;; and xf86-video-dummy/autogen.sh — the "$srcdir/configure" call.
-               (let ((matched 0))
-                 (substitute* '("xf86-input-mfndev/autogen.sh"
-                                "xf86-video-dummy/autogen.sh")
-                   (("\\$srcdir/configure")
-                    (set! matched (+ matched 1))
-                    "${CONFIG_SHELL:-sh} $srcdir/configure"))
-                 (unless (> matched 0)
-                   (error "substitute* found no matches"
-                          "qubes-gui-agent-linux:autogen.sh")))
+                ;; The Xorg driver helper scripts generate configure scripts
+                ;; after Guix's shebang patching phase. Invoke those generated
+                ;; scripts through the profile shell instead of relying on
+                ;; /bin/sh inside the build container.  Guard each autogen.sh
+                ;; separately so a drift in either fails the build loudly.
+                ;; upstream: qubes-gui-agent-linux xf86-input-mfndev/autogen.sh
+                ;; and xf86-video-dummy/autogen.sh — the "$srcdir/configure" call.
+                (for-each
+                 (lambda (autogen)
+                   (let ((matched 0))
+                     (substitute* autogen
+                       (("\\$srcdir/configure")
+                        (set! matched (+ matched 1))
+                        "${CONFIG_SHELL:-sh} $srcdir/configure"))
+                     (unless (> matched 0)
+                       (error "substitute* found no matches"
+                              (string-append "qubes-gui-agent-linux:" autogen)))))
+                 '("xf86-input-mfndev/autogen.sh"
+                   "xf86-video-dummy/autogen.sh"))
                ;; upstream: qubes-gui-agent-linux Makefile — the "&& ./configure"
                ;; invocation of the generated Xorg helper configure script.
                (let ((matched 0))
@@ -1510,17 +1522,21 @@ information reporter used by Qubes memory ballooning.")
                ;; upstream: qubes-gui-agent-linux qubes-run-xorg — the
                ;; qubes-xorg-wrapper invocation and the xinit/qubes-session exec
                ;; line.
-               (let ((matched 0))
-                 (substitute* (string-append #$output "/usr/bin/qubes-run-xorg")
-                   (("qubes-xorg-wrapper \\$DISPLAY_XORG -nolisten")
-                    (set! matched (+ matched 1))
-                    "qubes-xorg-wrapper $DISPLAY_XORG -modulepath /run/current-system/profile/lib/xorg/modules -fp /run/current-system/profile/share/fonts/X11/misc -nolisten")
-                   (("exec /usr/bin/qubes-gui-runuser \"\\$DEFAULT_USER\" /bin/sh -l -c \"exec /usr/bin/xinit \\$XSESSION -- /usr/lib/qubes/qubes-xorg-wrapper :0 -nolisten tcp vt07 -wr -config xorg-qubes.conf > ~/.xsession-errors 2>&1\"")
-                    (set! matched (+ matched 1))
-                    "exec /usr/bin/xinit /usr/bin/qubes-gui-runuser \"$DEFAULT_USER\" /usr/bin/env DISPLAY=:0 XDG_CONFIG_DIRS=/run/current-system/profile/etc/xdg XDG_DATA_DIRS=/run/current-system/profile/share GI_TYPELIB_PATH=/run/current-system/profile/lib/girepository-1.0 PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin /usr/bin/qubes-session qubes-session -- /usr/lib/qubes/qubes-xorg-wrapper :0 -modulepath /run/current-system/profile/lib/xorg/modules -fp /run/current-system/profile/share/fonts/X11/misc -nolisten tcp vt07 -wr -config xorg-qubes.conf -ac > \"/home/$DEFAULT_USER/.xsession-errors\" 2>&1"))
-                 (unless (> matched 0)
-                   (error "substitute* found no matches"
-                          "qubes-gui-agent-linux:qubes-run-xorg")))
+                (let ((wrapper-matched 0)
+                      (exec-matched 0))
+                  (substitute* (string-append #$output "/usr/bin/qubes-run-xorg")
+                    (("qubes-xorg-wrapper \\$DISPLAY_XORG -nolisten")
+                     (set! wrapper-matched (+ wrapper-matched 1))
+                     "qubes-xorg-wrapper $DISPLAY_XORG -modulepath /run/current-system/profile/lib/xorg/modules -fp /run/current-system/profile/share/fonts/X11/misc -nolisten")
+                    (("exec /usr/bin/qubes-gui-runuser \"\\$DEFAULT_USER\" /bin/sh -l -c \"exec /usr/bin/xinit \\$XSESSION -- /usr/lib/qubes/qubes-xorg-wrapper :0 -nolisten tcp vt07 -wr -config xorg-qubes.conf > ~/.xsession-errors 2>&1\"")
+                     (set! exec-matched (+ exec-matched 1))
+                     "exec /usr/bin/xinit /usr/bin/qubes-gui-runuser \"$DEFAULT_USER\" /usr/bin/env DISPLAY=:0 XDG_CONFIG_DIRS=/run/current-system/profile/etc/xdg XDG_DATA_DIRS=/run/current-system/profile/share GI_TYPELIB_PATH=/run/current-system/profile/lib/girepository-1.0 PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin /usr/bin/qubes-session qubes-session -- /usr/lib/qubes/qubes-xorg-wrapper :0 -modulepath /run/current-system/profile/lib/xorg/modules -fp /run/current-system/profile/share/fonts/X11/misc -nolisten tcp vt07 -wr -config xorg-qubes.conf -ac > \"/home/$DEFAULT_USER/.xsession-errors\" 2>&1"))
+                  (unless (> wrapper-matched 0)
+                    (error "substitute* found no matches"
+                           "qubes-gui-agent-linux:qubes-run-xorg modulepath wrapper"))
+                  (unless (> exec-matched 0)
+                    (error "substitute* found no matches"
+                           "qubes-gui-agent-linux:qubes-run-xorg xinit exec line")))
               ;; install-common follows the distribution FHS and places the
               ;; agent under /usr.  Guix profiles do not merge /usr/bin into
               ;; /bin, and the compatibility activation links /usr/lib/qubes
