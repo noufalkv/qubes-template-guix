@@ -1846,8 +1846,8 @@ StartupWMClass=XTerm
            ;; standalone guile-3.0) makes the profile contain two conflicting
            ;; guile entries.  guix's propagated guile provides
            ;; /run/current-system/profile/bin/guile, which the Qubes runtime
-           ;; scripts (qubes.WaitForSession, the ACPI poweroff helper, and the
-           ;; generated qrexec helpers) rely on.
+           ;; scripts (the ACPI poweroff helper and the generated qrexec
+           ;; helpers) rely on.
            ;;
            ;; glibc is added for getent, which Qubes' init/functions uses to
            ;; enumerate accounts during private-volume home setup; python
