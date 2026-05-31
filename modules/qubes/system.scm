@@ -90,7 +90,9 @@
 
     (packages (qubes-variant-packages variant))
 
+    (services %qubes-system-services)
+
     (privileged-programs %qubes-privileged-programs)
     (sudoers-file
      (plain-file "sudoers"
-                 "root ALL=(ALL) ALL\n%wheel ALL=(ALL) NOPASSWD:ALL\nuser ALL=(ALL) NOPASSWD:ALL\n"))
+                 "root ALL=(ALL) ALL\n%wheel ALL=(ALL) NOPASSWD:ALL\nuser ALL=(ALL) NOPASSWD:ALL\n"))))
