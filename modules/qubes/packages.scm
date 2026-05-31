@@ -793,9 +793,13 @@ information reporter used by Qubes memory ballooning.")
       #:phases
       #~(modify-phases %standard-phases
           (delete 'configure)
-          (add-after 'unpack 'normalize-guix-skel-in-home-init
+          (add-after 'unpack 'adapt-guix-skel-in-home-init
             (lambda _
-               ;; Guix exposes /etc/skel as a generated symlink to a store
+               ;; Two adaptations of the upstream init/functions home-skeleton
+               ;; copy, anchored independently so each errors the build if its
+               ;; upstream line drifts.
+               ;;
+               ;; (1) Guix exposes /etc/skel as a generated symlink to a store
                ;; directory and may include store-backed entries below it.
                ;; Qubes' home initializer uses cp -a -T, which would otherwise
                ;; preserve read-only store permissions in the persistent home.
@@ -808,10 +812,8 @@ information reporter used by Qubes memory ballooning.")
                     "skel_source=$(readlink -f /etc/skel || echo /etc/skel)\n            cp \"-afL$enable_selinux\" -T \"$skel_source\" \"$home_root/$homedirwithouthome\""))
                  (unless (> matched 0)
                    (error "substitute* found no matches"
-                          "qubes-core-agent-linux:init/functions")))))
-          (add-after 'normalize-guix-skel-in-home-init 'make-guix-skel-owner-writable
-            (lambda _
-               ;; Store directories are intentionally read-only.  Once copied
+                          "qubes-core-agent-linux:init/functions")))
+               ;; (2) Store directories are intentionally read-only.  Once copied
                ;; into /rw, the private home skeleton must behave like normal
                ;; per-user state so Guix and desktop tools can create entries
                ;; below ~/.config and ~/.cache.
