@@ -600,98 +600,10 @@ information reporter used by Qubes memory ballooning.")
                       "LIBDIR=/lib"
                       "SYSLIBDIR=/lib"
                       "UNITDIR=/lib/systemd/system")
-              ;; Upstream qubes.WaitForSession assumes systemd --user is
-              ;; available after qrexec-fork-server appears.  Native Guix
-              ;; templates use Shepherd, so keep the same qrexec-fork-server
-              ;; readiness boundary and omit the systemd-only final check.
-              (let* ((wait-for-session
-                      (string-append #$output
-                                     "/etc/qubes-rpc/qubes.WaitForSession"))
-                     (wait-for-session-body
-                      '(begin
-                         (use-modules (ice-9 popen)
-                                      (ice-9 textual-ports)
-                                      (srfi srfi-13))
-
-                         (define (trim-newlines text)
-                           (let loop ((end (string-length text)))
-                             (if (and (> end 0)
-                                      (memv (string-ref text (- end 1))
-                                            '(#\newline #\return)))
-                                 (loop (- end 1))
-                                 (substring text 0 end))))
-
-                         (define (command-output program . args)
-                           (let* ((port (apply open-pipe* OPEN_READ program args))
-                                  (text (get-string-all port))
-                                  (status (close-pipe port)))
-                             (and (zero? status)
-                                  (trim-newlines text))))
-
-                         (define (qubesdb-read path)
-                           (command-output
-                            "/run/current-system/profile/bin/qubesdb-read"
-                            path))
-
-                         (define (non-empty text fallback)
-                           (if (and text (not (string-null? text)))
-                               text
-                               fallback))
-
-                         (define (warn message)
-                           (display message (current-error-port))
-                           (newline (current-error-port)))
-
-                         (define (socket? path)
-                           (let ((st (false-if-exception (stat path))))
-                             (and st (eq? (stat:type st) 'socket))))
-
-                         (unless (string=?
-                                  (or (qubesdb-read "/qubes-gui-enabled")
-                                      "True")
-                                  "True")
-                           (exit 0))
-                         (let* ((user (non-empty (qubesdb-read "/default-user")
-                                                 "user"))
-                                (timeout-text
-                                 (non-empty
-                                  (getenv "QUBES_WAIT_FOR_SESSION_TIMEOUT")
-                                  "300"))
-                                (timeout (or (string->number timeout-text) 300))
-                                (socket (string-append
-                                         "/var/run/qubes/qrexec-server."
-                                         user
-                                         ".sock")))
-                           (let loop ((elapsed 0))
-                             (cond
-                              ((socket? socket) (exit 0))
-                              ((< elapsed timeout)
-                               (sleep 1)
-                               (loop (+ elapsed 1)))
-                              (else
-                               (warn (string-append
-                                      "Timed out waiting for Guix Qubes session socket: "
-                                      socket))
-                               (exit 1))))))))
-                ;; The upstream RPC entry is a symlink into /usr/bin.  Replace
-                ;; the entry itself; otherwise call-with-output-file follows the
-                ;; symlink and truncates the target helper instead.
-                (false-if-exception (delete-file wait-for-session))
-                (call-with-output-file wait-for-session
-                  (lambda (port)
-                    (display "#!/run/current-system/profile/bin/guile -s\n!#\n"
-                             port)
-                    (write wait-for-session-body port)
-                    (newline port)))
-                (chmod wait-for-session #o755)
-                (let ((st (lstat wait-for-session))
-                      (text (call-with-input-file wait-for-session
-                              get-string-all)))
-                  (unless (eq? (stat:type st) 'regular)
-                    (error "qubes.WaitForSession must be a regular script"))
-                  (unless (string-contains text
-                                           "/var/run/qubes/qrexec-server.")
-                    (error "qubes.WaitForSession script body was not emitted"))))
+              ;; The VM-side qubes.WaitForSession is provided by
+              ;; qubes-core-agent-linux (installed by qubes-vm-core below) and is
+              ;; patched there to tolerate a missing systemctl; qrexec only ships
+              ;; the dom0 variant, which install-vm does not install.
               (let ()
                 (define (path-exists? path)
                   (false-if-exception (lstat path)))
@@ -942,6 +854,28 @@ information reporter used by Qubes memory ballooning.")
                  (unless (> matched 0)
                    (error "substitute* found no matches"
                           "qubes-core-agent-linux:network/vif-route-qubes")))))
+          (add-after 'support-networking-without-systemd
+                     'tolerate-missing-systemctl-in-wait-for-session
+            (lambda _
+               ;; The VM-side qubes.WaitForSession waits for the qrexec session
+               ;; socket and then runs "systemctl --user --wait" to block until
+               ;; the user systemd instance is up.  Native Guix templates use
+               ;; Shepherd and ship no systemctl, so skip that final check when
+               ;; systemctl is absent (Marek's preferred minimal adaptation),
+               ;; keeping the rest of the upstream script verbatim.
+               ;; upstream: qubes-core-agent-linux qubes-rpc/qubes.WaitForSession
+               ;; — the "systemctl --user --wait --quiet is-system-running" call.
+               (let ((matched 0))
+                 (substitute* "qubes-rpc/qubes.WaitForSession"
+                   (("systemctl --user --wait --quiet is-system-running")
+                    (set! matched (+ matched 1))
+                    (string-append
+                     "if command -v systemctl >/dev/null 2>&1; then\n"
+                     "    systemctl --user --wait --quiet is-system-running\n"
+                     "fi")))
+                 (unless (> matched 0)
+                   (error "substitute* found no matches"
+                          "qubes-core-agent-linux:qubes-rpc/qubes.WaitForSession")))))
           (replace 'build
             (lambda _
               (invoke "make" "-C" "qubes-rpc"
