@@ -50,13 +50,13 @@ def expand_repo_value(value, releasever):
     )
 
 
-def parse_payload(stdin_text):
+def parse_payload(untrusted_stdin_text):
     options = []
     spec = "*"
     repo_lines = []
     in_repo_config = False
 
-    for line in stdin_text.splitlines():
+    for line in untrusted_stdin_text.splitlines():
         if in_repo_config:
             repo_lines.append(line)
             continue
@@ -282,7 +282,9 @@ def main():
     if len(sys.argv) != 2 or sys.argv[1] not in ("query", "download"):
         return error("usage: qvm-template-repo-query-guix query|download")
 
-    options, spec, repo_text = parse_payload(sys.stdin.read())
+    # qrexec payload is untrusted until parse_payload validates it.
+    untrusted_stdin_text = sys.stdin.read()
+    options, spec, repo_text = parse_payload(untrusted_stdin_text)
     try:
         config = parse_repo_config(repo_text)
     except configparser.Error as exc:
