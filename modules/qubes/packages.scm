@@ -1053,26 +1053,30 @@ information reporter used by Qubes memory ballooning.")
                     ;; Qubes RPC services do not necessarily run through a login
                     ;; shell.  Give post-install hooks the profile-visible commands
                     ;; used by the Guix VM.
-                    (patch-file-once postinstall
-                     "
-for script in /etc/qubes/post-install.d/*.sh; do
-"
-                     "
-export PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin:/usr/bin:/usr/sbin:/bin:/sbin${PATH:+:$PATH}
-
-for script in /etc/qubes/post-install.d/*.sh; do
-")))
+                    (patch-file-once
+                     postinstall
+                     "\nfor script in /etc/qubes/post-install.d/*.sh; do\n"
+                     (string-append
+                      "\nexport PATH=/run/setuid-programs"
+                      ":/run/current-system/profile/bin"
+                      ":/run/current-system/profile/sbin"
+                      ":/usr/bin:/usr/sbin:/bin:/sbin${PATH:+:$PATH}\n\n"
+                      "for script in /etc/qubes/post-install.d/*.sh; do\n"))))
 
                 (let ((get-image-rgba (string-append #$output
                                        "/etc/qubes-rpc/qubes.GetImageRGBA")))
                   (when (path-exists? get-image-rgba)
                     ;; Icon extraction is a qrexec service, not a login shell.
                     ;; Make the Guix profile tools and icon data visible there.
-                    (patch-file-once get-image-rgba "set -e\n"
-                     "set -e
-export PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:/usr/bin:/usr/sbin:/bin:/sbin${PATH:+:$PATH}
-export XDG_DATA_DIRS=/run/current-system/profile/share:/usr/share${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}
-")))
+                    (patch-file-once
+                     get-image-rgba "set -e\n"
+                     (string-append
+                      "set -e\n"
+                      "export PATH=/run/current-system/profile/bin"
+                      ":/run/current-system/profile/sbin"
+                      ":/usr/bin:/usr/sbin:/bin:/sbin${PATH:+:$PATH}\n"
+                      "export XDG_DATA_DIRS=/run/current-system/profile/share"
+                      ":/usr/share${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}\n"))))
 
                 (let ((xdg-icon (string-append qubes-libdir "/xdg-icon")))
                   (when (path-exists? xdg-icon)
@@ -1090,16 +1094,19 @@ export XDG_DATA_DIRS=/run/current-system/profile/share:/usr/share${XDG_DATA_DIRS
                     ;; privileged directory instead of trusting mode bits inside
                     ;; the store.  Resolve qfile-unpacker through that runtime
                     ;; copy before falling back to upstream's absolute RPC path.
-                    (patch-file-once filecopy
+                    (patch-file-once
+                     filecopy
                      "exec /usr/lib/qubes/qfile-unpacker $arg\n"
-                     "for unpacker in /run/setuid-programs/qfile-unpacker /run/privileged/bin/qfile-unpacker /usr/lib/qubes/qfile-unpacker; do
-    if [ -x \"$unpacker\" ]; then
-        exec \"$unpacker\" $arg
-    fi
-done
-echo \"qfile-unpacker not found\" >&2
-exit 127
-")))
+                     (string-append
+                      "for unpacker in /run/setuid-programs/qfile-unpacker"
+                      " /run/privileged/bin/qfile-unpacker"
+                      " /usr/lib/qubes/qfile-unpacker; do\n"
+                      "    if [ -x \"$unpacker\" ]; then\n"
+                      "        exec \"$unpacker\" $arg\n"
+                      "    fi\n"
+                      "done\n"
+                      "echo \"qfile-unpacker not found\" >&2\n"
+                      "exit 127\n"))))
 
                 (write-text (string-append #$output
                              "/etc/qubes/rpc-config/qubes.PostInstall")
@@ -1157,20 +1164,21 @@ exit 127
                   (chmod guix-repo-query #o755)
                   (when (path-exists? repo-query)
                     (rename-file repo-query dnf-repo-query)
-                    (write-text repo-query
-                                (string-append "#!"
-                                 #$bash-minimal
-                                 "/bin/bash\n"
-                                 "set -e\n"
-                                 "script_dir=\"$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd -P)\"
-"
-                                 "if command -v dnf5 >/dev/null 2>&1 || command -v dnf >/dev/null 2>&1 || command -v dnf4 >/dev/null 2>&1; then
-"
-                                 "    exec \"$script_dir/qvm-template-repo-query.dnf\" \"$@\"
-"
-                                 "fi\n"
-                                 "exec \"$script_dir/qvm-template-repo-query-guix\" \"$@\"
-"))
+                    (write-text
+                     repo-query
+                     (string-append
+                      "#!" #$bash-minimal "/bin/bash\n"
+                      "set -e\n"
+                      "script_dir=\"$(CDPATH= cd -- \"$(dirname -- \"$0\")\""
+                      " && pwd -P)\"\n"
+                      "if command -v dnf5 >/dev/null 2>&1"
+                      " || command -v dnf >/dev/null 2>&1"
+                      " || command -v dnf4 >/dev/null 2>&1; then\n"
+                      "    exec \"$script_dir/qvm-template-repo-query.dnf\""
+                      " \"$@\"\n"
+                      "fi\n"
+                      "exec \"$script_dir/qvm-template-repo-query-guix\""
+                      " \"$@\"\n"))
                     (chmod repo-query #o755)))
                 (write-guile-script (string-append qubes-libdir
                                      "/qubes-network-interface-sysctl")
@@ -1219,23 +1227,23 @@ exit 127
                                                  (cons family interface)))
                                            (_ #f)))
 
-                                       (for-each (match-lambda
-                                                   ((family . interface) (apply-sysctls-to-iface
-                                                                          (filter (lambda
-                                                                                          (setting)
-
-                                                                                    (string=?
-                                                                                     (car
-                                                                                      setting)
-                                                                                     family))
-                                                                           settings)
-                                                                          interface)))
-                                                 (delete-duplicates (filter-map
-                                                                     prefix->target
-                                                                     (filter-map
-                                                                      arg-prefix
-                                                                      (cdr (command-line))))
-                                                                    equal?))))
+                                       (for-each
+                                        (match-lambda
+                                          ((family . interface)
+                                           (apply-sysctls-to-iface
+                                            (filter
+                                             (lambda (setting)
+                                               (string=? (car setting)
+                                                         family))
+                                             settings)
+                                            interface)))
+                                        (delete-duplicates
+                                         (filter-map
+                                          prefix->target
+                                          (filter-map
+                                           arg-prefix
+                                           (cdr (command-line))))
+                                         equal?))))
                 (for-each (lambda (helper)
                             (let ((destination (string-append qubes-libdir "/"
                                                               helper)))
@@ -1249,22 +1257,23 @@ exit 127
                                         "/upgrades-installed-check")))
                   (unless (string-contains (read-text installed-check)
                                            "## Guix System")
-                    (patch-file-once installed-check
-                                     "elif [ -e /etc/arch-release ]; then\n"
-                                     (string-append
-                                      "elif [ -e /run/current-system ]; then\n"
-                                      "    ## Guix System\n"
-                                      "    # There is no cheap metadata-only Guix System update check comparable to
-"
-                                      "    # dnf check-update or apt-get -s upgrade.  The Qubes vmupdate backend
-"
-                                      "    # reports system/profile changes while reconfiguring; this helper only
-"
-                                      "    # clears the post-update notification state after that succeeds.
-"
-                                      "    echo true\n"
-                                      "    exit_code=0\n"
-                                      "elif [ -e /etc/arch-release ]; then\n"))))
+                    (patch-file-once
+                     installed-check
+                     "elif [ -e /etc/arch-release ]; then\n"
+                     (string-append
+                      "elif [ -e /run/current-system ]; then\n"
+                      "    ## Guix System\n"
+                      "    # There is no cheap metadata-only Guix System update"
+                      " check comparable to\n"
+                      "    # dnf check-update or apt-get -s upgrade.  The Qubes"
+                      " vmupdate backend\n"
+                      "    # reports system/profile changes while reconfiguring;"
+                      " this helper only\n"
+                      "    # clears the post-update notification state after that"
+                      " succeeds.\n"
+                      "    echo true\n"
+                      "    exit_code=0\n"
+                      "elif [ -e /etc/arch-release ]; then\n"))))
 
                 (let ((features-request (string-append bindir
                                          "/qvm-features-request")))
@@ -1322,17 +1331,17 @@ import sys
                                       "\nfrom qubesagent.xdg import launch\n"))))
                 (let ((xdg-launcher (string-append site "/qubesagent/xdg.py")))
                   (when (path-exists? xdg-launcher)
-                    (patch-file-once xdg-launcher "import functools\n\n"
-                                     (string-append "import functools\n"
-                                      "import os\n\n"
-                                      "_gi_typelib_path = '"
-                                      #$glib
-                                      "/lib/girepository-1.0'\n"
-                                      "os.environ['GI_TYPELIB_PATH'] = _gi_typelib_path + "
-                                      "(':' + os.environ['GI_TYPELIB_PATH'] "
-                                      "if os.environ.get('GI_TYPELIB_PATH') else '')
-
-"))))
+                    (patch-file-once
+                     xdg-launcher "import functools\n\n"
+                     (string-append
+                      "import functools\n"
+                      "import os\n\n"
+                      "_gi_typelib_path = '"
+                      #$glib
+                      "/lib/girepository-1.0'\n"
+                      "os.environ['GI_TYPELIB_PATH'] = _gi_typelib_path + "
+                      "(':' + os.environ['GI_TYPELIB_PATH'] "
+                      "if os.environ.get('GI_TYPELIB_PATH') else '')\n\n"))))
 
                 (for-each (lambda (entry)
                             (write-python-wrapper (string-append bindir "/"
@@ -1407,6 +1416,7 @@ import sys
       #:modules '((guix build gnu-build-system)
                   (guix build utils)
                   (ice-9 ftw)
+                  (ice-9 textual-ports)
                   (srfi srfi-13))
       ;; GUI agent tests require a running Qubes GUI/Xen display environment;
       ;; this package build installs the VM-side GUI agent and Xorg helpers.
@@ -1503,24 +1513,52 @@ import sys
               ;; default user's Qubes session client.
               ;; upstream: qubes-gui-agent-linux qubes-run-xorg — the
               ;; qubes-xorg-wrapper invocation and the xinit/qubes-session exec
-              ;; line.
-              (let ((wrapper-matched 0)
-                    (exec-matched 0))
-                (substitute* (string-append #$output "/usr/bin/qubes-run-xorg")
-                  (("qubes-xorg-wrapper \\$DISPLAY_XORG -nolisten")
-                   (set! wrapper-matched
-                         (+ wrapper-matched 1))
-                   "qubes-xorg-wrapper $DISPLAY_XORG -modulepath /run/current-system/profile/lib/xorg/modules -fp /run/current-system/profile/share/fonts/X11/misc -nolisten")
-                  (("exec /usr/bin/qubes-gui-runuser \"\\$DEFAULT_USER\" /bin/sh -l -c \"exec /usr/bin/xinit \\$XSESSION -- /usr/lib/qubes/qubes-xorg-wrapper :0 -nolisten tcp vt07 -wr -config xorg-qubes.conf > ~/.xsession-errors 2>&1\"")
-                   (set! exec-matched
-                         (+ exec-matched 1))
-                   "exec /usr/bin/xinit /usr/bin/qubes-gui-runuser \"$DEFAULT_USER\" /usr/bin/env DISPLAY=:0 XDG_CONFIG_DIRS=/run/current-system/profile/etc/xdg XDG_DATA_DIRS=/run/current-system/profile/share GI_TYPELIB_PATH=/run/current-system/profile/lib/girepository-1.0 PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin /usr/bin/qubes-session qubes-session -- /usr/lib/qubes/qubes-xorg-wrapper :0 -modulepath /run/current-system/profile/lib/xorg/modules -fp /run/current-system/profile/share/fonts/X11/misc -nolisten tcp vt07 -wr -config xorg-qubes.conf -ac > \"/home/$DEFAULT_USER/.xsession-errors\" 2>&1"))
-                (unless (> wrapper-matched 0)
-                  (error "substitute* found no matches"
-                   "qubes-gui-agent-linux:qubes-run-xorg modulepath wrapper"))
-                (unless (> exec-matched 0)
-                  (error "substitute* found no matches"
-                   "qubes-gui-agent-linux:qubes-run-xorg xinit exec line")))
+              ;; line.  patch-file-once is fail-loud (errors when the needle is
+              ;; absent), matching the upstream lines literally; the long exec
+              ;; needle/replacement are split into string-append fragments.
+              (let ((qubes-run-xorg (string-append #$output
+                                     "/usr/bin/qubes-run-xorg")))
+                (define (patch-run-xorg needle replacement)
+                  (let* ((text (call-with-input-file qubes-run-xorg
+                                 get-string-all))
+                         (index (string-contains text needle)))
+                    (unless index
+                      (error "expected text not found" needle))
+                    (call-with-output-file qubes-run-xorg
+                      (lambda (port)
+                        (display (string-append
+                                  (substring text 0 index)
+                                  replacement
+                                  (substring text
+                                             (+ index (string-length needle))))
+                                 port)))))
+                (patch-run-xorg
+                 "qubes-xorg-wrapper $DISPLAY_XORG -nolisten"
+                 (string-append
+                  "qubes-xorg-wrapper $DISPLAY_XORG"
+                  " -modulepath /run/current-system/profile/lib/xorg/modules"
+                  " -fp /run/current-system/profile/share/fonts/X11/misc"
+                  " -nolisten"))
+                (patch-run-xorg
+                 (string-append
+                  "exec /usr/bin/qubes-gui-runuser \"$DEFAULT_USER\""
+                  " /bin/sh -l -c \"exec /usr/bin/xinit $XSESSION --"
+                  " /usr/lib/qubes/qubes-xorg-wrapper :0 -nolisten tcp vt07"
+                  " -wr -config xorg-qubes.conf > ~/.xsession-errors 2>&1\"")
+                 (string-append
+                  "exec /usr/bin/xinit /usr/bin/qubes-gui-runuser"
+                  " \"$DEFAULT_USER\" /usr/bin/env DISPLAY=:0"
+                  " XDG_CONFIG_DIRS=/run/current-system/profile/etc/xdg"
+                  " XDG_DATA_DIRS=/run/current-system/profile/share"
+                  " GI_TYPELIB_PATH=/run/current-system/profile/lib/girepository-1.0"
+                  " PATH=/run/setuid-programs:/run/current-system/profile/bin"
+                  ":/run/current-system/profile/sbin"
+                  " /usr/bin/qubes-session qubes-session --"
+                  " /usr/lib/qubes/qubes-xorg-wrapper :0"
+                  " -modulepath /run/current-system/profile/lib/xorg/modules"
+                  " -fp /run/current-system/profile/share/fonts/X11/misc"
+                  " -nolisten tcp vt07 -wr -config xorg-qubes.conf -ac"
+                  " > \"/home/$DEFAULT_USER/.xsession-errors\" 2>&1")))
               ;; install-common follows the distribution FHS and places the
               ;; agent under /usr.  Guix profiles do not merge /usr/bin into
               ;; /bin, and the compatibility activation links /usr/lib/qubes
@@ -1544,51 +1582,49 @@ import sys
                       (("export QUBES_ENV_SOURCED=1\n")
                        (set! matched
                              (+ matched 1))
-                       (string-append "export QUBES_ENV_SOURCED=1\n"
+                       (string-append
+                        "export QUBES_ENV_SOURCED=1\n"
                         "\n"
-                        "# The native Guix session is started directly from xinit,
-"
-                        "# so make the GUI/profile environment explicit before
-"
-                        "# XDG autostart launches qrexec-fork-server.  Desktop
-"
-                        "# application launches inherit that daemon environment.
-"
+                        "# The native Guix session is started directly from"
+                        " xinit,\n"
+                        "# so make the GUI/profile environment explicit before\n"
+                        "# XDG autostart launches qrexec-fork-server.  Desktop\n"
+                        "# application launches inherit that daemon"
+                        " environment.\n"
                         ": \"${DISPLAY:=:0}\"\n"
-                        ": \"${XDG_RUNTIME_DIR:=/tmp/qubes-runtime-$(id -u)}\"
-"
-                        ": \"${XDG_CONFIG_DIRS:=/run/current-system/profile/etc/xdg}\"
-"
-                        ": \"${XDG_DATA_DIRS:=/run/current-system/profile/share}\"
-"
-                        ": \"${GI_TYPELIB_PATH:=/run/current-system/profile/lib/girepository-1.0}\"
-"
+                        ": \"${XDG_RUNTIME_DIR:=/tmp/qubes-runtime-$(id -u)}\"\n"
+                        ": \"${XDG_CONFIG_DIRS"
+                        ":=/run/current-system/profile/etc/xdg}\"\n"
+                        ": \"${XDG_DATA_DIRS"
+                        ":=/run/current-system/profile/share}\"\n"
+                        ": \"${GI_TYPELIB_PATH"
+                        ":=/run/current-system/profile/lib/girepository-1.0}\"\n"
                         ": \"${SSL_CERT_DIR:=/etc/ssl/certs}\"\n"
-                        ": \"${SSL_CERT_FILE:=/etc/ssl/certs/ca-certificates.crt}\"
-"
-                        ": \"${GIT_SSL_CAINFO:=/etc/ssl/certs/ca-certificates.crt}\"
-"
-                        ": \"${CURL_CA_BUNDLE:=/etc/ssl/certs/ca-certificates.crt}\"
-"
-                        ": \"${XDG_CACHE_HOME:=/var/tmp/guix-cache-${USER:-user}}\"
-"
+                        ": \"${SSL_CERT_FILE"
+                        ":=/etc/ssl/certs/ca-certificates.crt}\"\n"
+                        ": \"${GIT_SSL_CAINFO"
+                        ":=/etc/ssl/certs/ca-certificates.crt}\"\n"
+                        ": \"${CURL_CA_BUNDLE"
+                        ":=/etc/ssl/certs/ca-certificates.crt}\"\n"
+                        ": \"${XDG_CACHE_HOME"
+                        ":=/var/tmp/guix-cache-${USER:-user}}\"\n"
                         "mkdir -p \"$XDG_RUNTIME_DIR\"\n"
                         "chmod 700 \"$XDG_RUNTIME_DIR\"\n"
-                        ": \"${DBUS_SESSION_BUS_ADDRESS:=unix:path=$XDG_RUNTIME_DIR/bus}\"
-"
-                        "if [ ! -S \"$XDG_RUNTIME_DIR/bus\" ]; then
-"
-                        "    dbus-daemon --session --address=\"$DBUS_SESSION_BUS_ADDRESS\" --fork --nopidfile
-"
+                        ": \"${DBUS_SESSION_BUS_ADDRESS"
+                        ":=unix:path=$XDG_RUNTIME_DIR/bus}\"\n"
+                        "if [ ! -S \"$XDG_RUNTIME_DIR/bus\" ]; then\n"
+                        "    dbus-daemon --session"
+                        " --address=\"$DBUS_SESSION_BUS_ADDRESS\""
+                        " --fork --nopidfile\n"
                         "fi\n"
-                        "PATH=\"/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin${PATH:+:$PATH}\"
-"
-                        "export DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS
-"
-                        "export XDG_CONFIG_DIRS XDG_DATA_DIRS GI_TYPELIB_PATH
-"
-                        "export SSL_CERT_DIR SSL_CERT_FILE GIT_SSL_CAINFO CURL_CA_BUNDLE XDG_CACHE_HOME PATH
-")))
+                        "PATH=\"/run/setuid-programs"
+                        ":/run/current-system/profile/bin"
+                        ":/run/current-system/profile/sbin${PATH:+:$PATH}\"\n"
+                        "export DISPLAY XDG_RUNTIME_DIR"
+                        " DBUS_SESSION_BUS_ADDRESS\n"
+                        "export XDG_CONFIG_DIRS XDG_DATA_DIRS GI_TYPELIB_PATH\n"
+                        "export SSL_CERT_DIR SSL_CERT_FILE GIT_SSL_CAINFO"
+                        " CURL_CA_BUNDLE XDG_CACHE_HOME PATH\n")))
                     (unless (> matched 0)
                       (error "substitute* found no matches"
                              "qubes-gui-agent-linux:qubes-session")))
