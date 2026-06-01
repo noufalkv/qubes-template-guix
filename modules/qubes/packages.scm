@@ -670,7 +670,10 @@ information reporter used by Qubes memory ballooning.")
       ;; Upstream tests exercise live qrexec/Xen service behavior; this package
       ;; build only installs the VM-side agent and helper programs.
       #:tests? #f
-      #:modules '((guix build gnu-build-system)
+      #:imported-modules `((qubes build utils)
+                           ,@%default-gnu-imported-modules)
+      #:modules '((qubes build utils)
+                  (guix build gnu-build-system)
                   (guix build utils)
                   (ice-9 ftw)
                   (ice-9 textual-ports)
@@ -712,56 +715,6 @@ information reporter used by Qubes memory ballooning.")
               ;; patched there to tolerate a missing systemctl; qrexec only ships
               ;; the dom0 variant, which install-vm does not install.
               (let ()
-                (define (path-exists? path)
-                  (false-if-exception (lstat path)))
-
-                (define (non-symlink-directory? path)
-                  (let ((st (false-if-exception (lstat path))))
-                    (and st
-                         (eq? (stat:type st)
-                              'directory))))
-
-                (define (delete-path path)
-                  (when (path-exists? path)
-                    (if (non-symlink-directory? path)
-                        (delete-file-recursively path)
-                        (delete-file path))))
-
-                (define (merge-tree source destination)
-                  (when (path-exists? source)
-                    (mkdir-p destination)
-                    (for-each (lambda (name)
-                                (let ((from (string-append source "/" name))
-                                      (to (string-append destination "/" name)))
-                                  (if (and (non-symlink-directory? from)
-                                           (non-symlink-directory? to))
-                                      (begin
-                                        (merge-tree from to)
-                                        (rmdir from))
-                                      (begin
-                                        (delete-path to)
-                                        (rename-file from to)))))
-                              (scandir source
-                                       (lambda (entry)
-                                         (not (member entry
-                                                      '("." ".."))))))))
-
-                (define (python-version-directory root)
-                  (let* ((lib (string-append root "/lib"))
-                         (entries (and (path-exists? lib)
-                                       (scandir lib
-                                                (lambda (entry)
-                                                  (string-prefix? "python"
-                                                                  entry))))))
-                    (and entries
-                         (pair? entries)
-                         (car entries))))
-
-                (define (python-site-packages root python-directory)
-                  (let ((site (string-append root "/lib/" python-directory
-                                             "/site-packages")))
-                    (and (path-exists? site) site)))
-
                 (define (directory-entries directory)
                   (or (false-if-exception (scandir directory
                                                    (lambda (entry)
@@ -781,48 +734,6 @@ information reporter used by Qubes memory ballooning.")
                                       (and (non-symlink-directory? child)
                                            (loop child))))
                                   (directory-entries directory))))))
-
-                (define (read-text path)
-                  (call-with-input-file path
-                    get-string-all))
-
-                (define (write-text path text)
-                  (call-with-output-file path
-                    (lambda (port)
-                      (display text port))))
-
-                (define (replace-once text needle replacement context)
-                  (let ((index (string-contains text needle)))
-                    (unless index
-                      (error "expected text not found" context))
-                    (string-append (substring text 0 index) replacement
-                                   (substring text
-                                              (+ index
-                                                 (string-length needle))))))
-
-                (define (python-quote text)
-                  (call-with-output-string (lambda (port)
-                                             (display "'" port)
-                                             (string-for-each (lambda (char)
-                                                                (case char
-                                                                  ((#\\ #\')
-                                                                   (display
-                                                                    "\\" port)
-                                                                   (display
-                                                                    char port))
-                                                                  ((#\newline)
-                                                                   (display
-                                                                    "\\n" port))
-                                                                  (else (display
-                                                                         char
-                                                                         port))))
-                                                              text)
-                                             (display "'" port))))
-
-                (define (python-list entries)
-                  (string-append "["
-                                 (string-join (map python-quote entries) ", ")
-                                 "]"))
 
                 (define python-directory
                   (or (python-version-directory #$python-pyinotify)
@@ -911,7 +822,10 @@ information reporter used by Qubes memory ballooning.")
       ;; The agent-linux tree is mostly VM filesystem, init, and hook
       ;; integration; its validation is integration-level in a Qubes TemplateVM.
       #:tests? #f
-      #:modules '((guix build gnu-build-system)
+      #:imported-modules `((qubes build utils)
+                           ,@%default-gnu-imported-modules)
+      #:modules '((qubes build utils)
+                  (guix build gnu-build-system)
                   (guix build utils)
                   (ice-9 ftw)
                   (ice-9 match)
@@ -1074,103 +988,10 @@ information reporter used by Qubes memory ballooning.")
                       "SYSCONFDIR=/etc"
                       "STATEDIR=/var/lib")
               (let ()
-                (define (path-exists? path)
-                  (false-if-exception (lstat path)))
-
-                (define (non-symlink-directory? path)
-                  (let ((st (false-if-exception (lstat path))))
-                    (and st
-                         (eq? (stat:type st)
-                              'directory))))
-
-                (define (delete-path path)
-                  (when (path-exists? path)
-                    (if (non-symlink-directory? path)
-                        (delete-file-recursively path)
-                        (delete-file path))))
-
-                (define (merge-tree source destination)
-                  (when (path-exists? source)
-                    (mkdir-p destination)
-                    (for-each (lambda (name)
-                                (let ((from (string-append source "/" name))
-                                      (to (string-append destination "/" name)))
-                                  (if (and (non-symlink-directory? from)
-                                           (non-symlink-directory? to))
-                                      (begin
-                                        (merge-tree from to)
-                                        (rmdir from))
-                                      (begin
-                                        (delete-path to)
-                                        (rename-file from to)))))
-                              (scandir source
-                                       (lambda (entry)
-                                         (not (member entry
-                                                      '("." ".."))))))))
-
-                (define (python-version-directory root)
-                  (let* ((lib (string-append root "/lib"))
-                         (entries (and (path-exists? lib)
-                                       (scandir lib
-                                                (lambda (entry)
-                                                  (string-prefix? "python"
-                                                                  entry))))))
-                    (and entries
-                         (pair? entries)
-                         (car entries))))
-
-                (define (python-site-packages root python-directory)
-                  (let ((site (string-append root "/lib/" python-directory
-                                             "/site-packages")))
-                    (and (path-exists? site) site)))
-
-                (define (read-text path)
-                  (call-with-input-file path
-                    get-string-all))
-
-                (define (write-text path text)
-                  (mkdir-p (dirname path))
-                  (call-with-output-file path
-                    (lambda (port)
-                      (display text port))))
-
-                (define (replace-once text needle replacement context)
-                  (let ((index (string-contains text needle)))
-                    (unless index
-                      (error "expected text not found" context))
-                    (string-append (substring text 0 index) replacement
-                                   (substring text
-                                              (+ index
-                                                 (string-length needle))))))
-
                 (define (patch-file-once path needle replacement)
                   (write-text path
                               (replace-once (read-text path) needle
                                             replacement path)))
-
-                (define (python-quote text)
-                  (call-with-output-string (lambda (port)
-                                             (display "'" port)
-                                             (string-for-each (lambda (char)
-                                                                (case char
-                                                                  ((#\\ #\')
-                                                                   (display
-                                                                    "\\" port)
-                                                                   (display
-                                                                    char port))
-                                                                  ((#\newline)
-                                                                   (display
-                                                                    "\\n" port))
-                                                                  (else (display
-                                                                         char
-                                                                         port))))
-                                                              text)
-                                             (display "'" port))))
-
-                (define (python-list entries)
-                  (string-append "["
-                                 (string-join (map python-quote entries) ", ")
-                                 "]"))
 
                 (define (write-guile-script path expression)
                   (mkdir-p (dirname path))
