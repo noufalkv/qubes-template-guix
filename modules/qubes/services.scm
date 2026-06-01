@@ -495,26 +495,13 @@ the VM.  The argument is the ignored service value."
                    (call-with-input-file path
                      get-string-all)))
 
-            (define (string-trim-newlines
-                     text)
-              (let loop
-                ((end (string-length
-                       text)))
-                (if (and (> end
-                            0)
-                         (memv (string-ref
-                                text
-
-                                (-
-                                 end
-                                 1))
-                               '
-                               (#\newline
-                                #\return)))
-                    (loop (- end
-                           1))
-                    (substring
-                     text 0 end))))
+            (define (string-trim-newlines text)
+              (let loop ((end (string-length text)))
+                (if (and (> end 0)
+                         (memv (string-ref text (- end 1))
+                               '(#\newline #\return)))
+                    (loop (- end 1))
+                    (substring text 0 end))))
 
             (define (command-output program . args)
               (let* ((port (apply
@@ -738,32 +725,15 @@ the VM.  The argument is the ignored service value."
             ;; applier, before any Shepherd
             ;; service; not recreated here.
 
-            (define (misc-minor
-                     names)
-              (let ((text (read-file
-                           "/proc/misc")))
+            (define (misc-minor names)
+              (let ((text (read-file "/proc/misc")))
                 (and text
-                     (any (lambda
-                                  (line)
-                            (let
-                                 (
-                                  (fields
-                                   (string-tokenize
-                                    line)))
-                              (and
-                               (=
-                                (length
-                                 fields)
-                                2)
-                               (member
-                                (cadr
-                                 fields)
-                                names)
-                               (car
-                                fields))))
-                          (string-split
-                           text
-                           #\newline)))))
+                     (any (lambda (line)
+                            (let ((fields (string-tokenize line)))
+                              (and (= (length fields) 2)
+                                   (member (cadr fields) names)
+                                   (car fields))))
+                          (string-split text #\newline)))))
 
             (define (ensure-xen-node
                      node names)
@@ -836,61 +806,28 @@ the VM.  The argument is the ignored service value."
                  (symlink
                   "/proc/xen/xenbus"
                   "/dev/xen/xenbus")))
-              (let ((gid (group-gid
-                          "qubes")))
-                (for-each (lambda
-                                  (entry)
-                            (let
-                                 (
-                                  (path
-                                   (string-append
-                                    "/dev/xen/"
-                                    entry)))
+              (let ((gid (group-gid "qubes")))
+                (for-each (lambda (entry)
+                            (let ((path (string-append "/dev/xen/" entry)))
                               (when gid
-
-                                (false-if-exception
-                                 (chown
-                                  path
-                                  -1
-                                  gid)))
-                              (false-if-exception
-                               (chmod
-                                path
-                                #o660))))
+                                (false-if-exception (chown path -1 gid)))
+                              (false-if-exception (chmod path #o660))))
                           (or (false-if-exception
-                               (scandir
-                                "/dev/xen"
-                                (lambda
-                                        (entry)
-
-                                  (not
-                                   (member
-                                    entry
-                                    '
-                                    ("."
-                                     ".."))))))
+                               (scandir "/dev/xen"
+                                        (lambda (entry)
+                                          (not (member entry '("." ".."))))))
                               '())))
-              (let wait
-                ((attempt 0))
-                (when (and (<
-                            attempt
-                            50)
-                           (any (lambda
-                                        (path)
-
-                                  (not
-                                   (file-exists?
-                                    path)))
-                                '
-                                ("/dev/xen/xenbus"
-                                 "/dev/xen/evtchn"
-                                 "/dev/xen/gntalloc"
-                                 "/dev/xen/gntdev"
-                                 "/dev/xen/privcmd")))
+              (let wait ((attempt 0))
+                (when (and (< attempt 50)
+                           (any (lambda (path)
+                                  (not (file-exists? path)))
+                                '("/dev/xen/xenbus"
+                                  "/dev/xen/evtchn"
+                                  "/dev/xen/gntalloc"
+                                  "/dev/xen/gntdev"
+                                  "/dev/xen/privcmd")))
                   (usleep 100000)
-                  (wait (+
-                         attempt
-                         1)))))
+                  (wait (+ attempt 1)))))
 
             (define (prepare-service-runtime)
               (runtime-setup)
@@ -1527,8 +1464,7 @@ CONFIG, exiting cleanly when the meminfo-writer service flag is absent."
                           (false-if-exception (delete-file
                                                pidfile))
                           (exit 0)))
-             (let loop
-               ()
+             (let loop ()
                (if (false-if-exception (kill pid 0))
                    (begin
                      (sleep 60)
