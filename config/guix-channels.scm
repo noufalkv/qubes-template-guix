@@ -7,12 +7,11 @@
 ;; build-time config/channels.scm.  During development this points at the
 ;; GitHub mirror; move it to the Qubes-hosted URL for publication.
 (cons (channel
-       (name 'qubes)
-       (url "https://github.com/noufalkv/qubes-template-guix.git")
-       (branch "main")
-       (introduction
-        (make-channel-introduction
-         "0e2aef5aca27851bd9d00b4c036f790b1c2ad979"
-         (openpgp-fingerprint
-          "9A23 32D1 567B EEB5 57BB  53DF 559B 1DC4 CA0D 77FF"))))
+        (name 'qubes)
+        (url "https://github.com/noufalkv/qubes-template-guix.git")
+        (branch "main")
+        (introduction
+         (make-channel-introduction "0e2aef5aca27851bd9d00b4c036f790b1c2ad979"
+          (openpgp-fingerprint
+           "9A23 32D1 567B EEB5 57BB  53DF 559B 1DC4 CA0D 77FF"))))
       %default-channels)
