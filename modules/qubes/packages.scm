@@ -463,15 +463,11 @@ script, without adding the full Xen tool stack to native Qubes Guix templates.")
           (delete 'configure)
           (replace 'build
             (lambda _
-              (invoke "make"
-                      "-C"
-                      "qrexec-lib"
-                      "all"
-                      "CC=gcc"
-                      "NO_REBUILD_TABLE=1"
-                      (string-append
-                       "LDFLAGS=-Wl,--no-undefined,--as-needed,-Bsymbolic -L . -Wl,-rpath="
-                       #$output "/lib"))))
+              (invoke
+               "make" "-C" "qrexec-lib" "all" "CC=gcc" "NO_REBUILD_TABLE=1"
+               (string-append
+                "LDFLAGS=-Wl,--no-undefined,--as-needed,-Bsymbolic -L . -Wl,-rpath="
+                #$output "/lib"))))
           (replace 'install
             (lambda _
               (invoke "make"
@@ -1481,14 +1477,15 @@ import sys
                 (error "missing qrexec-fork-server.desktop"))
               (install-file "appvm-scripts/etc/sysconfig/desktop"
                             (string-append #$output "/etc/sysconfig"))
-              (for-each (lambda (script)
-                          (install-file script
-                                        (string-append #$output
-                                         "/etc/X11/xinit/xinitrc.d")))
-                        '("appvm-scripts/etc/X11/xinit/xinitrc.d/20qt-x11-no-mitshm.sh"
-                          "appvm-scripts/etc/X11/xinit/xinitrc.d/20qt-gnome-desktop-session-id.sh"
-                          "appvm-scripts/etc/X11/xinit/xinitrc.d/50guivm-windows-prefix.sh"
-                          "appvm-scripts/etc/X11/xinit/xinitrc.d/60xfce-desktop.sh"))
+              (for-each
+               (lambda (script)
+                 (install-file
+                  script
+                  (string-append #$output "/etc/X11/xinit/xinitrc.d")))
+               '("appvm-scripts/etc/X11/xinit/xinitrc.d/20qt-x11-no-mitshm.sh"
+                 "appvm-scripts/etc/X11/xinit/xinitrc.d/20qt-gnome-desktop-session-id.sh"
+                 "appvm-scripts/etc/X11/xinit/xinitrc.d/50guivm-windows-prefix.sh"
+                 "appvm-scripts/etc/X11/xinit/xinitrc.d/60xfce-desktop.sh"))
               ;; The upstream non-GuiVM path starts xinit through
               ;; qubes-gui-runuser so Xorg itself runs as the default user.
               ;; In this Guix System image there is no distro Xorg wrapper or
