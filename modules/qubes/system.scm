@@ -35,10 +35,8 @@
 (define (qubes-host-name variant)
   "Return the Qubes TemplateVM host name for VARIANT ('normal or 'minimal)."
   (case variant
-    ((minimal)
-     "guix-minimal-qubes")
-    ((normal)
-     "guix-qubes")
+    ((minimal) "guix-minimal-qubes")
+    ((normal) "guix-qubes")
     (else (error "unsupported Qubes Guix template variant" variant))))
 
 (define* (qubes-operating-system #:key (variant 'normal))
@@ -54,19 +52,16 @@
     ;; generates grub.cfg without ever running grub-install, so "guix system
     ;; reconfigure" succeeds inside the VM (a real grub-install cannot work on
     ;; the embedding-less ext4 root).
-    (bootloader (bootloader-configuration
-                  (bootloader qubes-external-bootloader)))
+    (bootloader (bootloader-configuration (bootloader qubes-external-bootloader)))
     (kernel qubes-dom0-kernel)
     (initrd-modules '())
-    (kernel-arguments (append '("console=hvc0" "panic=1")
-                              %default-kernel-arguments))
+    (kernel-arguments (append '("console=hvc0" "panic=1") %default-kernel-arguments))
 
     (file-systems (cons* (file-system
                            (mount-point "/")
                            (device (file-system-label "guix-root"))
                            (type "ext4")) %base-file-systems))
-    (swap-devices (list (swap-space
-                          (target "/dev/xvdc1"))))
+    (swap-devices (list (swap-space (target "/dev/xvdc1"))))
 
     (users (cons* (user-account
                     (name "user")
@@ -74,13 +69,11 @@
                     (group "users")
                     (supplementary-groups '("wheel" "netdev" "audio" "video"
                                             "qubes"))) %base-user-accounts))
-    (groups (cons* (user-group
-                     (name "qubes")) %base-groups))
+    (groups (cons* (user-group (name "qubes")) %base-groups))
 
     (packages (qubes-variant-packages variant))
 
-    (services
-     %qubes-system-services)
+    (services %qubes-system-services)
 
     (privileged-programs %qubes-privileged-programs)
     (sudoers-file (plain-file "sudoers" "root ALL=(ALL) ALL

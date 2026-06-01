@@ -889,9 +889,7 @@ information reporter used by Qubes memory ballooning.")
                   (mkdir-p (dirname path))
                   (call-with-output-file path
                     (lambda (port)
-                      (display "#!/run/current-system/profile/bin/guile -s
-"
-                               port)
+                      (display "#!/run/current-system/profile/bin/guile -s\n" port)
                       (display "!#\n" port)
                       (write expression port)
                       (newline port)))

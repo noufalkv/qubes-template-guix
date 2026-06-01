@@ -1089,8 +1089,9 @@ configuration.  The argument is the ignored service value."
   "Return the program that starts the Qubes @command{meminfo-writer} daemon
 (used by dom0 memory ballooning) with the threshold, delay, and pid-file from
 CONFIG, exiting cleanly when the meminfo-writer service flag is absent."
-  (let ((meminfo-writer (file-append (qubes-meminfo-writer-configuration-package
-                                      config) "/bin/meminfo-writer"))
+  (let ((meminfo-writer
+         (file-append (qubes-meminfo-writer-configuration-package config)
+                      "/bin/meminfo-writer"))
         (threshold (number->string (qubes-meminfo-writer-configuration-threshold config)))
         (delay (number->string (qubes-meminfo-writer-configuration-delay config)))
         (pid-file (qubes-meminfo-writer-configuration-pid-file config)))
@@ -1106,9 +1107,7 @@ CONFIG, exiting cleanly when the meminfo-writer service flag is absent."
       (prepare-service-runtime)
 
       (unless (service-enabled? "meminfo-writer")
-        (display
-         "meminfo-writer service flag not present; exiting
-")
+        (display "meminfo-writer service flag not present; exiting\n")
         (exit 0))
 
       (when (file-exists? pidfile) (delete-file pidfile))
@@ -1197,9 +1196,9 @@ seconds for the interface to appear."
                                      (begin
                                        (unless (file-exists? "/sys/module/xen_netfront")
                                          (try-run* modprobe "xen-netfront"))
-                                       (or (iface-for-mac mac)
-                                           (and (file-exists?
-                                                 "/sys/class/net/eth0") "eth0"))))))
+                                        (or (iface-for-mac mac)
+                                            (and (file-exists? "/sys/class/net/eth0")
+                                                 "eth0"))))))
 
                             #$@(qubes-network-sysctl-helper-forms)
 
@@ -1277,14 +1276,10 @@ network is configured."
     (wait-for-service-environment 600)
     (cond
       ((not (service-enabled? "qubes-network"))
-       (display
-        "qubes-network service flag not present; network backend inactive
-")
+       (display "qubes-network service flag not present; network backend inactive\n")
        (exit 0))
       ((string-null? (or (qubesdb-read "/qubes-netvm-network") ""))
-       (display
-        "No Qubes downstream network configured for this VM
-")
+       (display "No Qubes downstream network configured for this VM\n")
        (exit 0))
       (else (load-network-backend)
             (run* dnat-helper)
@@ -1376,14 +1371,10 @@ itself the proxy."
     (wait-for-service-environment 600)
     (cond
       ((not (service-enabled? "updates-proxy-setup"))
-       (display
-        "updates-proxy-setup service flag not present; forwarder inactive
-")
+       (display "updates-proxy-setup service flag not present; forwarder inactive\n")
        (exit 0))
       ((service-enabled? "qubes-updates-proxy")
-       (display
-        "qubes-updates-proxy enabled locally; not forwarding to avoid loops
-")
+       (display "qubes-updates-proxy enabled locally; not forwarding to avoid loops\n")
        (exit 0))
       (else
        ;; Reached only when the updates-proxy-setup
@@ -1483,9 +1474,7 @@ repairs the writable /etc/fstab /rw entry, and runs @file{mount-dirs.sh}."
     (wait-for-rw-device)
     (repair-fstab-entry)
     (when (and (mounted? "/rw") (mounted? "/home") (mounted? "/usr/local"))
-      (display
-       "Qubes private directories already mounted
-")
+      (display "Qubes private directories already mounted\n")
       (exit 0))
     (run* mount-dirs)
     (repair-fstab-entry)))
