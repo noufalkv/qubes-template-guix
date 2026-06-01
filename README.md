@@ -27,7 +27,7 @@ This is a reviewable prototype, not a published Qubes community template.
 | `modules/qubes/system.scm` | OS building blocks: privileged programs, system service stack, host name. |
 | `modules/qubes/vm.scm` | Umbrella module re-exporting the three modules above. |
 | `config/guix-channels.scm` | Installed as `/etc/guix/channels.scm` so `guix pull` can update the Qubes channel. |
-| `config/channels.scm` | Pinned Guix channel used only while generating template images. |
+| `config/channels.scm` | Unpinned Guix channel (tracks `master`) used only while generating template images. |
 | `builder-v2-template/` | Builder v2 content-script shape and variant appmenu allowlists. |
 | `scripts/build-native-rootfs.sh` | Build or install a Guix root filesystem. |
 | `scripts/build-template-rpm.sh` | Build a root image, inspect it, activate it, and package a qvm-template RPM. |
@@ -229,15 +229,19 @@ upstream branches rather than vendored here.
 2. Update the component tag, commit, and recursive Guix hash in `%qubes-source-components` in `modules/qubes/packages.scm`.
 3. Run `make check`, then rebuild and test both variants before publishing.
 
-**Updating the Guix channel pin**:
+**Refreshing the build-time Guix**:
 
-1. Update `config/channels.scm` to the desired Guix commit.
-2. Build both variants normally; `scripts/build-native-rootfs.sh` runs authenticated `guix pull` against that pin.
+1. `config/channels.scm` is unpinned and tracks Guix `master`, so each build
+   already uses a current Guix; nothing needs editing for routine refreshes.
+2. Build both variants normally; `scripts/build-native-rootfs.sh` runs an
+   authenticated `guix pull` against that channel.
 3. Rebuild both root images, inspect and activate both, package both RPMs, and run RPM-mode openQA.
+4. To reproduce an exact past template, use `guix time-machine` with the Guix
+   commit recorded for that build rather than re-introducing a permanent pin.
 
 **Channel authentication**: `.guix-authorizations` lists authorized OpenPGP fingerprints; the signer's public key lives on the `keyring` branch. When rotating a key, update `.guix-authorizations`, add the key to the `keyring` branch, and refresh the channel introduction in `config/guix-channels.scm`.
 
-**Security cadence**: rebuild and publish when a pinned Qubes VM component receives a relevant R4.3 update or the pinned Guix channel needs security or compatibility updates. Each rebuild must record source commit, Guix channel commit, component pins and hashes, RPM hashes, and openQA results.
+**Security cadence**: rebuild and publish when a pinned Qubes VM component receives a relevant R4.3 update or upstream Guix needs security or compatibility updates. Each rebuild must record source commit, Guix channel commit, component pins and hashes, RPM hashes, and openQA results.
 
 **Rollback**: Qubes template rollback uses `qvm-template` to reinstall or downgrade the `qubes-template-guix*` RPM. Inside a running TemplateVM, Guix system generations can be rolled back when the user deliberately reconfigures.
 
