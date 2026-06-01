@@ -968,7 +968,7 @@ every package in PACKAGES."
 database fragments from every package in PACKAGES."
   (qubes-udev-configurations-union "hwdb.d" packages))
 
-(define qubes-udev.conf
+(define qubes-udev-conf
   (computed-file "qubes-udev.conf"
                  #~(call-with-output-file #$output
                      (lambda (port)
@@ -982,7 +982,7 @@ database fragments from every package in PACKAGES."
          (rules (udev-configuration-rules config))
          (hardware (udev-configuration-hardware config))
          (hardware-union (qubes-udev-hardware-union (cons* udev hardware)))
-         (hwdb.bin (computed-file "qubes-udev-hwdb.bin"
+         (hwdb-bin (computed-file "qubes-udev-hwdb.bin"
                                   (with-imported-modules '((guix build utils))
                                                          #~(begin
                                                              (use-modules (guix
@@ -998,11 +998,11 @@ database fragments from every package in PACKAGES."
                                                               "--update" "-o"
                                                               #$output))))))
     `(("udev" ,(file-union "qubes-udev"
-                           `(("udev.conf" ,qubes-udev.conf)
+                           `(("udev.conf" ,qubes-udev-conf)
                              ("rules.d" ,(qubes-udev-rules-union (cons* udev
                                                                   qubes-kvm-udev-rule
                                                                   rules)))
-                             ("hwdb.bin" ,hwdb.bin)))))))
+                             ("hwdb.bin" ,hwdb-bin)))))))
 
 (define (qubes-udev-coldplug-program config)
   "Return a @code{program-file} that waits for the udevd control socket and
