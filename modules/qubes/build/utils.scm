@@ -52,8 +52,7 @@ emptied as it is consumed; do nothing when SOURCE does not exist."
     (for-each (lambda (name)
                 (let ((from (string-append source "/" name))
                       (to (string-append destination "/" name)))
-                  (if (and (non-symlink-directory? from)
-                           (non-symlink-directory? to))
+                  (if (and (non-symlink-directory? from) (non-symlink-directory? to))
                       (begin (merge-tree from to) (rmdir from))
                       (begin (delete-path to) (rename-file from to)))))
               (scandir source (lambda (entry) (not (member entry '("." ".."))))))))
@@ -71,8 +70,7 @@ when ROOT has no such directory."
   "Return ROOT's @file{lib/PYTHON-DIRECTORY/site-packages} path when it
 exists, or @code{#f} otherwise.  PYTHON-DIRECTORY is a name such as the value
 returned by @code{python-version-directory}."
-  (let ((site (string-append root "/lib/" python-directory
-                             "/site-packages")))
+  (let ((site (string-append root "/lib/" python-directory "/site-packages")))
     (and (path-exists? site) site)))
 
 (define (read-text path)

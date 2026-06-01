@@ -52,12 +52,9 @@ template.  The argument is the ignored service value."
         (mkdir-p (dirname link))
         (let ((existing (false-if-exception (lstat link))))
           (cond
-            ((and existing
-                  (memq (stat:type existing) '(regular symlink)))
+            ((and existing (memq (stat:type existing) '(regular symlink)))
              (delete-file link))
-            ((and existing
-                  (eq? (stat:type existing) 'directory)
-                  (empty-directory? link))
+            ((and existing (eq? (stat:type existing) 'directory) (empty-directory? link))
              (rmdir link)))
           (unless (file-exists? link) (symlink target link))))
 
@@ -110,8 +107,7 @@ template.  The argument is the ignored service value."
 
       (define (materialize-symlinked-directory directory)
         (let ((existing (false-if-exception (lstat directory))))
-          (when (and existing
-                     (eq? (stat:type existing) 'symlink))
+          (when (and existing (eq? (stat:type existing) 'symlink))
             (let* ((target (readlink directory))
                    (absolute-target (if (and (positive? (string-length target))
                                              (char=? (string-ref target 0) #\/))
@@ -127,8 +123,7 @@ template.  The argument is the ignored service value."
 
       (define (materialize-symlinked-file file)
         (let ((existing (false-if-exception (lstat file))))
-          (when (and existing
-                     (eq? (stat:type existing) 'symlink))
+          (when (and existing (eq? (stat:type existing) 'symlink))
             (let* ((target (readlink file))
                    (absolute-target (if (and (positive? (string-length target))
                                              (char=? (string-ref target 0) #\/))
@@ -153,8 +148,7 @@ template.  The argument is the ignored service value."
 
       (define (qubesdb-read key)
         (false-if-exception (and (file-exists? qubesdb-read*)
-                                 (let* ((port (open-pipe* OPEN_READ
-                                                          qubesdb-read* key))
+                                 (let* ((port (open-pipe* OPEN_READ qubesdb-read* key))
                                         (text (get-string-all port))
                                         (status (close-pipe port)))
                                    (and (zero? status) (string-trim-right text))))))
@@ -166,13 +160,10 @@ template.  The argument is the ignored service value."
         (call-with-output-file file (lambda (port) (display text port))))
 
       (define (install-thunar-qubes-actions)
-        (let ((uca "/etc/xdg/Thunar/uca.xml")
-              (qubes-uca "/usr/lib/qubes/uca_qubes.xml"))
-          (when (and (file-exists? uca)
-                     (file-exists? qubes-uca))
+        (let ((uca "/etc/xdg/Thunar/uca.xml") (qubes-uca "/usr/lib/qubes/uca_qubes.xml"))
+          (when (and (file-exists? uca) (file-exists? qubes-uca))
             (materialize-symlinked-file uca)
-            (let ((text (read-text uca))
-                  (actions (read-text qubes-uca)))
+            (let ((text (read-text uca)) (actions (read-text qubes-uca)))
               (unless (string-contains text "/usr/lib/qubes/qvm-actions.sh")
                 (let ((index (string-contains text "</actions>")))
                   (if index
@@ -221,8 +212,7 @@ template.  The argument is the ignored service value."
                                                       (string-length "/zoneinfo"))))))))
         (materialize-symlinked-file "/etc/localtime")
         (let ((tz (qubesdb-read "/qubes-timezone")))
-          (when (and tz
-                     (not (string-null? tz)) zoneinfo-base)
+          (when (and tz (not (string-null? tz)) zoneinfo-base)
             (let ((zoneinfo (string-append zoneinfo-base "/" tz)))
               (when (file-exists? zoneinfo)
                 (let ((temporary "/etc/localtime.qubes-tmp"))
@@ -307,8 +297,7 @@ action=/etc/acpi/actions/qubes-poweroff
 session.  It authorizes via @code{pam_rootok}/@code{pam_permit} and applies
 the @code{%qubes-audio-limits} realtime limits in its session stack so
 PipeWire can run with elevated priority."
-  (let ((pam-module (lambda (name)
-                      (file-append linux-pam "/lib/security/" name))))
+  (let ((pam-module (lambda (name) (file-append linux-pam "/lib/security/" name))))
     (pam-service (name name)
                  (auth (list (pam-entry (control "sufficient")
                                         (module (pam-module "pam_rootok.so")))
@@ -473,8 +462,7 @@ the VM.  The argument is the ignored service value."
                   (setenv name
                           (string-append
                            (string-join entries ":")
-                           (if (and current
-                                    (not (string-null? current)))
+                           (if (and current (not (string-null? current)))
                                (string-append ":" current)
                                ""))))))
 
@@ -574,10 +562,8 @@ the VM.  The argument is the ignored service value."
                           (string-split text #\newline)))))
 
             (define (ensure-xen-node node names)
-              (let ((path (string-append "/dev/xen/" node))
-                    (minor (misc-minor names)))
-                (when (and minor
-                           (not (file-exists? path)))
+              (let ((path (string-append "/dev/xen/" node)) (minor (misc-minor names)))
+                (when (and minor (not (file-exists? path)))
                   (try-run* mknod* path "c" "10" minor))))
 
             (define (xen-device-setup)
@@ -585,18 +571,12 @@ the VM.  The argument is the ignored service value."
               (mkdir-p "/proc/xen")
               (for-each (lambda (module)
                           (try-run* modprobe module))
-                        '("xenfs"
-                          "xen_evtchn"
-                          "xen_gntalloc"
-                          "xen_gntdev"
-                          "xen_privcmd"))
+                        '("xenfs" "xen_evtchn" "xen_gntalloc" "xen_gntdev" "xen_privcmd"))
               (unless (try-run* mountpoint "-q" "/proc/xen")
                 (try-run* mount "-t" "xenfs" "xenfs" "/proc/xen"))
               (for-each (lambda (spec)
                           (ensure-xen-node (car spec) (cdr spec)))
-                        '(("xenbus"
-                           "xen/xenbus"
-                           "xenbus")
+                        '(("xenbus" "xen/xenbus" "xenbus")
                           ("hypercall" "xen/hypercall" "hypercall")
                           ("privcmd" "xen/privcmd" "privcmd")
                           ("evtchn" "xen/evtchn" "evtchn")
@@ -653,8 +633,7 @@ the VM.  The argument is the ignored service value."
 @file{rules.d} or @file{hwdb.d}) found under the standard @file{/lib/udev}
 and @file{/libexec/udev} locations of every package in PACKAGES."
   (define build
-    (with-imported-modules '((guix build union)
-                             (guix build utils))
+    (with-imported-modules '((guix build union) (guix build utils))
                            #~(begin
                                (use-modules (guix build union)
                                             (guix build utils)
@@ -662,8 +641,7 @@ and @file{/libexec/udev} locations of every package in PACKAGES."
 
                                (define standard-locations
                                  '(#$(string-append "/lib/udev/" subdirectory)
-                                   #$(string-append "/libexec/udev/"
-                                                    subdirectory)))
+                                   #$(string-append "/libexec/udev/" subdirectory)))
 
                                (define (configuration-sub-directory directory)
                                  (find directory-exists?
@@ -758,11 +736,9 @@ present at boot are processed.  CONFIG is the udev configuration."
                (if (= pid 0)
                    (begin (apply execl udevadm udevadm args) (exit 127))
                    (let wait ((remaining (* seconds 10)))
-                     (let ((result (false-if-exception
-                                    (waitpid pid WNOHANG))))
+                     (let ((result (false-if-exception (waitpid pid WNOHANG))))
                        (cond
-                         ((and result
-                               (= (car result) pid))
+                         ((and result (= (car result) pid))
                           (let ((status (cdr result)))
                             (and (not (status:term-sig status))
                                  (let ((exit-code (status:exit-val status)))
@@ -863,11 +839,7 @@ always reports success; otherwise it reports PROGRAM's exit status."
 
       (let ((status (run/logged))) (if #$best-effort? #t (status-success? status)))))
 
-(define* (one-shot-service name
-                           requirements
-                           program
-                           log-file
-                           #:key (best-effort? #f))
+(define* (one-shot-service name requirements program log-file #:key (best-effort? #f))
   "Return a one-shot @code{shepherd-service} provisioning NAME that runs
 PROGRAM once after REQUIREMENTS are met, logging to LOG-FILE.  When
 BEST-EFFORT? is true the service succeeds regardless of PROGRAM's exit status."
@@ -919,9 +891,7 @@ path is missing or unwritable."
                               (define (sysctl-key->path key)
                                 (string-append "/proc/sys/"
                                                (list->string (map (lambda (char)
-                                                                    (if (char=?
-                                                                         char
-                                                                         #\.)
+                                                                    (if (char=? char #\.)
                                                                         #\/
                                                                         char))
                                                                   (string->list key)))))
@@ -983,8 +953,7 @@ about five seconds for the @file{lo} device to appear before failing."
                                  (run* ip "link" "set" "lo" "up")
                                  (exit 0))
                                 ((< attempt 50) (usleep 100000) (wait (+ attempt 1)))
-                                (else (warn
-                                       "loopback network device did not appear")
+                                (else (warn "loopback network device did not appear")
                                       (exit 1))))))
 
 (define (qubes-loopback-shepherd-service _)
@@ -1131,8 +1100,7 @@ CONFIG, exiting cleanly when the meminfo-writer service flag is absent."
 
       (define (read-pid path)
         (and (file-exists? path)
-             (let ((text (call-with-input-file path
-                           get-string-all)))
+             (let ((text (call-with-input-file path get-string-all)))
                (string->number (string-trim-both text)))))
 
       (prepare-service-runtime)
@@ -1144,17 +1112,14 @@ CONFIG, exiting cleanly when the meminfo-writer service flag is absent."
         (exit 0))
 
       (when (file-exists? pidfile) (delete-file pidfile))
-      (unless (zero? (system* #$meminfo-writer
-                              #$threshold
-                              #$delay pidfile))
+      (unless (zero? (system* #$meminfo-writer #$threshold #$delay pidfile))
         (warn "meminfo-writer failed to start")
         (exit 1))
 
       (let wait-for-pid ((attempt 0))
         (let ((pid (read-pid pidfile)))
           (cond
-            ((and pid
-                  (> pid 1))
+            ((and pid (> pid 1))
              (sigaction SIGTERM
                         (lambda _
                           (false-if-exception (kill pid SIGTERM))
@@ -1223,16 +1188,14 @@ seconds for the interface to appear."
                                                                  (lambda (entry)
                                                                    (not (member
                                                                          entry
-                                                                         '("."
-                                                                           ".."))))))
+                                                                         '("." ".."))))))
                                             '()))))
 
                             (define (qubes-managed-iface)
                               (let ((mac (qubesdb-read "/qubes-mac")))
                                 (and mac
                                      (begin
-                                       (unless (file-exists?
-                                                "/sys/module/xen_netfront")
+                                       (unless (file-exists? "/sys/module/xen_netfront")
                                          (try-run* modprobe "xen-netfront"))
                                        (or (iface-for-mac mac)
                                            (and (file-exists?
@@ -1318,8 +1281,7 @@ network is configured."
         "qubes-network service flag not present; network backend inactive
 ")
        (exit 0))
-      ((string-null? (or (qubesdb-read
-                          "/qubes-netvm-network") ""))
+      ((string-null? (or (qubesdb-read "/qubes-netvm-network") ""))
        (display
         "No Qubes downstream network configured for this VM
 ")
@@ -1327,9 +1289,7 @@ network is configured."
       (else (load-network-backend)
             (run* dnat-helper)
             (write-required-file "/proc/sys/net/ipv4/ip_forward" "1")
-            (unless (string-null? (or (qubesdb-read
-                                       "/qubes-netvm-gateway6")
-                                      ""))
+            (unless (string-null? (or (qubesdb-read "/qubes-netvm-gateway6") ""))
               (write-optional-file "/proc/sys/net/ipv6/conf/all/forwarding" "1"))))))
 
 (define (qubes-network-shepherd-service _)
@@ -1495,8 +1455,7 @@ repairs the writable /etc/fstab /rw entry, and runs @file{mount-dirs.sh}."
       (let ((text (read-file "/etc/fstab")))
         (and text
              (any (lambda (line)
-                    (let ((fields (string-tokenize
-                                   line)))
+                    (let ((fields (string-tokenize line)))
                       (and (>= (length fields) 2)
                            (not (string-prefix? "#" (car fields)))
                            (string=? (cadr fields) "/rw"))))
@@ -1508,29 +1467,22 @@ repairs the writable /etc/fstab /rw entry, and runs @file{mount-dirs.sh}."
         (close-port port)))
 
     (define (repair-fstab-entry)
-      (when (and (or (file-exists? "/dev/xvdb")
-                     (mounted? "/rw"))
-                 (not (fstab-has-rw?)))
+      (when (and (or (file-exists? "/dev/xvdb") (mounted? "/rw")) (not (fstab-has-rw?)))
         (append-fstab-entry)))
 
     (define (wait-for-rw-device)
-      (when (string=? (or (qubesdb-read
-                           "/qubes-vm-persistence") "")
-                      "rw-only")
+      (when (string=? (or (qubesdb-read "/qubes-vm-persistence") "") "rw-only")
         (let loop ((attempt 0))
           (cond
             ((file-exists? "/dev/xvdb") #t)
             ((< attempt 300) (usleep 100000) (loop (+ attempt 1)))
-            (else (warn
-                   "Qubes private-volume device /dev/xvdb did not appear")
+            (else (warn "Qubes private-volume device /dev/xvdb did not appear")
                   (exit 1))))))
 
     (prepare-service-runtime)
     (wait-for-rw-device)
     (repair-fstab-entry)
-    (when (and (mounted? "/rw")
-               (mounted? "/home")
-               (mounted? "/usr/local"))
+    (when (and (mounted? "/rw") (mounted? "/home") (mounted? "/usr/local"))
       (display
        "Qubes private directories already mounted
 ")
@@ -1586,8 +1538,7 @@ script, warning on a non-zero exit but always succeeding so it never blocks
 boot."
   (qubes-vm-service-program "qubes-misc-post"
                             (prepare-service-runtime)
-                            (let ((status (system*
-                                           "/usr/lib/qubes/init/misc-post.sh")))
+                            (let ((status (system* "/usr/lib/qubes/init/misc-post.sh")))
                               (unless (zero? status)
                                 (warn (string-append
                                        "qubes-misc-post exited with status "
@@ -1645,15 +1596,12 @@ service environment, and execs @command{qubes-gui}.  It exits cleanly when
 dom0 has not enabled the GUI for this VM."
   (qubes-vm-service-program "qubes-gui-agent"
                             (define (read-service-environment)
-                              (let ((text (read-file
-                                           "/run/qubes-service-environment")))
+                              (let ((text (read-file "/run/qubes-service-environment")))
                                 (if text
                                     (filter-map (lambda (line)
-                                                  (let ((index (string-index
-                                                                line #\=)))
+                                                  (let ((index (string-index line #\=)))
                                                     (and index
-                                                         (cons (substring line
-                                                                0 index)
+                                                         (cons (substring line 0 index)
                                                                (substring line
                                                                 (+ index 1))))))
                                                 (string-split text #\newline))

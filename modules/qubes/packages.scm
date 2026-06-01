@@ -2,8 +2,7 @@
 ;; Qubes VM package definitions for the qubes-template-guix channel.
 
 (define-module (qubes packages)
-  #:use-module ((guix licenses)
-                #:prefix license:)
+  #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix build-system copy)
   #:use-module (guix build-system gnu)
   #:use-module (guix build-system trivial)
@@ -113,15 +112,13 @@ and the generated helper both do) and import (ice-9 ftw) for `scandir'."
                  (exit 1)))))
 
     (define (interface-names family)
-      (or (false-if-exception (scandir (string-append "/proc/sys/net/" family
-                                                      "/conf")
+      (or (false-if-exception (scandir (string-append "/proc/sys/net/" family "/conf")
                                        (lambda (entry) (not (member entry '("." ".."))))))
           '()))
 
     (define (apply-sysctls-to-iface settings interface)
       (for-each (lambda (setting)
-                  (write-sysctl (sysctl-path (car setting) interface
-                                             (cadr setting))
+                  (write-sysctl (sysctl-path (car setting) interface (cadr setting))
                                 (cddr setting))) settings))
 
     (define (apply-sysctls-to-all-ifaces settings)
@@ -170,8 +167,7 @@ and the generated helper both do) and import (ice-9 ftw) for `scandir'."
 (define (qubes-release-version component)
   "Return COMPONENT's release version, the pinned tag without a leading \"v\"."
   (let ((tag (qubes-source-field component 1)))
-    (if (and (> (string-length tag) 0)
-             (char=? (string-ref tag 0) #\v))
+    (if (and (> (string-length tag) 0) (char=? (string-ref tag 0) #\v))
         (substring tag 1) tag)))
 
 (define* (qubes-release-source component #:key (patches '()))
@@ -261,15 +257,13 @@ root image does not need a guest kernel package.")
                 ((regular) (copy-file source destination)))))
 
           (define (command-line-output . args)
-            (let* ((port (apply open-pipe* OPEN_READ args))
-                   (line (read-line port)))
+            (let* ((port (apply open-pipe* OPEN_READ args)) (line (read-line port)))
               (close-pipe port)
               (if (eof-object? line) "" line)))
 
           (define (replace-substring value needle replacement)
             (let ((needle-length (string-length needle)))
-              (let loop ((start 0)
-                         (pieces '()))
+              (let loop ((start 0) (pieces '()))
                 (let ((index (string-contains value needle start)))
                   (if index
                       (loop (+ index needle-length)
@@ -511,16 +505,13 @@ information reporter used by Qubes memory ballooning.")
       ;; The daemon tests expect a live QubesDB/Xen VM environment; this
       ;; package build installs the VM-side daemon, tools, and bindings.
       #:tests? #f
-      #:modules '((guix build gnu-build-system)
-                  (guix build utils)
-                  (ice-9 regex))
+      #:modules '((guix build gnu-build-system) (guix build utils) (ice-9 regex))
       #:phases
       #~(modify-phases %standard-phases
           (delete 'configure)
           (replace 'build
             (lambda _
-              (let ((rpath (string-append "-Wl,-rpath="
-                                          #$output "/lib")))
+              (let ((rpath (string-append "-Wl,-rpath=" #$output "/lib")))
                 (invoke "make"
                         "all"
                         "SYSTEMD=0"
@@ -550,15 +541,13 @@ information reporter used by Qubes memory ballooning.")
               ;; read/write/list behavior.
               (let ((qubesdb-cmd (string-append #$output "/bin/qubesdb-cmd")))
                 (for-each (lambda (entry)
-                            (let ((path (string-append #$output "/bin/"
-                                                       (car entry)))
+                            (let ((path (string-append #$output "/bin/" (car entry)))
                                   (command (cadr entry)))
                               (when (file-exists? path) (delete-file path))
                               (call-with-output-file path
                                 (lambda (port)
                                   (format port "#!~a~%exec ~a -c ~a \"$@\"~%"
-                                          #$(file-append bash-minimal
-                                                         "/bin/sh")
+                                          #$(file-append bash-minimal "/bin/sh")
                                           qubesdb-cmd command)))
                               (chmod path #o755)))
                           '(("qubesdb-read" "read")
@@ -613,8 +602,7 @@ information reporter used by Qubes memory ballooning.")
       ;; Upstream tests exercise live qrexec/Xen service behavior; this package
       ;; build only installs the VM-side agent and helper programs.
       #:tests? #f
-      #:imported-modules `((qubes build utils)
-                           ,@%default-gnu-imported-modules)
+      #:imported-modules `((qubes build utils) ,@%default-gnu-imported-modules)
       #:modules '((qubes build utils)
                   (guix build gnu-build-system)
                   (guix build utils)
@@ -666,11 +654,9 @@ information reporter used by Qubes memory ballooning.")
                 (define (find-directory root name)
                   (let loop ((directory root))
                     (and (path-exists? directory)
-                         (or (and (string=? (basename directory) name)
-                                  directory)
+                         (or (and (string=? (basename directory) name) directory)
                              (any (lambda (entry)
-                                    (let ((child (string-append directory "/"
-                                                                entry)))
+                                    (let ((child (string-append directory "/" entry)))
                                       (and (non-symlink-directory? child) (loop child))))
                                   (directory-entries directory))))))
 
@@ -692,8 +678,7 @@ information reporter used by Qubes memory ballooning.")
                   (delete-path (string-append site "/qrexec"))
                   (copy-recursively qrexec-source (string-append site "/qrexec")))
                 (for-each (lambda (pair)
-                            (merge-tree (string-append #$output "/"
-                                                       (car pair))
+                            (merge-tree (string-append #$output "/" (car pair))
                                         (string-append #$output "/" (cdr pair))))
                           '(("usr/bin" . "bin")
                             ("usr/lib/qubes" . "lib/qubes")
@@ -738,8 +723,7 @@ information reporter used by Qubes memory ballooning.")
      (qubes-release-source
       "qubes-core-agent-linux"
       #:patches
-      (list (local-file
-             "patches/guix-specific/qubes-vm-core-init-functions-skel.patch")
+      (list (local-file "patches/guix-specific/qubes-vm-core-init-functions-skel.patch")
             (local-file "patches/guix-specific/qubes-vm-core-setup-ip-sysctl.patch")
             (local-file "patches/guix-specific/qubes-vm-core-vif-route-sysctl.patch")
             (local-file
@@ -750,8 +734,7 @@ information reporter used by Qubes memory ballooning.")
       ;; The agent-linux tree is mostly VM filesystem, init, and hook
       ;; integration; its validation is integration-level in a Qubes TemplateVM.
       #:tests? #f
-      #:imported-modules `((qubes build utils)
-                           ,@%default-gnu-imported-modules)
+      #:imported-modules `((qubes build utils) ,@%default-gnu-imported-modules)
       #:modules '((qubes build utils)
                   (guix build gnu-build-system)
                   (guix build utils)
@@ -792,12 +775,10 @@ information reporter used by Qubes memory ballooning.")
                      (lines (string-split (call-with-input-file file
                                             get-string-all) #\newline))
                      (parsed (filter-map (lambda (line)
-                                           (let ((trimmed (string-trim-both
-                                                           line)))
+                                           (let ((trimmed (string-trim-both line)))
                                              (and (not (string-null? trimmed))
                                                   (not (string-prefix? "#" trimmed))
-                                                  (let ((eq (string-index
-                                                             trimmed #\=)))
+                                                  (let ((eq (string-index trimmed #\=)))
                                                     (and eq
                                                          (let* ((key (string-trim-right
                                                                       (substring
@@ -829,8 +810,7 @@ information reporter used by Qubes memory ballooning.")
                       "-C"
                       "qubes-rpc"
                       (string-append "VERSION="
-                                     #$(qubes-release-version
-                                        "qubes-core-agent-linux"))
+                                     #$(qubes-release-version "qubes-core-agent-linux"))
                       "CC=gcc"
                       "release=Guix"
                       (string-append "LDFLAGS=-pie -Wl,-rpath="
@@ -839,8 +819,7 @@ information reporter used by Qubes memory ballooning.")
                       "-C"
                       "misc"
                       (string-append "VERSION="
-                                     #$(qubes-release-version
-                                        "qubes-core-agent-linux"))
+                                     #$(qubes-release-version "qubes-core-agent-linux"))
                       "CC=gcc"
                       "release=Guix")))
           (replace 'install
@@ -954,8 +933,7 @@ information reporter used by Qubes memory ballooning.")
                   (string-append #$output "/lib/qubes"))
 
                 (for-each (lambda (pair)
-                            (merge-tree (string-append #$output "/"
-                                                       (car pair))
+                            (merge-tree (string-append #$output "/" (car pair))
                                         (string-append #$output "/" (cdr pair))))
                           '(("usr/bin" . "bin") ("usr/lib" . "lib")
                             ("usr/share" . "share")))
@@ -1006,8 +984,7 @@ information reporter used by Qubes memory ballooning.")
                                                     (python-list pythonpath)
                                                     "\nimport xdg.IconTheme\n"))))
 
-                (let ((filecopy (string-append #$output
-                                 "/etc/qubes-rpc/qubes.Filecopy")))
+                (let ((filecopy (string-append #$output "/etc/qubes-rpc/qubes.Filecopy")))
                   (when (path-exists? filecopy)
                     ;; Guix exposes setuid/setgid programs from a runtime
                     ;; privileged directory instead of trusting mode bits inside
@@ -1040,8 +1017,7 @@ information reporter used by Qubes memory ballooning.")
                                         "qrexec-client-vm"
                                         "--use-stdin-socket" ""
                                         "qubes.UpdatesProxy")))
-                (let ((repo-query (string-append qubes-libdir
-                                                 "/qvm-template-repo-query"))
+                (let ((repo-query (string-append qubes-libdir "/qvm-template-repo-query"))
                       (dnf-repo-query (string-append qubes-libdir
                                        "/qvm-template-repo-query.dnf"))
                       (guix-repo-query (string-append qubes-libdir
@@ -1052,9 +1028,7 @@ information reporter used by Qubes memory ballooning.")
                   ;; runtime anchors (python3 shebang, curl, zstd) to absolute
                   ;; store paths; fail loudly per anchor so the installed copy
                   ;; can never silently keep a non-store path on drift.
-                  (let ((python-matched 0)
-                        (curl-matched 0)
-                        (zstd-matched 0))
+                  (let ((python-matched 0) (curl-matched 0) (zstd-matched 0))
                     (substitute* guix-repo-query
                       (("#!/run/current-system/profile/bin/python3")
                        (set! python-matched (+ python-matched 1))
@@ -1133,8 +1107,7 @@ information reporter used by Qubes memory ballooning.")
                                        (define (prefix->target prefix)
                                          (match (string-split prefix #\/)
                                            (("" "net" family "conf" interface)
-                                            (and (member family
-                                                         '("ipv4" "ipv6"))
+                                            (and (member family '("ipv4" "ipv6"))
                                                  (cons family interface)))
                                            (_ #f)))
 
@@ -1153,18 +1126,15 @@ information reporter used by Qubes memory ballooning.")
                                           (filter-map arg-prefix (cdr (command-line))))
                                          equal?))))
                 (for-each (lambda (helper)
-                            (let ((destination (string-append qubes-libdir "/"
-                                                              helper)))
+                            (let ((destination (string-append qubes-libdir "/" helper)))
                               (copy-file (string-append "package-managers/"
                                                         helper) destination)
                               (chmod destination #o755)))
-                          '("upgrades-installed-check"
-                            "upgrades-status-notify"))
+                          '("upgrades-installed-check" "upgrades-status-notify"))
 
                 (let ((installed-check (string-append qubes-libdir
                                         "/upgrades-installed-check")))
-                  (unless (string-contains (read-text installed-check)
-                                           "## Guix System")
+                  (unless (string-contains (read-text installed-check) "## Guix System")
                     (patch-file-once
                      installed-check
                      "elif [ -e /etc/arch-release ]; then\n"
@@ -1183,8 +1153,7 @@ information reporter used by Qubes memory ballooning.")
                       "    exit_code=0\n"
                       "elif [ -e /etc/arch-release ]; then\n"))))
 
-                (let ((features-request (string-append bindir
-                                         "/qvm-features-request")))
+                (let ((features-request (string-append bindir "/qvm-features-request")))
                   (when (path-exists? features-request)
                     (patch-file-once features-request "import argparse\n"
                                      (string-append
@@ -1252,8 +1221,7 @@ import sys
                       "if os.environ.get('GI_TYPELIB_PATH') else '')\n\n"))))
 
                 (for-each (lambda (entry)
-                            (write-python-wrapper (string-append bindir "/"
-                                                                 (car entry))
+                            (write-python-wrapper (string-append bindir "/" (car entry))
                                                   pythonpath
                                                   (cdr entry)))
                           '(("qubes-firewall" . "qubesagent.firewall")
@@ -1385,8 +1353,7 @@ import sys
                (for-each
                 (lambda (script)
                   (install-file script
-                                (string-append #$output
-                                               "/etc/X11/xinit/xinitrc.d")))
+                                (string-append #$output "/etc/X11/xinit/xinitrc.d")))
                '("appvm-scripts/etc/X11/xinit/xinitrc.d/20qt-x11-no-mitshm.sh"
                  "appvm-scripts/etc/X11/xinit/xinitrc.d/20qt-gnome-desktop-session-id.sh"
                  "appvm-scripts/etc/X11/xinit/xinitrc.d/50guivm-windows-prefix.sh"
@@ -1411,11 +1378,9 @@ import sys
               ;; line.  patch-file-once is fail-loud (errors when the needle is
               ;; absent), matching the upstream lines literally; the long exec
               ;; needle/replacement are split into string-append fragments.
-              (let ((qubes-run-xorg (string-append #$output
-                                     "/usr/bin/qubes-run-xorg")))
+              (let ((qubes-run-xorg (string-append #$output "/usr/bin/qubes-run-xorg")))
                 (define (patch-run-xorg needle replacement)
-                  (let* ((text (call-with-input-file qubes-run-xorg
-                                 get-string-all))
+                  (let* ((text (call-with-input-file qubes-run-xorg get-string-all))
                          (index (string-contains text needle)))
                     (unless index (error "expected text not found" needle))
                     (call-with-output-file qubes-run-xorg
@@ -1465,8 +1430,7 @@ import sys
                                  (string-append #$output "/share"))
               (move-profile-tree (string-append #$output "/usr/include")
                                  (string-append #$output "/include"))
-              (let ((qubes-session (string-append #$output
-                                                  "/bin/qubes-session")))
+              (let ((qubes-session (string-append #$output "/bin/qubes-session")))
                 (when (file-exists? qubes-session)
                   ;; upstream: qubes-gui-agent-linux qubes-session — the
                   ;; "export QUBES_ENV_SOURCED=1" environment marker.
@@ -1613,8 +1577,7 @@ import sys
       ;; Upstream has no standalone test target for this PipeWire module; its
       ;; validation is runtime audio behavior against a Qubes AudioVM.
       #:tests? #f
-      #:modules '((guix build gnu-build-system)
-                  (guix build utils))
+      #:modules '((guix build gnu-build-system) (guix build utils))
       #:phases
       #~(modify-phases %standard-phases
           ;; The pipewire/ subdirectory ships a plain Makefile; the top-level
@@ -1723,8 +1686,7 @@ exit 0
                      #$(file-append bash-minimal "/bin/sh"))))
                 (chmod launcher #o755)
                 (mkdir-p autostart)
-                (call-with-output-file (string-append autostart
-                                        "/qubes-pipewire.desktop")
+                (call-with-output-file (string-append autostart "/qubes-pipewire.desktop")
                   (lambda (port)
                     (display
                      "[Desktop Entry]
@@ -1745,8 +1707,7 @@ X-GNOME-Autostart-Phase=Initialization
                  ;; module needs to find its peer) to qubes it knows do audio;
                  ;; without this request a Guix template gets no sound while
                  ;; Fedora/Debian qubes do.
-                 (let* ((postinst (string-append #$output
-                                   "/etc/qubes/post-install.d"))
+                 (let* ((postinst (string-append #$output "/etc/qubes/post-install.d"))
                         (advertiser (string-append postinst "/20-qubes-pipewire.sh")))
                    (mkdir-p postinst)
                    (call-with-output-file advertiser
@@ -1794,8 +1755,7 @@ PipeWire equivalent of the older PulseAudio Qubes module.")
           (use-modules (guix build utils))
           (let ((applications (string-append #$output "/share/applications")))
             (mkdir-p applications)
-            (call-with-output-file (string-append applications
-                                                  "/xterm.desktop")
+            (call-with-output-file (string-append applications "/xterm.desktop")
               (lambda (port)
                 (display "[Desktop Entry]
 Name=XTerm
