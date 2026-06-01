@@ -33,6 +33,11 @@
     ("/run/current-system/profile/lib/qubes-bind-dirs.d" . "/usr/lib/qubes-bind-dirs.d")))
 
 (define (qubes-vm-compat-activation _)
+  "Return a gexp run at system activation that materializes the fixed Qubes
+compatibility symlinks (the @file{/usr/...} and @file{/var/run/qubes*}
+bridges into the Guix profile) and the writable copies of files Qubes tools
+rewrite at runtime, so the read-only store layout behaves like a stock Qubes
+template.  The argument is the ignored service value."
   #~(begin
       (use-modules (guix build utils)
                    (ice-9 ftw)
@@ -340,6 +345,10 @@ action=/etc/acpi/actions/qubes-poweroff
 "))
 
 (define (qubes-pam-service name)
+  "Return a permissive @code{pam-service} named NAME for a Qubes agent user
+session.  It authorizes via @code{pam_rootok}/@code{pam_permit} and applies
+the @code{%qubes-audio-limits} realtime limits in its session stack so
+PipeWire can run with elevated priority."
   (let ((pam-module (lambda (name)
                       (file-append linux-pam "/lib/security/" name))))
     (pam-service (name name)
@@ -364,6 +373,8 @@ action=/etc/acpi/actions/qubes-poweroff
                                                      #$%qubes-audio-limits)))))))))
 
 (define (qubes-qrexec-pam-services _)
+  "Return the list of PAM services for the qrexec and GUI agent user
+sessions.  The argument is the ignored service value."
   (list (qubes-pam-service "qrexec")
         (qubes-pam-service "qubes-gui-agent")))
 
@@ -376,6 +387,9 @@ action=/etc/acpi/actions/qubes-poweroff
                  "Install the PAM service used by qrexec-agent user sessions.")))
 
 (define (qubes-acpi-shutdown-shepherd-service _)
+  "Return a Shepherd service that runs @command{acpid} so that an ACPI
+power-button event from dom0 (sent by @command{qvm-shutdown}) cleanly halts
+the VM.  The argument is the ignored service value."
   (list (shepherd-service (provision '(qubes-acpi-shutdown))
                           (requirement '(root-file-system))
                           (documentation
@@ -725,10 +739,12 @@ action=/etc/acpi/actions/qubes-poweroff
                                                              "/run/qubes"
                                                              #o775))
 
-                                                          ;; The fixed Qubes compatibility symlinks (including the
-                                                          ;; /var/run/qubes* bridges) are created once by the qubes-vm-compat
-                                                          ;; activation applier, which runs before any Shepherd service.
-                                                          ;; Service runtime setup no longer recreates them here.
+                                                          ;; The fixed compat symlinks
+                                                          ;; (incl. /var/run/qubes*) are
+                                                          ;; made once by the
+                                                          ;; qubes-vm-compat activation
+                                                          ;; applier, before any Shepherd
+                                                          ;; service; not recreated here.
 
                                                           (define (misc-minor
                                                                    names)
@@ -921,6 +937,9 @@ action=/etc/acpi/actions/qubes-poweroff
   (udev-rule "90-kvm.rules" "KERNEL==\"kvm\", GROUP=\"kvm\", MODE=\"0660\"\n"))
 
 (define (qubes-udev-configurations-union subdirectory packages)
+  "Return a @code{computed-file} that unions the udev SUBDIRECTORY (e.g.
+@file{rules.d} or @file{hwdb.d}) found under the standard @file{/lib/udev}
+and @file{/libexec/udev} locations of every package in PACKAGES."
   (define build
     (with-imported-modules '((guix build union)
                              (guix build utils))
@@ -948,9 +967,13 @@ action=/etc/acpi/actions/qubes-poweroff
   (computed-file (string-append "qubes-udev-" subdirectory) build))
 
 (define (qubes-udev-rules-union packages)
+  "Return a @code{computed-file} unioning the @file{rules.d} udev rules from
+every package in PACKAGES."
   (qubes-udev-configurations-union "rules.d" packages))
 
 (define (qubes-udev-hardware-union packages)
+  "Return a @code{computed-file} unioning the @file{hwdb.d} udev hardware
+database fragments from every package in PACKAGES."
   (qubes-udev-configurations-union "hwdb.d" packages))
 
 (define qubes-udev.conf
@@ -960,6 +983,9 @@ action=/etc/acpi/actions/qubes-poweroff
                        (format port "udev_rules=\"/etc/udev/rules.d\"~%")))))
 
 (define (qubes-udev-etc config)
+  "Return the @file{/etc/udev} entries (an association list for
+@code{etc-service-type}) built from the udev CONFIG: a merged
+@file{udev.conf}, a unioned @file{rules.d}, and a compiled @file{hwdb.bin}."
   (let* ((udev (udev-configuration-udev config))
          (rules (udev-configuration-rules config))
          (hardware (udev-configuration-hardware config))
@@ -987,6 +1013,9 @@ action=/etc/acpi/actions/qubes-poweroff
                              ("hwdb.bin" ,hwdb.bin)))))))
 
 (define (qubes-udev-coldplug-program config)
+  "Return a @code{program-file} that waits for the udevd control socket and
+then triggers and settles a coldplug pass (with bounded timeouts) so devices
+present at boot are processed.  CONFIG is the udev configuration."
   (let ((udev (udev-configuration-udev config)))
     (program-file "qubes-udev-coldplug"
                   (with-imported-modules '()
@@ -1075,6 +1104,10 @@ action=/etc/acpi/actions/qubes-poweroff
                                                 "--timeout=5")))))))
 
 (define (qubes-udev-shepherd-service config)
+  "Return the Shepherd services that run eudev for the Qubes template: a
+@code{udev} daemon that loads static device nodes from the dom0 kernel module
+tree without blocking boot on a global settle, plus a @code{qubes-udev-coldplug}
+trigger.  CONFIG is the udev configuration."
   (let ((udev (udev-configuration-udev config)))
     (list (shepherd-service (provision '(udev))
                             (requirement '(root-file-system sysctl
@@ -1158,6 +1191,9 @@ action=/etc/acpi/actions/qubes-poweroff
                 (description "Run eudev with Qubes boot readiness semantics.")))
 
 (define (run-one-shot-gexp program log-file best-effort?)
+  "Return a Shepherd one-shot @code{start} gexp that forks PROGRAM with its
+stdout/stderr appended to LOG-FILE.  When BEST-EFFORT? is true the service
+always reports success; otherwise it reports PROGRAM's exit status."
   #~(lambda _
       (define (status-success? status)
         (and (not (status:term-sig status))
@@ -1186,6 +1222,9 @@ action=/etc/acpi/actions/qubes-poweroff
                            program
                            log-file
                            #:key (best-effort? #f))
+  "Return a one-shot @code{shepherd-service} provisioning NAME that runs
+PROGRAM once after REQUIREMENTS are met, logging to LOG-FILE.  When
+BEST-EFFORT? is true the service succeeds regardless of PROGRAM's exit status."
   (shepherd-service (provision (list name))
                     (requirement requirements)
                     (one-shot? #t)
@@ -1197,11 +1236,15 @@ action=/etc/acpi/actions/qubes-poweroff
                     (stop #~(const #f))))
 
 (define (qubes-kernel-modules-program)
+  "Return the program that mounts the Qubes dom0-provided kernel modules
+image, waiting up to 300 seconds for it to appear."
   (qubes-vm-service-program "qubes-kernel-modules"
                             (runtime-setup)
                             (kernel-modules-setup 300)))
 
 (define (qubes-kernel-modules-shepherd-service _)
+  "Return the one-shot Shepherd service that runs the kernel-modules program.
+The argument is the ignored service value."
   (list (one-shot-service 'qubes-kernel-modules
                           '(root-file-system)
                           (qubes-kernel-modules-program)
@@ -1217,10 +1260,15 @@ action=/etc/acpi/actions/qubes-poweroff
                  "Mount the Qubes dom0-provided kernel modules image.")))
 
 (define (qubes-sysctl-settings-file settings)
+  "Return a @code{plain-file} holding the serialized SETTINGS alist, read back
+at runtime by the sysctl program."
   (plain-file "qubes-sysctl-settings.scm"
               (object->string settings)))
 
 (define (qubes-sysctl-program settings)
+  "Return the program that applies the kernel sysctl SETTINGS by writing each
+@code{key->value} pair to its @file{/proc/sys} path, failing loudly when a
+path is missing or unwritable."
   (let ((settings-file (qubes-sysctl-settings-file settings)))
     (qubes-vm-service-program "qubes-sysctl"
                               (define sysctl-settings
@@ -1261,6 +1309,8 @@ action=/etc/acpi/actions/qubes-poweroff
                               (for-each write-sysctl sysctl-settings))))
 
 (define (qubes-sysctl-shepherd-service config)
+  "Return the one-shot Shepherd service that applies the sysctl settings from
+CONFIG, a @code{sysctl-configuration}."
   (list (one-shot-service 'sysctl
                           '(root-file-system)
                           (qubes-sysctl-program (sysctl-configuration-settings
@@ -1283,6 +1333,8 @@ action=/etc/acpi/actions/qubes-poweroff
                  "Apply kernel sysctl settings with a Qubes-local Scheme helper.")))
 
 (define (qubes-loopback-program)
+  "Return the program that brings the loopback interface up, waiting up to
+about five seconds for the @file{lo} device to appear before failing."
   (qubes-vm-service-program "qubes-loopback"
                             (define ip
                               "/run/current-system/profile/sbin/ip")
@@ -1301,6 +1353,8 @@ action=/etc/acpi/actions/qubes-poweroff
                                       (exit 1))))))
 
 (define (qubes-loopback-shepherd-service _)
+  "Return the one-shot Shepherd service that brings up the loopback interface.
+The argument is the ignored service value."
   (list (one-shot-service 'qubes-loopback
                           '(root-file-system)
                           (qubes-loopback-program)
@@ -1316,6 +1370,8 @@ action=/etc/acpi/actions/qubes-poweroff
                  "Bring up the loopback interface without generic static networking.")))
 
 (define (qubes-network-sysctl-program)
+  "Return the program that applies the shared Qubes network sysctl settings to
+all interfaces, reusing the helper forms from (qubes packages)."
   (qubes-vm-service-program "qubes-network-sysctl"
                             (define network-sysctl-settings
                               '#$%qubes-network-sysctl-settings)
@@ -1326,6 +1382,8 @@ action=/etc/acpi/actions/qubes-poweroff
                              network-sysctl-settings)))
 
 (define (qubes-network-sysctl-shepherd-service _)
+  "Return the one-shot Shepherd service that applies the Qubes network sysctl
+settings.  The argument is the ignored service value."
   (list (one-shot-service 'qubes-network-sysctl
                           '(root-file-system qubes-loopback)
                           (qubes-network-sysctl-program)
@@ -1341,6 +1399,8 @@ action=/etc/acpi/actions/qubes-poweroff
                  "Apply Qubes network sysctl settings without early wildcard sysctl.")))
 
 (define (qubes-db-program)
+  "Return the program that prepares the service runtime and execs the QubesDB
+VM daemon."
   (qubes-vm-service-program "qubes-db"
                             (prepare-service-runtime)
                             (exec*
@@ -1348,6 +1408,8 @@ action=/etc/acpi/actions/qubes-poweroff
                              "0")))
 
 (define (qubes-db-shepherd-service _)
+  "Return the Shepherd service that runs the QubesDB VM daemon.  The argument
+is the ignored service value."
   (list (shepherd-service (provision '(qubes-db))
                           (requirement '(root-file-system qubes-kernel-modules))
                           (documentation "Run the QubesDB VM daemon.")
@@ -1364,12 +1426,17 @@ action=/etc/acpi/actions/qubes-poweroff
                 (description "Run QubesDB inside a Qubes VM.")))
 
 (define (qubes-early-vm-config-program)
+  "Return the program that runs the Qubes early VM configuration script
+(@file{qubes-early-vm-config.sh}), which applies dom0-supplied settings such
+as the hostname and timezone."
   (qubes-vm-service-program "qubes-early-vm-config"
                             (prepare-service-runtime)
                             (exec*
                              "/usr/lib/qubes/init/qubes-early-vm-config.sh")))
 
 (define (qubes-early-vm-config-shepherd-service _)
+  "Return the one-shot Shepherd service that runs the early VM configuration
+program after QubesDB is up.  The argument is the ignored service value."
   (list (one-shot-service 'qubes-early-vm-config
                           '(qubes-db)
                           (qubes-early-vm-config-program)
@@ -1385,11 +1452,15 @@ action=/etc/acpi/actions/qubes-poweroff
                  "Apply early Qubes VM configuration such as hostname and timezone.")))
 
 (define (qubes-sysinit-program)
+  "Return the program that runs the Qubes VM sysinit script
+(@file{qubes-sysinit.sh})."
   (qubes-vm-service-program "qubes-sysinit"
                             (prepare-service-runtime)
                             (exec* "/usr/lib/qubes/init/qubes-sysinit.sh")))
 
 (define (qubes-sysinit-shepherd-service _)
+  "Return the one-shot Shepherd service that runs Qubes sysinit after early VM
+configuration.  The argument is the ignored service value."
   (list (one-shot-service 'qubes-sysinit
                           '(qubes-early-vm-config)
                           (qubes-sysinit-program) "/var/log/qubes-sysinit.log")))
@@ -1417,6 +1488,9 @@ action=/etc/acpi/actions/qubes-poweroff
             (default "/var/run/meminfo-writer.pid")))
 
 (define (qubes-meminfo-writer-program config)
+  "Return the program that starts the Qubes @command{meminfo-writer} daemon
+(used by dom0 memory ballooning) with the threshold, delay, and pid-file from
+CONFIG, exiting cleanly when the meminfo-writer service flag is absent."
   (let ((meminfo-writer (file-append (qubes-meminfo-writer-configuration-package
                                       config) "/bin/meminfo-writer"))
         (threshold (number->string (qubes-meminfo-writer-configuration-threshold
@@ -1490,6 +1564,9 @@ action=/etc/acpi/actions/qubes-poweroff
                                           (exit 1))))))))
 
 (define (qubes-meminfo-writer-shepherd-service config)
+  "Return the Shepherd service that runs the Qubes memory information reporter
+for dom0 ballooning, built from CONFIG, a
+@code{qubes-meminfo-writer-configuration}."
   (list (shepherd-service (provision '(qubes-meminfo-writer))
                           (requirement '(qubes-sysinit))
                           (documentation
@@ -1511,6 +1588,10 @@ action=/etc/acpi/actions/qubes-poweroff
                  "Run Qubes memory usage reporting for dom0 ballooning.")))
 
 (define (qubes-network-uplink-program)
+  "Return the program that configures the Qubes-provided VM network uplink: it
+finds the dom0-assigned interface (by MAC from QubesDB), applies the network
+sysctl settings to it, and runs @file{setup-ip add}, waiting up to about 30
+seconds for the interface to appear."
   (qubes-vm-service-program "qubes-network-uplink"
                             (define ip
                               "/run/current-system/profile/sbin/ip")
@@ -1571,6 +1652,8 @@ action=/etc/acpi/actions/qubes-poweroff
                                         (exit 0)))))))
 
 (define (qubes-network-uplink-shepherd-service _)
+  "Return the one-shot Shepherd service that configures the Qubes VM network
+uplink.  The argument is the ignored service value."
   (list (one-shot-service 'qubes-network-uplink
                           '(qubes-sysinit sysctl qubes-network-sysctl)
                           (qubes-network-uplink-program)
@@ -1585,6 +1668,10 @@ action=/etc/acpi/actions/qubes-poweroff
                 (description "Configure the Qubes-provided VM network uplink.")))
 
 (define (qubes-network-program)
+  "Return the program that activates the Qubes network backend in a NetVM: it
+loads the Xen netback module and writes the required network control files,
+exiting cleanly when the qubes-network service flag is absent or no netvm
+network is configured."
   (qubes-vm-service-program "qubes-network"
                             (define dnat-helper
                               "/usr/lib/qubes/qubes-setup-dnat-to-ns")
@@ -1656,6 +1743,8 @@ action=/etc/acpi/actions/qubes-poweroff
                                        "1"))))))
 
 (define (qubes-network-shepherd-service _)
+  "Return the one-shot Shepherd service that activates the Qubes network
+backend role.  The argument is the ignored service value."
   (list (one-shot-service 'qubes-network
                           '(qubes-sysinit sysctl qubes-network-sysctl
                                           qubes-network-uplink)
@@ -1671,6 +1760,10 @@ action=/etc/acpi/actions/qubes-poweroff
                  "Configure the Qubes network backend role for NetVMs.")))
 
 (define (qubes-feature-advertisement-program)
+  "Return the program that advertises to dom0, via QubesDB feature requests
+and a qubes.FeaturesRequest qrexec call, the Qubes services this template
+implements natively (updates-proxy-setup, qubes-network, and PipeWire audio
+when installed), after waiting for the qrexec-agent socket."
   (qubes-vm-service-program "qubes-feature-advertisement"
                             (define supported-services
                               '("updates-proxy-setup" "qubes-network"))
@@ -1706,6 +1799,9 @@ action=/etc/acpi/actions/qubes-poweroff
                               (exit 1))))
 
 (define (qubes-feature-advertisement-shepherd-service _)
+  "Return the one-shot Shepherd service that runs the feature-advertisement
+program after the qrexec agent is up.  The argument is the ignored service
+value."
   (list (one-shot-service 'qubes-feature-advertisement
                           '(qubes-qrexec-agent)
                           (qubes-feature-advertisement-program)
@@ -1721,6 +1817,11 @@ action=/etc/acpi/actions/qubes-poweroff
                  "Advertise Qubes services implemented by native Guix services.")))
 
 (define (qubes-updates-proxy-forwarder-program)
+  "Return the program that, on a non-proxy AppVM with the updates-proxy-setup
+flag set, publishes a loopback proxy on 127.0.0.1:8082 forwarding to the
+qubes.UpdatesProxy RPC via socat, so substitute fetches resolve through dom0
+instead of guest DNS.  It exits cleanly when the flag is absent or this VM is
+itself the proxy."
   (qubes-vm-service-program "qubes-updates-proxy-forwarder"
                             (runtime-setup)
                             (wait-for-service-environment 600)
@@ -1757,6 +1858,8 @@ action=/etc/acpi/actions/qubes-poweroff
                                 "EXEC:/usr/lib/qubes/guix-updates-proxy-forwarder")))))
 
 (define (qubes-updates-proxy-forwarder-shepherd-service _)
+  "Return the Shepherd service that runs the updates-proxy forwarder socket.
+The argument is the ignored service value."
   (list (shepherd-service (provision '(qubes-updates-proxy-forwarder))
                           (requirement '(qubes-sysinit qubes-loopback))
                           (documentation
@@ -1777,6 +1880,9 @@ action=/etc/acpi/actions/qubes-poweroff
                  "Run the Qubes updates proxy forwarder socket service.")))
 
 (define (qubes-mount-dirs-program)
+  "Return the program that mounts the Qubes persistent directories (/rw,
+/home, /usr/local): it waits for the private-volume device, materializes and
+repairs the writable /etc/fstab /rw entry, and runs @file{mount-dirs.sh}."
   (qubes-vm-service-program "qubes-mount-dirs"
                             (define findmnt
                               "/run/current-system/profile/bin/findmnt")
@@ -1850,6 +1956,8 @@ action=/etc/acpi/actions/qubes-poweroff
                             (repair-fstab-entry)))
 
 (define (qubes-mount-dirs-shepherd-service _)
+  "Return the one-shot Shepherd service that mounts the Qubes persistent
+directories.  The argument is the ignored service value."
   (list (one-shot-service 'qubes-mount-dirs
                           '(qubes-sysinit)
                           (qubes-mount-dirs-program)
@@ -1865,11 +1973,16 @@ action=/etc/acpi/actions/qubes-poweroff
                  "Mount Qubes persistent directories such as /rw, /home, and /usr/local.")))
 
 (define (qubes-bind-dirs-program)
+  "Return the program that applies the Qubes bind-dirs configuration by
+running @file{bind-dirs.sh}."
   (qubes-vm-service-program "qubes-bind-dirs"
                             (prepare-service-runtime)
                             (exec* "/usr/lib/qubes/init/bind-dirs.sh")))
 
 (define (qubes-bind-dirs-shepherd-service _)
+  "Return the one-shot Shepherd service that applies bind-dirs after the
+persistent directories are mounted.  The argument is the ignored service
+value."
   (list (one-shot-service 'qubes-bind-dirs
                           '(qubes-mount-dirs)
                           (qubes-bind-dirs-program)
@@ -1884,6 +1997,9 @@ action=/etc/acpi/actions/qubes-poweroff
                 (description "Apply Qubes bind-dirs configuration.")))
 
 (define (qubes-misc-post-program)
+  "Return the program that runs the Qubes @file{misc-post.sh} late-boot
+script, warning on a non-zero exit but always succeeding so it never blocks
+boot."
   (qubes-vm-service-program "qubes-misc-post"
                             (prepare-service-runtime)
                             (let ((status (system*
@@ -1895,6 +2011,8 @@ action=/etc/acpi/actions/qubes-poweroff
                             (exit 0)))
 
 (define (qubes-misc-post-shepherd-service _)
+  "Return the best-effort one-shot Shepherd service that runs the misc-post
+late-boot script.  The argument is the ignored service value."
   (list (one-shot-service 'qubes-misc-post
                           '(qubes-bind-dirs)
                           (qubes-misc-post-program)
@@ -1910,11 +2028,15 @@ action=/etc/acpi/actions/qubes-poweroff
                 (description "Run late Qubes VM setup.")))
 
 (define (qubes-qrexec-agent-program)
+  "Return the program that prepares the service runtime and execs the Qubes
+qrexec agent."
   (qubes-vm-service-program "qubes-qrexec-agent"
                             (prepare-service-runtime)
                             (exec* "/usr/lib/qubes/qrexec-agent")))
 
 (define (qubes-qrexec-agent-shepherd-service _)
+  "Return the Shepherd service that runs the Qubes qrexec agent.  The argument
+is the ignored service value."
   (list (shepherd-service (provision '(qubes-qrexec-agent))
                           (requirement '(qubes-bind-dirs))
                           (documentation "Run the Qubes qrexec agent.")
@@ -1932,6 +2054,10 @@ action=/etc/acpi/actions/qubes-poweroff
                 (description "Run the Qubes qrexec agent.")))
 
 (define (qubes-gui-agent-program)
+  "Return the program that starts the Qubes GUI agent: it runs the GUI
+pre-start script, reads the dom0-provided DISPLAY and GUI_OPTS from the
+service environment, and execs @command{qubes-gui}.  It exits cleanly when
+dom0 has not enabled the GUI for this VM."
   (qubes-vm-service-program "qubes-gui-agent"
                             (define (read-service-environment)
                               (let ((text (read-file
@@ -1974,6 +2100,8 @@ action=/etc/acpi/actions/qubes-poweroff
                                        (string-tokenize gui-opts))))))
 
 (define (qubes-gui-agent-shepherd-service _)
+  "Return the Shepherd service that runs the Qubes GUI agent.  The argument is
+the ignored service value."
   (list (shepherd-service (provision '(qubes-gui-agent))
                           (requirement '(user-processes qubes-bind-dirs
                                                         qubes-qrexec-agent))
