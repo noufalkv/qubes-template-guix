@@ -5,11 +5,11 @@
   #:use-module (guix gexp)
   #:use-module (gnu)
   #:use-module (gnu bootloader)
-  #:use-module (gnu bootloader grub)
   #:use-module (gnu system nss)
   #:use-module (gnu services)
   #:use-module (gnu services dbus)
   #:use-module (gnu system privilege)
+  #:use-module (qubes bootloader)
   #:use-module (qubes packages)
   #:use-module (qubes services)
   #:export (%qubes-privileged-programs %qubes-system-services qubes-host-name
@@ -49,13 +49,14 @@
     (timezone "Etc/UTC")
     (locale "en_US.utf8")
 
-    ;; Qubes dom0 supplies the VM kernel.  A bootloader record is still required
-    ;; by the operating-system type and is needed for "guix system init" to copy
-    ;; the full store closure, but images are built with --no-bootloader so no
-    ;; boot code is written to disk.
+    ;; Qubes dom0 supplies the VM kernel and manages boot.  A bootloader record
+    ;; is still required by the operating-system type and is needed for "guix
+    ;; system init" to copy the full store closure, but qubes-external-bootloader
+    ;; generates grub.cfg without ever running grub-install, so "guix system
+    ;; reconfigure" succeeds inside the VM (a real grub-install cannot work on
+    ;; the embedding-less ext4 root).
     (bootloader (bootloader-configuration
-                  (bootloader grub-bootloader)
-                  (targets '("/dev/xvda"))))
+                  (bootloader qubes-external-bootloader)))
     (kernel qubes-dom0-kernel)
     (initrd-modules '())
     (kernel-arguments (append '("console=hvc0" "panic=1")
