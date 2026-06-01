@@ -331,6 +331,17 @@ action=/etc/acpi/actions/qubes-poweroff
                 (description
                  "Create compatibility paths expected by Qubes VM agents.")))
 
+(define %qubes-audio-limits
+  ;; Realtime scheduling + high niceness for the trusted @qubes group, matching
+  ;; stock Qubes templates' /etc/security/limits.d/90-qubes-gui.conf.  This is
+  ;; how Qubes gives PipeWire's audio threads realtime priority; it does not
+  ;; ship rtkit-daemon, so the "RTKit ServiceUnknown" log is expected.
+  (plain-file "qubes-audio-limits.conf"
+              "@qubes - rtprio unlimited
+@qubes - nice -20
+@qubes - memlock unlimited
+"))
+
 (define (qubes-pam-service name)
   (let ((pam-module (lambda (name)
                       (file-append linux-pam "/lib/security/" name))))
@@ -345,7 +356,15 @@ action=/etc/acpi/actions/qubes-poweroff
                                             (module (pam-module
                                                      "pam_permit.so")))))
                  (session (list (pam-entry (control "required")
-                                           (module (pam-module "pam_permit.so"))))))))
+                                           (module (pam-module "pam_permit.so")))
+                                ;; Apply the @qubes realtime audio limits to
+                                ;; qrexec/GUI user sessions (where PipeWire runs).
+                                (pam-entry (control "optional")
+                                           (module (pam-module "pam_limits.so"))
+                                           (arguments
+                                            (list #~(string-append
+                                                     "conf="
+                                                     #$%qubes-audio-limits)))))))))
 
 (define (qubes-qrexec-pam-services _)
   (list (qubes-pam-service "qrexec")
