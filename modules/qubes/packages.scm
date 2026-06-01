@@ -264,8 +264,7 @@ root image does not need a guest kernel package.")
 
           (define (wanted-library? entry)
             (and (string-match "\\.so" entry)
-                 (let loop
-                   ((prefixes prefixes))
+                 (let loop ((prefixes prefixes))
                    (and (pair? prefixes)
                         (or (string-prefix? (car prefixes) entry)
                             (loop (cdr prefixes)))))))
@@ -286,9 +285,8 @@ root image does not need a guest kernel package.")
 
           (define (replace-substring value needle replacement)
             (let ((needle-length (string-length needle)))
-              (let loop
-                ((start 0)
-                 (pieces '()))
+              (let loop ((start 0)
+                         (pieces '()))
                 (let ((index (string-contains value needle start)))
                   (if index
                       (loop (+ index needle-length)
@@ -713,8 +711,7 @@ information reporter used by Qubes memory ballooning.")
                       '()))
 
                 (define (find-directory root name)
-                  (let loop
-                    ((directory root))
+                  (let loop ((directory root))
                     (and (path-exists? directory)
                          (or (and (string=? (basename directory) name)
                                   directory)

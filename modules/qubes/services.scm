@@ -1126,8 +1126,7 @@ about five seconds for the @file{lo} device to appear before failing."
                             (define ip
                               "/run/current-system/profile/sbin/ip")
 
-                            (let wait
-                              ((attempt 0))
+                            (let wait ((attempt 0))
                               (cond
                                 ((file-exists? "/sys/class/net/lo")
                                  (run* ip "link" "set" "lo" "up")
@@ -1311,8 +1310,7 @@ CONFIG, exiting cleanly when the meminfo-writer service flag is absent."
         (warn "meminfo-writer failed to start")
         (exit 1))
 
-      (let wait-for-pid
-        ((attempt 0))
+      (let wait-for-pid ((attempt 0))
         (let ((pid (read-pid pidfile)))
           (cond
             ((and pid
@@ -1421,8 +1419,7 @@ seconds for the interface to appear."
 
                             (prepare-service-runtime)
                             (try-run* ip "link" "set" "lo" "up")
-                            (let wait
-                              ((attempt 0))
+                            (let wait ((attempt 0))
                               (let ((iface (qubes-managed-iface)))
                                 (cond
                                   (iface (apply-sysctls-to-iface
@@ -1718,8 +1715,7 @@ repairs the writable /etc/fstab /rw entry, and runs @file{mount-dirs.sh}."
       (when (string=? (or (qubesdb-read
                            "/qubes-vm-persistence") "")
                       "rw-only")
-        (let loop
-          ((attempt 0))
+        (let loop ((attempt 0))
           (cond
             ((file-exists? "/dev/xvdb")
              #t)
