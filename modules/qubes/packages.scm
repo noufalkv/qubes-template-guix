@@ -1348,10 +1348,10 @@ import sys
                 (error "missing qrexec-fork-server.desktop"))
               (install-file "appvm-scripts/etc/sysconfig/desktop"
                             (string-append #$output "/etc/sysconfig"))
-               (for-each
-                (lambda (script)
-                  (install-file script
-                                (string-append #$output "/etc/X11/xinit/xinitrc.d")))
+              (for-each
+               (lambda (script)
+                 (install-file script
+                               (string-append #$output "/etc/X11/xinit/xinitrc.d")))
                '("appvm-scripts/etc/X11/xinit/xinitrc.d/20qt-x11-no-mitshm.sh"
                  "appvm-scripts/etc/X11/xinit/xinitrc.d/20qt-gnome-desktop-session-id.sh"
                  "appvm-scripts/etc/X11/xinit/xinitrc.d/50guivm-windows-prefix.sh"

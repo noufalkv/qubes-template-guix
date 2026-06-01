@@ -1435,9 +1435,7 @@ repairs the writable /etc/fstab /rw entry, and runs @file{mount-dirs.sh}."
     ;; writable file (done once by the qubes-vm-compat
     ;; activation applier) to permit this.  This service
     ;; is the single runtime writer of the /rw entry.
-    (define fstab-entry
-      "/dev/xvdb /rw auto noauto,defaults,discard,nosuid,nodev 1 2
-")
+    (define fstab-entry "/dev/xvdb /rw auto noauto,defaults,discard,nosuid,nodev 1 2\n")
 
     (define (mounted? path)
       (try-run* findmnt "-rn" path))
