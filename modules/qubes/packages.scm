@@ -48,7 +48,6 @@
   #:use-module (gnu packages xfce)
   #:use-module (gnu packages xdisorg)
   #:use-module (gnu packages xorg)
-  #:use-module (gnu system nss)
   #:use-module (ice-9 match)
   #:use-module (ice-9 rdelim)
   #:use-module (ice-9 textual-ports)
@@ -1183,10 +1182,12 @@ exit 127
                     (chmod repo-query #o755)))
                 (write-guile-script (string-append qubes-libdir
                                      "/qubes-network-interface-sysctl")
-                                    ;; '#$ splices the shared sysctl table and #$@ splices the
-                                    ;; shared helper procedures (qubes-network-sysctl-helper-forms)
-                                    ;; into this build-side helper, so the per-interface sysctl
-                                    ;; logic is defined once and reused by the boot/uplink Shepherd
+                                    ;; '#$ splices the shared sysctl table and
+                                    ;; #$@ splices the shared helper procedures
+                                    ;; (qubes-network-sysctl-helper-forms) into
+                                    ;; this build-side helper, so the
+                                    ;; per-interface sysctl logic is defined once
+                                    ;; and reused by the boot/uplink Shepherd
                                     ;; services in (qubes services).
                                     '(begin
                                        (use-modules (ice-9 ftw)
@@ -1210,12 +1211,14 @@ exit 127
                                                          (string-length
                                                           "--prefix="))))
 
-                                       ;; Parse to (family . interface) and apply only that
-                                       ;; family's settings, preserving the upstream systemd-sysctl
-                                       ;; --prefix contract: a /net/ipv4/conf/IF prefix applies the
-                                       ;; ipv4 knobs to IF, /net/ipv6/conf/IF the ipv6 knobs, and
-                                       ;; non-conf (e.g. neigh) or unknown-family prefixes apply
-                                       ;; nothing.
+                                       ;; Parse to (family . interface) and
+                                       ;; apply only that family's settings,
+                                       ;; preserving the upstream systemd-sysctl
+                                       ;; --prefix contract: a /net/ipv4/conf/IF
+                                       ;; prefix applies the ipv4 knobs to IF,
+                                       ;; /net/ipv6/conf/IF the ipv6 knobs, and
+                                       ;; non-conf (e.g. neigh) or unknown-family
+                                       ;; prefixes apply nothing.
                                        (define (prefix->target prefix)
                                          (match (string-split prefix #\/)
                                            (("" "net" family "conf" interface)
@@ -1909,18 +1912,22 @@ StartupWMClass=XTerm
 (define %qubes-common-packages
   (delete-duplicates (append %qubes-vm-gui-packages
                              %base-packages
-                             ;; Note: do not add guile here.  The guix package below propagates
-                             ;; its own guile, and listing a second guile (for example the
-                             ;; standalone guile-3.0) makes the profile contain two conflicting
-                             ;; guile entries.  guix's propagated guile provides
-                             ;; /run/current-system/profile/bin/guile, which the Qubes runtime
-                             ;; scripts (the ACPI poweroff helper and the generated qrexec
-                             ;; helpers) rely on.
+                             ;; Note: do not add guile here.  The guix package
+                             ;; below propagates its own guile, and listing a
+                             ;; second guile (for example the standalone
+                             ;; guile-3.0) makes the profile contain two
+                             ;; conflicting guile entries.  guix's propagated
+                             ;; guile provides
+                             ;; /run/current-system/profile/bin/guile, which the
+                             ;; Qubes runtime scripts (the ACPI poweroff helper
+                             ;; and the generated qrexec helpers) rely on.
                              ;;
-                             ;; glibc is added for getent, which Qubes' init/functions uses to
-                             ;; enumerate accounts during private-volume home setup; python
-                             ;; provides the python3 interpreter the Qubes qrexec/vmexec and
-                             ;; agent helpers run with.  Neither is part of %base-packages.
+                             ;; glibc is added for getent, which Qubes'
+                             ;; init/functions uses to enumerate accounts during
+                             ;; private-volume home setup; python provides the
+                             ;; python3 interpreter the Qubes qrexec/vmexec and
+                             ;; agent helpers run with.  Neither is part of
+                             ;; %base-packages.
                              (list acpid
                                    adwaita-icon-theme
                                    conntrack-tools

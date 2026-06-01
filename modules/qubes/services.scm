@@ -7,9 +7,7 @@
   #:use-module (guix records)
   #:use-module (gnu)
   #:use-module (gnu packages admin)
-  #:use-module (gnu packages base)
   #:use-module (gnu packages linux)
-  #:use-module (gnu packages xorg)
   #:use-module (gnu services)
   #:use-module (gnu services base)
   #:use-module (gnu services dbus)
@@ -1739,14 +1737,20 @@ action=/etc/acpi/actions/qubes-poweroff
 ")
                                (exit 0))
                               (else
-                               ;; Reached only when the updates-proxy-setup flag is set (the first
-                               ;; cond clause exits otherwise) and this VM is not itself the proxy.
-                               ;; Export the loopback proxy that this forwarder publishes on
-                               ;; 127.0.0.1:8082 so substitute fetches resolve bordeaux/ci.guix.gnu.org
-                               ;; via the qubes.UpdatesProxy CONNECT path instead of guest DNS, which
-                               ;; has no resolver in a ProxyVM-served AppVM ("host not found").  This is
-                               ;; the gated local half of G-OPEN-2; guix-daemon itself is deliberately
-                               ;; left unproxied in %qubes-base-services for the flag-absent case.
+                               ;; Reached only when the updates-proxy-setup
+                               ;; flag is set (the first cond clause exits
+                               ;; otherwise) and this VM is not itself the
+                               ;; proxy.  Export the loopback proxy that this
+                               ;; forwarder publishes on 127.0.0.1:8082 so
+                               ;; substitute fetches resolve
+                               ;; bordeaux/ci.guix.gnu.org via the
+                               ;; qubes.UpdatesProxy CONNECT path instead of
+                               ;; guest DNS, which has no resolver in a
+                               ;; ProxyVM-served AppVM ("host not found").  This
+                               ;; is the gated local half of G-OPEN-2;
+                               ;; guix-daemon itself is deliberately left
+                               ;; unproxied in %qubes-base-services for the
+                               ;; flag-absent case.
                                (setenv "http_proxy" "http://127.0.0.1:8082")
                                (setenv "https_proxy" "http://127.0.0.1:8082")
                                (exec* "/run/current-system/profile/bin/socat"
@@ -1779,10 +1783,12 @@ action=/etc/acpi/actions/qubes-poweroff
                               "/run/current-system/profile/bin/findmnt")
                             (define mount-dirs
                               "/usr/lib/qubes/init/mount-dirs.sh")
-                            ;; Qubes tools write /etc/fstab at runtime to add the /rw mount; on Guix
-                            ;; /etc/fstab is an immutable store symlink that must be materialized to a
-                            ;; writable file (done once by the qubes-vm-compat activation applier) to
-                            ;; permit this.  This service is the single runtime writer of the /rw entry.
+                            ;; Qubes tools write /etc/fstab at runtime to add
+                            ;; the /rw mount; on Guix /etc/fstab is an immutable
+                            ;; store symlink that must be materialized to a
+                            ;; writable file (done once by the qubes-vm-compat
+                            ;; activation applier) to permit this.  This service
+                            ;; is the single runtime writer of the /rw entry.
                             (define fstab-entry
                               "/dev/xvdb /rw auto noauto,defaults,discard,nosuid,nodev 1 2
 ")
