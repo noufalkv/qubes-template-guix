@@ -92,10 +92,12 @@ def repo_enabled(section, config, options):
     for op, pattern in options:
         if op == "repoid":
             repoids.append(pattern)
-        elif op in ("enable", "disable") and fnmatch.fnmatchcase(section, pattern):
+        elif (op in ("enable", "disable")
+              and fnmatch.fnmatchcase(section, pattern)):
             is_enabled = op == "enable"
 
-    if repoids and not any(fnmatch.fnmatchcase(section, pat) for pat in repoids):
+    if repoids and not any(
+            fnmatch.fnmatchcase(section, pat) for pat in repoids):
         is_enabled = False
 
     return is_enabled
@@ -109,7 +111,8 @@ def repo_baseurls(section, config, releasever):
         baseurls.extend(item for item in raw.split() if item)
 
     if not baseurls and config.has_option(section, "metalink"):
-        metalink = expand_repo_value(config.get(section, "metalink"), releasever)
+        metalink = expand_repo_value(config.get(section, "metalink"),
+                                     releasever)
         suffix = "/repodata/repomd.xml.metalink"
         if metalink.endswith(suffix):
             baseurls.append(metalink[: -len(suffix)])
@@ -117,7 +120,8 @@ def repo_baseurls(section, config, releasever):
             try:
                 root = ET.fromstring(curl_bytes(metalink))
                 for element in root.iter():
-                    if element.tag.rsplit("}", 1)[-1] != "url" or not element.text:
+                    if (element.tag.rsplit("}", 1)[-1] != "url"
+                            or not element.text):
                         continue
                     url = element.text.strip()
                     marker = "/repodata/repomd.xml"
@@ -202,7 +206,8 @@ def parse_packages(repoid, baseurl):
                               "https://www.qubes-os.org"),
             "summary": child_text(package, COMMON_NS, "summary"),
             "description": child_text(package, COMMON_NS, "description"),
-            "download_url": urllib.parse.urljoin(baseurl.rstrip("/") + "/", href),
+            "download_url": urllib.parse.urljoin(
+                baseurl.rstrip("/") + "/", href),
         })
 
     return packages
@@ -245,7 +250,8 @@ def iter_enabled_packages(config, options):
             try:
                 yield from parse_packages(section, baseurl)
                 break
-            except (ET.ParseError, RuntimeError, subprocess.CalledProcessError) as exc:
+            except (ET.ParseError, RuntimeError,
+                    subprocess.CalledProcessError) as exc:
                 print(f"WARNING: failed to query {section} at {baseurl}: {exc}",
                       file=sys.stderr)
 
