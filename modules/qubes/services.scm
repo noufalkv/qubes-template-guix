@@ -1480,69 +1480,69 @@ CONFIG, exiting cleanly when the meminfo-writer service flag is absent."
                                 config)))
         (pid-file (qubes-meminfo-writer-configuration-pid-file config)))
     (qubes-vm-service-program "qubes-meminfo-writer"
-                              (define pidfile
-                                #$pid-file)
+      (define pidfile
+        #$pid-file)
 
-                              (define (read-pid path)
-                                (and (file-exists? path)
-                                     (let ((text (call-with-input-file path
-                                                   get-string-all)))
-                                       (string->number (string-trim-both text)))))
+      (define (read-pid path)
+        (and (file-exists? path)
+             (let ((text (call-with-input-file path
+                           get-string-all)))
+               (string->number (string-trim-both text)))))
 
-                              (prepare-service-runtime)
+      (prepare-service-runtime)
 
-                              (unless (service-enabled? "meminfo-writer")
-                                (display
-                                 "meminfo-writer service flag not present; exiting
+      (unless (service-enabled? "meminfo-writer")
+        (display
+         "meminfo-writer service flag not present; exiting
 ")
-                                (exit 0))
+        (exit 0))
 
-                              (when (file-exists? pidfile)
-                                (delete-file pidfile))
-                              (unless (zero? (system* #$meminfo-writer
-                                                      #$threshold
-                                                      #$delay pidfile))
-                                (warn "meminfo-writer failed to start")
-                                (exit 1))
+      (when (file-exists? pidfile)
+        (delete-file pidfile))
+      (unless (zero? (system* #$meminfo-writer
+                              #$threshold
+                              #$delay pidfile))
+        (warn "meminfo-writer failed to start")
+        (exit 1))
 
-                              (let wait-for-pid
-                                ((attempt 0))
-                                (let ((pid (read-pid pidfile)))
-                                  (cond
-                                    ((and pid
-                                          (> pid 1))
-                                     (sigaction SIGTERM
-                                                (lambda _
-                                                  (false-if-exception (kill
-                                                                       pid
-                                                                       SIGTERM))
-                                                  (false-if-exception (delete-file
-                                                                       pidfile))
-                                                  (exit 0)))
-                                     (sigaction SIGINT
-                                                (lambda _
-                                                  (false-if-exception (kill
-                                                                       pid
-                                                                       SIGTERM))
-                                                  (false-if-exception (delete-file
-                                                                       pidfile))
-                                                  (exit 0)))
-                                     (let loop
-                                       ()
-                                       (if (false-if-exception (kill pid 0))
-                                           (begin
-                                             (sleep 60)
-                                             (loop))
-                                           (begin
-                                             (false-if-exception (delete-file
-                                                                  pidfile))
-                                             (exit 1)))))
-                                    ((< attempt 50)
-                                     (usleep 100000)
-                                     (wait-for-pid (+ attempt 1)))
-                                    (else (warn
-                                           "meminfo-writer did not create a valid pid file")
-                                          (exit 1))))))))
+      (let wait-for-pid
+        ((attempt 0))
+        (let ((pid (read-pid pidfile)))
+          (cond
+            ((and pid
+                  (> pid 1))
+             (sigaction SIGTERM
+                        (lambda _
+                          (false-if-exception (kill
+                                               pid
+                                               SIGTERM))
+                          (false-if-exception (delete-file
+                                               pidfile))
+                          (exit 0)))
+             (sigaction SIGINT
+                        (lambda _
+                          (false-if-exception (kill
+                                               pid
+                                               SIGTERM))
+                          (false-if-exception (delete-file
+                                               pidfile))
+                          (exit 0)))
+             (let loop
+               ()
+               (if (false-if-exception (kill pid 0))
+                   (begin
+                     (sleep 60)
+                     (loop))
+                   (begin
+                     (false-if-exception (delete-file
+                                          pidfile))
+                     (exit 1)))))
+            ((< attempt 50)
+             (usleep 100000)
+             (wait-for-pid (+ attempt 1)))
+            (else (warn
+                   "meminfo-writer did not create a valid pid file")
+                  (exit 1))))))))
 
 (define (qubes-meminfo-writer-shepherd-service config)
   "Return the Shepherd service that runs the Qubes memory information reporter
@@ -1654,74 +1654,74 @@ loads the Xen netback module and writes the required network control files,
 exiting cleanly when the qubes-network service flag is absent or no netvm
 network is configured."
   (qubes-vm-service-program "qubes-network"
-                            (define dnat-helper
-                              "/usr/lib/qubes/qubes-setup-dnat-to-ns")
+    (define dnat-helper
+      "/usr/lib/qubes/qubes-setup-dnat-to-ns")
 
-                            (define (write-required-file path value)
-                              (unless (file-exists? path)
-                                (warn (string-append
-                                       "required network control file is missing: "
-                                       path))
-                                (exit 1))
-                              (catch #t
-                                     (lambda ()
-                                       (call-with-output-file path
-                                         (lambda (port)
-                                           (display value port)
-                                           (newline port))))
-                                     (lambda (key . args)
-                                       (warn (string-append
-                                              "failed to write network control file: "
-                                              path))
-                                       (exit 1))))
+    (define (write-required-file path value)
+      (unless (file-exists? path)
+        (warn (string-append
+               "required network control file is missing: "
+               path))
+        (exit 1))
+      (catch #t
+             (lambda ()
+               (call-with-output-file path
+                 (lambda (port)
+                   (display value port)
+                   (newline port))))
+             (lambda (key . args)
+               (warn (string-append
+                      "failed to write network control file: "
+                      path))
+               (exit 1))))
 
-                            (define (write-optional-file path value)
-                              (when (file-exists? path)
-                                (false-if-exception (call-with-output-file path
-                                                      (lambda (port)
-                                                        (display value port)
-                                                        (newline port))))))
+    (define (write-optional-file path value)
+      (when (file-exists? path)
+        (false-if-exception (call-with-output-file path
+                              (lambda (port)
+                                (display value port)
+                                (newline port))))))
 
-                            (define (module-loaded? name)
-                              (file-exists? (string-append "/sys/module/" name)))
+    (define (module-loaded? name)
+      (file-exists? (string-append "/sys/module/" name)))
 
-                            (define (network-backend-loaded?)
-                              (or (module-loaded? "netbk")
-                                  (module-loaded? "xen_netback")))
+    (define (network-backend-loaded?)
+      (or (module-loaded? "netbk")
+          (module-loaded? "xen_netback")))
 
-                            (define (load-network-backend)
-                              (unless (or (network-backend-loaded?)
-                                          (try-run* modprobe "netbk")
-                                          (try-run* modprobe "xen-netback")
-                                          (network-backend-loaded?))
-                                (warn
-                                 "could not load Xen network backend module")
-                                (exit 1)))
+    (define (load-network-backend)
+      (unless (or (network-backend-loaded?)
+                  (try-run* modprobe "netbk")
+                  (try-run* modprobe "xen-netback")
+                  (network-backend-loaded?))
+        (warn
+         "could not load Xen network backend module")
+        (exit 1)))
 
-                            (prepare-service-runtime)
-                            (wait-for-service-environment 600)
-                            (cond
-                              ((not (service-enabled? "qubes-network"))
-                               (display
-                                "qubes-network service flag not present; network backend inactive
+    (prepare-service-runtime)
+    (wait-for-service-environment 600)
+    (cond
+      ((not (service-enabled? "qubes-network"))
+       (display
+        "qubes-network service flag not present; network backend inactive
 ")
-                               (exit 0))
-                              ((string-null? (or (qubesdb-read
-                                                  "/qubes-netvm-network") ""))
-                               (display
-                                "No Qubes downstream network configured for this VM
+       (exit 0))
+      ((string-null? (or (qubesdb-read
+                          "/qubes-netvm-network") ""))
+       (display
+        "No Qubes downstream network configured for this VM
 ")
-                               (exit 0))
-                              (else (load-network-backend)
-                                    (run* dnat-helper)
-                                    (write-required-file
-                                     "/proc/sys/net/ipv4/ip_forward" "1")
-                                    (unless (string-null? (or (qubesdb-read
-                                                               "/qubes-netvm-gateway6")
-                                                              ""))
-                                      (write-optional-file
-                                       "/proc/sys/net/ipv6/conf/all/forwarding"
-                                       "1"))))))
+       (exit 0))
+      (else (load-network-backend)
+            (run* dnat-helper)
+            (write-required-file
+             "/proc/sys/net/ipv4/ip_forward" "1")
+            (unless (string-null? (or (qubesdb-read
+                                       "/qubes-netvm-gateway6")
+                                      ""))
+              (write-optional-file
+               "/proc/sys/net/ipv6/conf/all/forwarding"
+               "1"))))))
 
 (define (qubes-network-shepherd-service _)
   "Return the one-shot Shepherd service that activates the Qubes network
@@ -1804,39 +1804,39 @@ qubes.UpdatesProxy RPC via socat, so substitute fetches resolve through dom0
 instead of guest DNS.  It exits cleanly when the flag is absent or this VM is
 itself the proxy."
   (qubes-vm-service-program "qubes-updates-proxy-forwarder"
-                            (runtime-setup)
-                            (wait-for-service-environment 600)
-                            (cond
-                              ((not (service-enabled? "updates-proxy-setup"))
-                               (display
-                                "updates-proxy-setup service flag not present; forwarder inactive
+    (runtime-setup)
+    (wait-for-service-environment 600)
+    (cond
+      ((not (service-enabled? "updates-proxy-setup"))
+       (display
+        "updates-proxy-setup service flag not present; forwarder inactive
 ")
-                               (exit 0))
-                              ((service-enabled? "qubes-updates-proxy")
-                               (display
-                                "qubes-updates-proxy enabled locally; not forwarding to avoid loops
+       (exit 0))
+      ((service-enabled? "qubes-updates-proxy")
+       (display
+        "qubes-updates-proxy enabled locally; not forwarding to avoid loops
 ")
-                               (exit 0))
-                              (else
-                               ;; Reached only when the updates-proxy-setup
-                               ;; flag is set (the first cond clause exits
-                               ;; otherwise) and this VM is not itself the
-                               ;; proxy.  Export the loopback proxy that this
-                               ;; forwarder publishes on 127.0.0.1:8082 so
-                               ;; substitute fetches resolve
-                               ;; bordeaux/ci.guix.gnu.org via the
-                               ;; qubes.UpdatesProxy CONNECT path instead of
-                               ;; guest DNS, which has no resolver in a
-                               ;; ProxyVM-served AppVM ("host not found").  This
-                               ;; is the gated local half of G-OPEN-2;
-                               ;; guix-daemon itself is deliberately left
-                               ;; unproxied in %qubes-base-services for the
-                               ;; flag-absent case.
-                               (setenv "http_proxy" "http://127.0.0.1:8082")
-                               (setenv "https_proxy" "http://127.0.0.1:8082")
-                               (exec* "/run/current-system/profile/bin/socat"
-                                "TCP-LISTEN:8082,bind=127.0.0.1,reuseaddr,fork"
-                                "EXEC:/usr/lib/qubes/guix-updates-proxy-forwarder")))))
+       (exit 0))
+      (else
+       ;; Reached only when the updates-proxy-setup
+       ;; flag is set (the first cond clause exits
+       ;; otherwise) and this VM is not itself the
+       ;; proxy.  Export the loopback proxy that this
+       ;; forwarder publishes on 127.0.0.1:8082 so
+       ;; substitute fetches resolve
+       ;; bordeaux/ci.guix.gnu.org via the
+       ;; qubes.UpdatesProxy CONNECT path instead of
+       ;; guest DNS, which has no resolver in a
+       ;; ProxyVM-served AppVM ("host not found").  This
+       ;; is the gated local half of G-OPEN-2;
+       ;; guix-daemon itself is deliberately left
+       ;; unproxied in %qubes-base-services for the
+       ;; flag-absent case.
+       (setenv "http_proxy" "http://127.0.0.1:8082")
+       (setenv "https_proxy" "http://127.0.0.1:8082")
+       (exec* "/run/current-system/profile/bin/socat"
+        "TCP-LISTEN:8082,bind=127.0.0.1,reuseaddr,fork"
+        "EXEC:/usr/lib/qubes/guix-updates-proxy-forwarder")))))
 
 (define (qubes-updates-proxy-forwarder-shepherd-service _)
   "Return the Shepherd service that runs the updates-proxy forwarder socket.
@@ -1867,76 +1867,76 @@ The argument is the ignored service value."
 /home, /usr/local): it waits for the private-volume device, materializes and
 repairs the writable /etc/fstab /rw entry, and runs @file{mount-dirs.sh}."
   (qubes-vm-service-program "qubes-mount-dirs"
-                            (define findmnt
-                              "/run/current-system/profile/bin/findmnt")
-                            (define mount-dirs
-                              "/usr/lib/qubes/init/mount-dirs.sh")
-                            ;; Qubes tools write /etc/fstab at runtime to add
-                            ;; the /rw mount; on Guix /etc/fstab is an immutable
-                            ;; store symlink that must be materialized to a
-                            ;; writable file (done once by the qubes-vm-compat
-                            ;; activation applier) to permit this.  This service
-                            ;; is the single runtime writer of the /rw entry.
-                            (define fstab-entry
-                              "/dev/xvdb /rw auto noauto,defaults,discard,nosuid,nodev 1 2
+    (define findmnt
+      "/run/current-system/profile/bin/findmnt")
+    (define mount-dirs
+      "/usr/lib/qubes/init/mount-dirs.sh")
+    ;; Qubes tools write /etc/fstab at runtime to add
+    ;; the /rw mount; on Guix /etc/fstab is an immutable
+    ;; store symlink that must be materialized to a
+    ;; writable file (done once by the qubes-vm-compat
+    ;; activation applier) to permit this.  This service
+    ;; is the single runtime writer of the /rw entry.
+    (define fstab-entry
+      "/dev/xvdb /rw auto noauto,defaults,discard,nosuid,nodev 1 2
 ")
 
-                            (define (mounted? path)
-                              (try-run* findmnt "-rn" path))
+    (define (mounted? path)
+      (try-run* findmnt "-rn" path))
 
-                            (define (fstab-has-rw?)
-                              (let ((text (read-file "/etc/fstab")))
-                                (and text
-                                     (any (lambda (line)
-                                            (let ((fields (string-tokenize
-                                                           line)))
-                                              (and (>= (length fields) 2)
-                                                   (not (string-prefix? "#"
-                                                                        (car
-                                                                         fields)))
-                                                   (string=? (cadr fields)
-                                                             "/rw"))))
-                                          (string-split text #\newline)))))
+    (define (fstab-has-rw?)
+      (let ((text (read-file "/etc/fstab")))
+        (and text
+             (any (lambda (line)
+                    (let ((fields (string-tokenize
+                                   line)))
+                      (and (>= (length fields) 2)
+                           (not (string-prefix? "#"
+                                                (car
+                                                 fields)))
+                           (string=? (cadr fields)
+                                     "/rw"))))
+                  (string-split text #\newline)))))
 
-                            (define (append-fstab-entry)
-                              (let ((port (open-file "/etc/fstab" "a")))
-                                (display fstab-entry port)
-                                (close-port port)))
+    (define (append-fstab-entry)
+      (let ((port (open-file "/etc/fstab" "a")))
+        (display fstab-entry port)
+        (close-port port)))
 
-                            (define (repair-fstab-entry)
-                              (when (and (or (file-exists? "/dev/xvdb")
-                                             (mounted? "/rw"))
-                                         (not (fstab-has-rw?)))
-                                (append-fstab-entry)))
+    (define (repair-fstab-entry)
+      (when (and (or (file-exists? "/dev/xvdb")
+                     (mounted? "/rw"))
+                 (not (fstab-has-rw?)))
+        (append-fstab-entry)))
 
-                            (define (wait-for-rw-device)
-                              (when (string=? (or (qubesdb-read
-                                                   "/qubes-vm-persistence") "")
-                                              "rw-only")
-                                (let loop
-                                  ((attempt 0))
-                                  (cond
-                                    ((file-exists? "/dev/xvdb")
-                                     #t)
-                                    ((< attempt 300)
-                                     (usleep 100000)
-                                     (loop (+ attempt 1)))
-                                    (else (warn
-                                           "Qubes private-volume device /dev/xvdb did not appear")
-                                          (exit 1))))))
+    (define (wait-for-rw-device)
+      (when (string=? (or (qubesdb-read
+                           "/qubes-vm-persistence") "")
+                      "rw-only")
+        (let loop
+          ((attempt 0))
+          (cond
+            ((file-exists? "/dev/xvdb")
+             #t)
+            ((< attempt 300)
+             (usleep 100000)
+             (loop (+ attempt 1)))
+            (else (warn
+                   "Qubes private-volume device /dev/xvdb did not appear")
+                  (exit 1))))))
 
-                            (prepare-service-runtime)
-                            (wait-for-rw-device)
-                            (repair-fstab-entry)
-                            (when (and (mounted? "/rw")
-                                       (mounted? "/home")
-                                       (mounted? "/usr/local"))
-                              (display
-                               "Qubes private directories already mounted
+    (prepare-service-runtime)
+    (wait-for-rw-device)
+    (repair-fstab-entry)
+    (when (and (mounted? "/rw")
+               (mounted? "/home")
+               (mounted? "/usr/local"))
+      (display
+       "Qubes private directories already mounted
 ")
-                              (exit 0))
-                            (run* mount-dirs)
-                            (repair-fstab-entry)))
+      (exit 0))
+    (run* mount-dirs)
+    (repair-fstab-entry)))
 
 (define (qubes-mount-dirs-shepherd-service _)
   "Return the one-shot Shepherd service that mounts the Qubes persistent
@@ -1953,7 +1953,8 @@ directories.  The argument is the ignored service value."
                                    qubes-mount-dirs-shepherd-service)))
                 (default-value #f)
                 (description
-                 "Mount Qubes persistent directories such as /rw, /home, and /usr/local.")))
+                 "Mount Qubes persistent directories such as /rw, /home, and
+/usr/local.")))
 
 (define (qubes-bind-dirs-program)
   "Return the program that applies the Qubes bind-dirs configuration by
