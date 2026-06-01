@@ -1009,91 +1009,92 @@ database fragments from every package in PACKAGES."
 then triggers and settles a coldplug pass (with bounded timeouts) so devices
 present at boot are processed.  CONFIG is the udev configuration."
   (let ((udev (udev-configuration-udev config)))
-    (program-file "qubes-udev-coldplug"
-                  (with-imported-modules '()
-                                         #~(begin
-                                             (define udevadm
-                                               #$(file-append udev
-                                                              "/bin/udevadm"))
+    (program-file
+     "qubes-udev-coldplug"
+     (with-imported-modules '()
+       #~(begin
+           (define udevadm
+             #$(file-append udev
+                            "/bin/udevadm"))
 
-                                             (define (wait-for-udev-control
-                                                      attempts)
-                                               (cond
-                                                 ((file-exists?
-                                                   "/run/udev/control")
-                                                  #t)
-                                                 ((zero? attempts)
-                                                  (format #t
-                                                   "udevd control socket not ready; continuing Qubes boot~%")
-                                                  #f)
-                                                 (else (usleep 500000)
-                                                       (wait-for-udev-control (-
-                                                                               attempts
-                                                                               1)))))
+           (define (wait-for-udev-control
+                    attempts)
+             (cond
+               ((file-exists?
+                 "/run/udev/control")
+                #t)
+               ((zero? attempts)
+                (format #t
+                 "udevd control socket not ready; continuing Qubes boot~%")
+                #f)
+               (else (usleep 500000)
+                     (wait-for-udev-control (-
+                                             attempts
+                                             1)))))
 
-                                             (define (reap-child pid)
-                                               (false-if-exception (waitpid
-                                                                    pid)))
+           (define (reap-child pid)
+             (false-if-exception (waitpid
+                                  pid)))
 
-                                             (define (terminate-child pid)
-                                               (false-if-exception (kill pid
-                                                                    SIGTERM))
-                                               (usleep 200000)
-                                               (false-if-exception (kill pid
-                                                                    SIGKILL))
-                                               (reap-child pid))
+           (define (terminate-child pid)
+             (false-if-exception (kill pid
+                                  SIGTERM))
+             (usleep 200000)
+             (false-if-exception (kill pid
+                                  SIGKILL))
+             (reap-child pid))
 
-                                             (define (run-udevadm/bounded seconds . args)
-                                               (let ((pid (primitive-fork)))
-                                                 (if (= pid 0)
-                                                     (begin
-                                                       (apply execl udevadm
-                                                              udevadm args)
-                                                       (exit 127))
-                                                     (let wait
-                                                       ((remaining (* seconds
-                                                                      10)))
-                                                       (let ((result (false-if-exception
-                                                                      (waitpid
-                                                                       pid
-                                                                       WNOHANG))))
-                                                         (cond
-                                                           ((and result
-                                                                 (= (car
-                                                                     result)
-                                                                    pid))
-                                                            (let ((status (cdr
-                                                                           result)))
-                                                              (and (not (status:term-sig
-                                                                         status))
-                                                                   (let ((exit-code
-                                                                          (status:exit-val
-                                                                           status)))
-                                                                     (and
-                                                                      exit-code
-                                                                      (zero?
-                                                                       exit-code))))))
-                                                           ((zero? remaining)
-                                                            (format #t
-                                                             "udevadm command timed out: ~s~%"
-                                                             args)
-                                                            (terminate-child
-                                                             pid) #f)
-                                                           (else (usleep
-                                                                         100000)
-                                                                 (wait (-
-                                                                        remaining
-                                                                        1)))))))))
+           (define (run-udevadm/bounded seconds . args)
+             (let ((pid (primitive-fork)))
+               (if (= pid 0)
+                   (begin
+                     (apply execl udevadm
+                            udevadm args)
+                     (exit 127))
+                   (let wait
+                     ((remaining (* seconds
+                                    10)))
+                     (let ((result (false-if-exception
+                                    (waitpid
+                                     pid
+                                     WNOHANG))))
+                       (cond
+                         ((and result
+                               (= (car
+                                   result)
+                                  pid))
+                          (let ((status (cdr
+                                         result)))
+                            (and (not (status:term-sig
+                                       status))
+                                 (let ((exit-code
+                                        (status:exit-val
+                                         status)))
+                                   (and
+                                    exit-code
+                                    (zero?
+                                     exit-code))))))
+                         ((zero? remaining)
+                          (format #t
+                           "udevadm command timed out: ~s~%"
+                           args)
+                          (terminate-child
+                           pid) #f)
+                         (else (usleep
+                                       100000)
+                               (wait (-
+                                      remaining
+                                      1)))))))))
 
-                                             (when (wait-for-udev-control 20)
-                                               (run-udevadm/bounded 5
-                                                "trigger" "--action=add"
-                                                "--type=devices")
-                                               (run-udevadm/bounded 5
-                                                "trigger" "--action=add"
-                                                "--type=subsystems")
-                                               (run-udevadm/bounded 5 "settle"
-                                                "--timeout=5")))))))
+           (when (wait-for-udev-control 20)
+             (run-udevadm/bounded 5
+              "trigger" "--action=add"
+              "--type=devices")
+             (run-udevadm/bounded 5
+              "trigger" "--action=add"
+              "--type=subsystems")
+             (run-udevadm/bounded 5 "settle"
+              "--timeout=5")))))))
 
 (define (qubes-udev-shepherd-service config)
   "Return the Shepherd services that run eudev for the Qubes template: a
@@ -1101,57 +1102,58 @@ present at boot are processed.  CONFIG is the udev configuration."
 tree without blocking boot on a global settle, plus a @code{qubes-udev-coldplug}
 trigger.  CONFIG is the udev configuration."
   (let ((udev (udev-configuration-udev config)))
-    (list (shepherd-service (provision '(udev))
-                            (requirement '(root-file-system sysctl
-                                           qubes-kernel-modules))
-                            (documentation
-                             "Run eudev without making Qubes boot wait for global settle.")
-                            (start
-                             (with-imported-modules
-                                 (source-module-closure '((gnu build linux-boot)))
-                               #~(lambda ()
-                                   (define udevd
-                                     #$(file-append udev "/sbin/udevd"))
+    (list
+     (shepherd-service
+      (provision '(udev))
+      (requirement '(root-file-system sysctl qubes-kernel-modules))
+      (documentation
+       "Run eudev without making Qubes boot wait for global settle.")
+      (start
+       (with-imported-modules
+           (source-module-closure '((gnu build linux-boot)))
+         #~(lambda ()
+             (define udevd
+               #$(file-append udev "/sbin/udevd"))
 
-                                   (setenv "LINUX_MODULE_DIRECTORY"
-                                           "/run/qubes-kernel-modules")
+             (setenv "LINUX_MODULE_DIRECTORY" "/run/qubes-kernel-modules")
 
-                                   (let* ((kernel-release (utsname:release (uname)))
-                                          (linux-module-directory
-                                           (getenv "LINUX_MODULE_DIRECTORY"))
-                                          (directory
-                                           (string-append linux-module-directory "/"
-                                                          kernel-release))
-                                          (old-umask (umask #o22)))
-                                     (when (file-exists? directory)
-                                       (make-static-device-nodes directory))
-                                     (umask old-umask))
+             (let* ((kernel-release (utsname:release (uname)))
+                    (linux-module-directory
+                     (getenv "LINUX_MODULE_DIRECTORY"))
+                    (directory
+                     (string-append linux-module-directory "/"
+                                    kernel-release))
+                    (old-umask (umask #o22)))
+               (when (file-exists? directory)
+                 (make-static-device-nodes directory))
+               (umask old-umask))
 
-                                   (fork+exec-command
-                                    (list udevd
-                                          #$@(if (udev-configuration-debug? config)
-                                                 '("--debug")
-                                                 '()))
-                                    #:environment-variables
-                                    (cons* (string-append
-                                            "LINUX_MODULE_DIRECTORY="
-                                            (getenv "LINUX_MODULE_DIRECTORY"))
-                                           (default-environment-variables))))))
-                            (stop #~(make-kill-destructor))
-                            (respawn? #f)
-                            (modules `((gnu build linux-boot)
-                                       ,@%default-modules)))
-          (shepherd-service (provision '(qubes-udev-coldplug))
-                            (requirement '(udev))
-                            (documentation
-                             "Trigger Qubes udev coldplug without blocking udev readiness.")
-                            (start
-                             #~(make-forkexec-constructor
-                                (list #$(qubes-udev-coldplug-program config))
-                                #:log-file
-                                "/var/log/qubes-udev-coldplug.log"))
-                            (stop #~(make-kill-destructor))
-                            (respawn? #f)))))
+             (fork+exec-command
+              (list udevd
+                    #$@(if (udev-configuration-debug? config)
+                           '("--debug")
+                           '()))
+              #:environment-variables
+              (cons* (string-append
+                      "LINUX_MODULE_DIRECTORY="
+                      (getenv "LINUX_MODULE_DIRECTORY"))
+                     (default-environment-variables))))))
+      (stop #~(make-kill-destructor))
+      (respawn? #f)
+      (modules `((gnu build linux-boot)
+                 ,@%default-modules)))
+     (shepherd-service
+      (provision '(qubes-udev-coldplug))
+      (requirement '(udev))
+      (documentation
+       "Trigger Qubes udev coldplug without blocking udev readiness.")
+      (start
+       #~(make-forkexec-constructor
+          (list #$(qubes-udev-coldplug-program config))
+          #:log-file
+          "/var/log/qubes-udev-coldplug.log"))
+      (stop #~(make-kill-destructor))
+      (respawn? #f)))))
 
 (define qubes-udev-service-type
   (service-type (name 'udev)
