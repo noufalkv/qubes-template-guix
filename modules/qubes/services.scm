@@ -439,9 +439,7 @@ the VM.  The argument is the ignored service value."
                          (srfi srfi-13))
 
             (define modprobe
-              #$(file-append
-                 kmod
-                 "/bin/modprobe"))
+              #$(file-append kmod "/bin/modprobe"))
             (define mount
               "/run/current-system/profile/bin/mount")
             (define mountpoint
@@ -459,41 +457,25 @@ the VM.  The argument is the ignored service value."
             (define kernel-modules-directory
               "/run/qubes-kernel-modules")
 
-            (define (warn
-                     message)
-              (display message
-                       (current-error-port))
+            (define (warn message)
+              (display message (current-error-port))
               (newline (current-error-port)))
 
             (define (try-run* program . args)
               (false-if-exception
-               (zero? (apply
-                       system*
-                       program
-                       args))))
+               (zero? (apply system* program args))))
 
             (define (run* program . args)
-              (unless (apply
-                       try-run*
-                       program
-                       args)
-                (warn (string-append
-                       "command failed: "
-                       program))
+              (unless (apply try-run* program args)
+                (warn (string-append "command failed: " program))
                 (exit 1)))
 
             (define (exec* program . args)
-              (apply execl
-                     program
-                     program
-                     args))
+              (apply execl program program args))
 
-            (define (read-file
-                     path)
-              (and (file-exists?
-                    path)
-                   (call-with-input-file path
-                     get-string-all)))
+            (define (read-file path)
+              (and (file-exists? path)
+                   (call-with-input-file path get-string-all)))
 
             (define (string-trim-newlines text)
               (let loop ((end (string-length text)))
@@ -504,86 +486,47 @@ the VM.  The argument is the ignored service value."
                     (substring text 0 end))))
 
             (define (command-output program . args)
-              (let* ((port (apply
-                            open-pipe*
-                            OPEN_READ
-                            program
-                            args))
-                     (text (get-string-all
-                            port))
-                     (status (close-pipe
-                              port)))
-                (and (zero?
-                      status)
-                     (string-trim-newlines
-                      text))))
+              (let* ((port (apply open-pipe* OPEN_READ program args))
+                     (text (get-string-all port))
+                     (status (close-pipe port)))
+                (and (zero? status)
+                     (string-trim-newlines text))))
 
-            (define (qubesdb-read
-                     path)
-              (command-output
-               qubesdb-read*
-               path))
+            (define (qubesdb-read path)
+              (command-output qubesdb-read* path))
 
-            (define (qubesdb-write
-                     path value)
-              (try-run*
-               qubesdb-write*
-               path value))
+            (define (qubesdb-write path value)
+              (try-run* qubesdb-write* path value))
 
-            (define (group-gid
-                     name)
-              (let ((entry (false-if-exception
-                            (getgr
-                             name))))
+            (define (group-gid name)
+              (let ((entry (false-if-exception (getgr name))))
                 (and entry
-                     (vector-ref
-                      entry 2))))
+                     (vector-ref entry 2))))
 
             (define (profile-python-paths)
-              (let* ((lib
-                      "/run/current-system/profile/lib")
-                     (versions (or
-                                (false-if-exception
-                                 (scandir
-                                  lib
-                                  (lambda
-                                          (entry)
-
-                                    (string-prefix?
-                                     "python"
-                                     entry))))
-                                '())))
+              (let* ((lib "/run/current-system/profile/lib")
+                     (versions (or (false-if-exception
+                                    (scandir lib
+                                             (lambda (entry)
+                                               (string-prefix? "python"
+                                                               entry))))
+                                   '())))
                 (filter
                  file-exists?
                  (map (lambda (version)
-                        (string-append
-                         lib "/"
-                         version
-                         "/site-packages"))
+                        (string-append lib "/" version "/site-packages"))
                       versions))))
 
-            (define (prepend-environment
-                     name
-                     entries)
-              (unless (null?
-                       entries)
-                (let ((current (getenv
-                                name)))
+            (define (prepend-environment name entries)
+              (unless (null? entries)
+                (let ((current (getenv name)))
                   (setenv name
                           (string-append
-                           (string-join
-                            entries
-                            ":")
-                           (if (and
-                                current
-
-                                (not
-                                 (string-null?
-                                  current)))
-                            (string-append
-                             ":"
-                             current)
-                            ""))))))
+                           (string-join entries ":")
+                           (if (and current
+                                    (not (string-null? current)))
+                               (string-append ":" current)
+                               ""))))))
 
             (define (kernel-release)
               (utsname:release (uname)))
@@ -602,28 +545,18 @@ the VM.  The argument is the ignored service value."
             (define (kernel-modules-available?)
               (file-exists? (kernel-modules-release-directory)))
 
-            (define (wait-for-path
-                     path
-                     attempts)
-              (let loop
-                ((attempt 0))
+            (define (wait-for-path path attempts)
+              (let loop ((attempt 0))
                 (cond
-                  ((file-exists?
-                    path)
+                  ((file-exists? path)
                    #t)
-                  ((< attempt
-                      attempts)
-                   (usleep
-                           100000)
-                   (loop (+
-                          attempt
-                          1)))
+                  ((< attempt attempts)
+                   (usleep 100000)
+                   (loop (+ attempt 1)))
                   (else #f))))
 
-            (define (kernel-modules-setup
-                     attempts)
-              (mkdir-p
-               kernel-modules-directory)
+            (define (kernel-modules-setup attempts)
+              (mkdir-p kernel-modules-directory)
               (cond
                 ((kernel-modules-available?)
                  #t)
@@ -735,51 +668,27 @@ the VM.  The argument is the ignored service value."
                                    (car fields))))
                           (string-split text #\newline)))))
 
-            (define (ensure-xen-node
-                     node names)
-              (let ((path (string-append
-                           "/dev/xen/"
-                           node))
-                    (minor (misc-minor
-                            names)))
+            (define (ensure-xen-node node names)
+              (let ((path (string-append "/dev/xen/" node))
+                    (minor (misc-minor names)))
                 (when (and minor
-                       (not (file-exists?
-                             path)))
-                  (try-run*
-                   mknod* path
-                   "c" "10"
-                   minor))))
+                           (not (file-exists? path)))
+                  (try-run* mknod* path "c" "10" minor))))
 
             (define (xen-device-setup)
-              (mkdir-p
-               "/dev/xen")
-              (mkdir-p
-               "/proc/xen")
-              (for-each (lambda
-                                (module)
-                          (try-run*
-                           modprobe
-                           module))
+              (mkdir-p "/dev/xen")
+              (mkdir-p "/proc/xen")
+              (for-each (lambda (module)
+                          (try-run* modprobe module))
                         '("xenfs"
                           "xen_evtchn"
                           "xen_gntalloc"
                           "xen_gntdev"
                           "xen_privcmd"))
-              (unless (try-run*
-                       mountpoint
-                       "-q"
-                       "/proc/xen")
-                (try-run* mount
-                 "-t" "xenfs"
-                 "xenfs"
-                 "/proc/xen"))
-              (for-each (lambda
-                                (spec)
-                          (ensure-xen-node
-                           (car
-                            spec)
-                           (cdr
-                            spec)))
+              (unless (try-run* mountpoint "-q" "/proc/xen")
+                (try-run* mount "-t" "xenfs" "xenfs" "/proc/xen"))
+              (for-each (lambda (spec)
+                          (ensure-xen-node (car spec) (cdr spec)))
                         '(("xenbus"
                            "xen/xenbus"
                            "xenbus")
@@ -798,14 +707,10 @@ the VM.  The argument is the ignored service value."
                           ("gntalloc"
                            "xen/gntalloc"
                            "gntalloc")))
-              (when (and (not (file-exists?
-                               "/dev/xen/xenbus"))
-                         (file-exists?
-                          "/proc/xen/xenbus"))
+              (when (and (not (file-exists? "/dev/xen/xenbus"))
+                         (file-exists? "/proc/xen/xenbus"))
                 (false-if-exception
-                 (symlink
-                  "/proc/xen/xenbus"
-                  "/dev/xen/xenbus")))
+                 (symlink "/proc/xen/xenbus" "/dev/xen/xenbus")))
               (let ((gid (group-gid "qubes")))
                 (for-each (lambda (entry)
                             (let ((path (string-append "/dev/xen/" entry)))
@@ -835,29 +740,18 @@ the VM.  The argument is the ignored service value."
                0)
               (xen-device-setup))
 
-            (define (service-enabled?
-                     name)
-              (file-exists? (string-append
-                             "/run/qubes-service/"
-                             name)))
+            (define (service-enabled? name)
+              (file-exists? (string-append "/run/qubes-service/" name)))
 
-            (define (wait-for-service-environment
-                     attempts)
-              (let loop
-                ((attempt
-                  attempts))
+            (define (wait-for-service-environment attempts)
+              (let loop ((attempt attempts))
                 (cond
-                  ((file-exists?
-                    "/run/qubes-service-environment")
+                  ((file-exists? "/run/qubes-service-environment")
                    #t)
-                  ((zero?
-                    attempt)
+                  ((zero? attempt)
                    #f)
-                  (else (usleep
-                                100000)
-                        (loop (-
-                               attempt
-                               1))))))
+                  (else (usleep 100000)
+                        (loop (- attempt 1))))))
 
             body
             ...))))))
@@ -951,87 +845,62 @@ present at boot are processed.  CONFIG is the udev configuration."
      (with-imported-modules '()
        #~(begin
            (define udevadm
-             #$(file-append udev
-                            "/bin/udevadm"))
+             #$(file-append udev "/bin/udevadm"))
 
-           (define (wait-for-udev-control
-                    attempts)
+           (define (wait-for-udev-control attempts)
              (cond
-               ((file-exists?
-                 "/run/udev/control")
+               ((file-exists? "/run/udev/control")
                 #t)
                ((zero? attempts)
                 (format #t
-                 "udevd control socket not ready; continuing Qubes boot~%")
+                        "udevd control socket not ready; continuing Qubes boot~%")
                 #f)
                (else (usleep 500000)
-                     (wait-for-udev-control (-
-                                             attempts
-                                             1)))))
+                     (wait-for-udev-control (- attempts 1)))))
 
            (define (reap-child pid)
-             (false-if-exception (waitpid
-                                  pid)))
+             (false-if-exception (waitpid pid)))
 
            (define (terminate-child pid)
-             (false-if-exception (kill pid
-                                  SIGTERM))
+             (false-if-exception (kill pid SIGTERM))
              (usleep 200000)
-             (false-if-exception (kill pid
-                                  SIGKILL))
+             (false-if-exception (kill pid SIGKILL))
              (reap-child pid))
 
            (define (run-udevadm/bounded seconds . args)
              (let ((pid (primitive-fork)))
                (if (= pid 0)
                    (begin
-                     (apply execl udevadm
-                            udevadm args)
+                     (apply execl udevadm udevadm args)
                      (exit 127))
-                   (let wait
-                     ((remaining (* seconds
-                                    10)))
+                   (let wait ((remaining (* seconds 10)))
                      (let ((result (false-if-exception
-                                    (waitpid
-                                     pid
-                                     WNOHANG))))
+                                    (waitpid pid WNOHANG))))
                        (cond
                          ((and result
-                               (= (car
-                                   result)
-                                  pid))
-                          (let ((status (cdr
-                                         result)))
-                            (and (not (status:term-sig
-                                       status))
-                                 (let ((exit-code
-                                        (status:exit-val
-                                         status)))
-                                   (and
-                                    exit-code
-                                    (zero?
-                                     exit-code))))))
+                               (= (car result) pid))
+                          (let ((status (cdr result)))
+                            (and (not (status:term-sig status))
+                                 (let ((exit-code (status:exit-val status)))
+                                   (and exit-code
+                                        (zero? exit-code))))))
                          ((zero? remaining)
                           (format #t
-                           "udevadm command timed out: ~s~%"
-                           args)
-                          (terminate-child
-                           pid) #f)
-                         (else (usleep
-                                       100000)
-                               (wait (-
-                                      remaining
-                                      1)))))))))
+                                  "udevadm command timed out: ~s~%"
+                                  args)
+                          (terminate-child pid) #f)
+                         (else (usleep 100000)
+                               (wait (- remaining 1)))))))))
 
            (when (wait-for-udev-control 20)
              (run-udevadm/bounded 5
-              "trigger" "--action=add"
-              "--type=devices")
+                                  "trigger" "--action=add"
+                                  "--type=devices")
              (run-udevadm/bounded 5
-              "trigger" "--action=add"
-              "--type=subsystems")
+                                  "trigger" "--action=add"
+                                  "--type=subsystems")
              (run-udevadm/bounded 5 "settle"
-              "--timeout=5")))))))
+                                  "--timeout=5")))))))
 
 (define (qubes-udev-shepherd-service config)
   "Return the Shepherd services that run eudev for the Qubes template: a
