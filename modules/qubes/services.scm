@@ -425,513 +425,505 @@ the VM.  The argument is the ignored service value."
 
 (define-syntax qubes-vm-service-program
   (syntax-rules ()
-                ((_ program-name body ...)
-                 (program-file program-name
-                               (with-imported-modules (source-module-closure
-                                                       %qubes-runtime-modules)
-                                                      #~(begin
-                                                          (use-modules (guix
-                                                                        build
-                                                                        utils)
-                                                                       (ice-9
-                                                                        ftw)
-                                                                       (ice-9
-                                                                        match)
-                                                                       (ice-9
-                                                                        popen)
-                                                                       (ice-9
-                                                                        textual-ports)
-                                                                       (srfi
-                                                                        srfi-1)
-                                                                       (srfi
-                                                                        srfi-13))
+    ((_ program-name body ...)
+     (program-file
+      program-name
+      (with-imported-modules (source-module-closure %qubes-runtime-modules)
+        #~(begin
+            (use-modules (guix build utils)
+                         (ice-9 ftw)
+                         (ice-9 match)
+                         (ice-9 popen)
+                         (ice-9 textual-ports)
+                         (srfi srfi-1)
+                         (srfi srfi-13))
 
-                                                          (define modprobe
-                                                            #$(file-append
-                                                               kmod
-                                                               "/bin/modprobe"))
-                                                          (define mount
-                                                            "/run/current-system/profile/bin/mount")
-                                                          (define mountpoint
-                                                            "/run/current-system/profile/bin/mountpoint")
-                                                          (define mknod*
-                                                            "/run/current-system/profile/bin/mknod")
-                                                          (define qrexec-client-vm*
-                                                            "/run/current-system/profile/bin/qrexec-client-vm")
-                                                          (define qubesdb-read*
-                                                            "/run/current-system/profile/bin/qubesdb-read")
-                                                          (define qubesdb-write*
-                                                            "/run/current-system/profile/bin/qubesdb-write")
-                                                          (define kernel-modules-device
-                                                            "/dev/xvdd")
-                                                          (define kernel-modules-directory
-                                                            "/run/qubes-kernel-modules")
+            (define modprobe
+              #$(file-append
+                 kmod
+                 "/bin/modprobe"))
+            (define mount
+              "/run/current-system/profile/bin/mount")
+            (define mountpoint
+              "/run/current-system/profile/bin/mountpoint")
+            (define mknod*
+              "/run/current-system/profile/bin/mknod")
+            (define qrexec-client-vm*
+              "/run/current-system/profile/bin/qrexec-client-vm")
+            (define qubesdb-read*
+              "/run/current-system/profile/bin/qubesdb-read")
+            (define qubesdb-write*
+              "/run/current-system/profile/bin/qubesdb-write")
+            (define kernel-modules-device
+              "/dev/xvdd")
+            (define kernel-modules-directory
+              "/run/qubes-kernel-modules")
 
-                                                          (define (warn
-                                                                   message)
-                                                            (display message
-                                                                     (current-error-port))
-                                                            (newline (current-error-port)))
+            (define (warn
+                     message)
+              (display message
+                       (current-error-port))
+              (newline (current-error-port)))
 
-                                                          (define (try-run* program . args)
-                                                            (false-if-exception
-                                                             (zero? (apply
-                                                                     system*
-                                                                     program
-                                                                     args))))
+            (define (try-run* program . args)
+              (false-if-exception
+               (zero? (apply
+                       system*
+                       program
+                       args))))
 
-                                                          (define (run* program . args)
-                                                            (unless (apply
-                                                                     try-run*
-                                                                     program
-                                                                     args)
-                                                              (warn (string-append
-                                                                     "command failed: "
-                                                                     program))
-                                                              (exit 1)))
+            (define (run* program . args)
+              (unless (apply
+                       try-run*
+                       program
+                       args)
+                (warn (string-append
+                       "command failed: "
+                       program))
+                (exit 1)))
 
-                                                          (define (exec* program . args)
-                                                            (apply execl
-                                                                   program
-                                                                   program
-                                                                   args))
+            (define (exec* program . args)
+              (apply execl
+                     program
+                     program
+                     args))
 
-                                                          (define (read-file
-                                                                   path)
-                                                            (and (file-exists?
-                                                                  path)
-                                                                 (call-with-input-file path
-                                                                   get-string-all)))
+            (define (read-file
+                     path)
+              (and (file-exists?
+                    path)
+                   (call-with-input-file path
+                     get-string-all)))
 
-                                                          (define (string-trim-newlines
-                                                                   text)
-                                                            (let loop
-                                                              ((end (string-length
-                                                                     text)))
-                                                              (if (and (> end
-                                                                          0)
-                                                                       (memv (string-ref
-                                                                              text
+            (define (string-trim-newlines
+                     text)
+              (let loop
+                ((end (string-length
+                       text)))
+                (if (and (> end
+                            0)
+                         (memv (string-ref
+                                text
 
-                                                                              (-
-                                                                               end
-                                                                               1))
-                                                                             '
-                                                                             (#\newline
-                                                                              #\return)))
-                                                                  (loop (- end
-                                                                         1))
-                                                                  (substring
-                                                                   text 0 end))))
+                                (-
+                                 end
+                                 1))
+                               '
+                               (#\newline
+                                #\return)))
+                    (loop (- end
+                           1))
+                    (substring
+                     text 0 end))))
 
-                                                          (define (command-output program . args)
-                                                            (let* ((port (apply
-                                                                          open-pipe*
-                                                                          OPEN_READ
-                                                                          program
-                                                                          args))
-                                                                   (text (get-string-all
-                                                                          port))
-                                                                   (status (close-pipe
-                                                                            port)))
-                                                              (and (zero?
-                                                                    status)
-                                                                   (string-trim-newlines
-                                                                    text))))
+            (define (command-output program . args)
+              (let* ((port (apply
+                            open-pipe*
+                            OPEN_READ
+                            program
+                            args))
+                     (text (get-string-all
+                            port))
+                     (status (close-pipe
+                              port)))
+                (and (zero?
+                      status)
+                     (string-trim-newlines
+                      text))))
 
-                                                          (define (qubesdb-read
-                                                                   path)
-                                                            (command-output
-                                                             qubesdb-read*
-                                                             path))
+            (define (qubesdb-read
+                     path)
+              (command-output
+               qubesdb-read*
+               path))
 
-                                                          (define (qubesdb-write
-                                                                   path value)
-                                                            (try-run*
-                                                             qubesdb-write*
-                                                             path value))
+            (define (qubesdb-write
+                     path value)
+              (try-run*
+               qubesdb-write*
+               path value))
 
-                                                          (define (group-gid
-                                                                   name)
-                                                            (let ((entry (false-if-exception
-                                                                          (getgr
-                                                                           name))))
-                                                              (and entry
-                                                                   (vector-ref
-                                                                    entry 2))))
+            (define (group-gid
+                     name)
+              (let ((entry (false-if-exception
+                            (getgr
+                             name))))
+                (and entry
+                     (vector-ref
+                      entry 2))))
 
-                                                          (define (profile-python-paths)
-                                                            (let* ((lib
-                                                                    "/run/current-system/profile/lib")
-                                                                   (versions (or
-                                                                              (false-if-exception
-                                                                               (scandir
-                                                                                lib
-                                                                                (lambda
-                                                                                        (entry)
+            (define (profile-python-paths)
+              (let* ((lib
+                      "/run/current-system/profile/lib")
+                     (versions (or
+                                (false-if-exception
+                                 (scandir
+                                  lib
+                                  (lambda
+                                          (entry)
 
-                                                                                  (string-prefix?
-                                                                                   "python"
-                                                                                   entry))))
-                                                                              '())))
-                                                              (filter
-                                                               file-exists?
-                                                               (map (lambda (version)
-                                                                      (string-append
-                                                                       lib "/"
-                                                                       version
-                                                                       "/site-packages"))
-                                                                    versions))))
+                                    (string-prefix?
+                                     "python"
+                                     entry))))
+                                '())))
+                (filter
+                 file-exists?
+                 (map (lambda (version)
+                        (string-append
+                         lib "/"
+                         version
+                         "/site-packages"))
+                      versions))))
 
-                                                          (define (prepend-environment
-                                                                   name
-                                                                   entries)
-                                                            (unless (null?
-                                                                     entries)
-                                                              (let ((current (getenv
-                                                                              name)))
-                                                                (setenv name
-                                                                        (string-append
-                                                                         (string-join
-                                                                          entries
-                                                                          ":")
-                                                                         (if (and
-                                                                              current
+            (define (prepend-environment
+                     name
+                     entries)
+              (unless (null?
+                       entries)
+                (let ((current (getenv
+                                name)))
+                  (setenv name
+                          (string-append
+                           (string-join
+                            entries
+                            ":")
+                           (if (and
+                                current
 
-                                                                              (not
-                                                                               (string-null?
-                                                                                current)))
-                                                                          (string-append
-                                                                           ":"
-                                                                           current)
-                                                                          ""))))))
+                                (not
+                                 (string-null?
+                                  current)))
+                            (string-append
+                             ":"
+                             current)
+                            ""))))))
 
-                                                          (define (kernel-release)
-                                                            (utsname:release (uname)))
+            (define (kernel-release)
+              (utsname:release (uname)))
 
-                                                          (define (kernel-modules-release-directory)
-                                                            (string-append
-                                                             kernel-modules-directory
-                                                             "/"
-                                                             (kernel-release)))
+            (define (kernel-modules-release-directory)
+              (string-append
+               kernel-modules-directory
+               "/"
+               (kernel-release)))
 
-                                                          (define (kernel-modules-mounted?)
-                                                            (try-run*
-                                                             mountpoint "-q"
-                                                             kernel-modules-directory))
+            (define (kernel-modules-mounted?)
+              (try-run*
+               mountpoint "-q"
+               kernel-modules-directory))
 
-                                                          (define (kernel-modules-available?)
-                                                            (file-exists? (kernel-modules-release-directory)))
+            (define (kernel-modules-available?)
+              (file-exists? (kernel-modules-release-directory)))
 
-                                                          (define (wait-for-path
-                                                                   path
-                                                                   attempts)
-                                                            (let loop
-                                                              ((attempt 0))
-                                                              (cond
-                                                                ((file-exists?
-                                                                  path)
-                                                                 #t)
-                                                                ((< attempt
-                                                                    attempts)
-                                                                 (usleep
-                                                                         100000)
-                                                                 (loop (+
-                                                                        attempt
-                                                                        1)))
-                                                                (else #f))))
+            (define (wait-for-path
+                     path
+                     attempts)
+              (let loop
+                ((attempt 0))
+                (cond
+                  ((file-exists?
+                    path)
+                   #t)
+                  ((< attempt
+                      attempts)
+                   (usleep
+                           100000)
+                   (loop (+
+                          attempt
+                          1)))
+                  (else #f))))
 
-                                                          (define (kernel-modules-setup
-                                                                   attempts)
-                                                            (mkdir-p
-                                                             kernel-modules-directory)
-                                                            (cond
-                                                              ((kernel-modules-available?)
-                                                               #t)
-                                                              ((wait-for-path
-                                                                kernel-modules-device
-                                                                attempts)
-                                                               (unless (kernel-modules-mounted?)
-                                                                 (unless (try-run*
-                                                                          mount
-                                                                          "-o"
-                                                                          "ro"
-                                                                          kernel-modules-device
-                                                                          kernel-modules-directory)
-                                                                   (warn (string-append
-                                                                          "failed to mount Qubes dom0 kernel modules image: "
-                                                                          kernel-modules-device))
-                                                                   (exit 1)))
-                                                               (unless (kernel-modules-available?)
-                                                                 (warn (string-append
-                                                                        "Qubes dom0 kernel modules image is missing modules for "
-                                                                        (kernel-release)))
-                                                                 (exit 1)))
-                                                              (else (warn (string-append
-                                                                           "Qubes dom0 kernel modules device is not present: "
-                                                                           kernel-modules-device))
-                                                                    #f)))
+            (define (kernel-modules-setup
+                     attempts)
+              (mkdir-p
+               kernel-modules-directory)
+              (cond
+                ((kernel-modules-available?)
+                 #t)
+                ((wait-for-path
+                  kernel-modules-device
+                  attempts)
+                 (unless (kernel-modules-mounted?)
+                   (unless (try-run*
+                            mount
+                            "-o"
+                            "ro"
+                            kernel-modules-device
+                            kernel-modules-directory)
+                     (warn (string-append
+                            "failed to mount Qubes dom0 kernel modules image: "
+                            kernel-modules-device))
+                     (exit 1)))
+                 (unless (kernel-modules-available?)
+                   (warn (string-append
+                          "Qubes dom0 kernel modules image is missing modules for "
+                          (kernel-release)))
+                   (exit 1)))
+                (else (warn (string-append
+                             "Qubes dom0 kernel modules device is not present: "
+                             kernel-modules-device))
+                      #f)))
 
-                                                          (define (runtime-setup)
-                                                            (setenv "PATH"
-                                                                    (string-append
-                                                                     "/run/setuid-programs:"
-                                                                     "/run/current-system/profile/bin:"
-                                                                     "/run/current-system/profile/sbin"
-                                                                     (let ((path
-                                                                            (getenv
-                                                                             "PATH")))
-                                                                       (if
-                                                                        path
-                                                                        (string-append
-                                                                         ":"
-                                                                         path)
-                                                                        ""))))
-                                                            (setenv
-                                                             "LINUX_MODULE_DIRECTORY"
-                                                             kernel-modules-directory)
-                                                            (for-each (match-lambda
-                                                                        ((name . value)
-                                                                         (setenv
-                                                                          name
-                                                                          value)))
-                                                                      '(("SSL_CERT_DIR" . "/etc/ssl/certs")
-                                                                        ("SSL_CERT_FILE" . "/etc/ssl/certs/ca-certificates.crt")
-                                                                        ("GIT_SSL_CAINFO" . "/etc/ssl/certs/ca-certificates.crt")
-                                                                        ("CURL_CA_BUNDLE" . "/etc/ssl/certs/ca-certificates.crt")))
-                                                            (let ((python-paths
-                                                                   (profile-python-paths)))
-                                                              (prepend-environment
-                                                               "PYTHONPATH"
-                                                               python-paths)
-                                                              (prepend-environment
-                                                               "GUIX_PYTHONPATH"
-                                                               python-paths))
-                                                            (setenv
-                                                             "QREXEC_SERVICE_PATH"
-                                                             (string-append
-                                                              "/run/qubes-rpc:/usr/local/etc/qubes-rpc:/etc/qubes-rpc:"
-                                                              "/run/current-system/profile/etc/qubes-rpc"))
-                                                            (setenv
-                                                             "QUBES_RPC_CONFIG_PATH"
-                                                             (string-append
-                                                              "/run/qubes/rpc-config:/usr/local/etc/qubes/rpc-config:"
-                                                              "/etc/qubes/rpc-config:"
-                                                              "/run/current-system/profile/etc/qubes/rpc-config"))
-                                                            (mkdir-p
-                                                             "/run/qubes")
-                                                            (mkdir-p
-                                                             "/run/qubes-service")
-                                                            (mkdir-p
-                                                             "/var/run")
-                                                            (mkdir-p
-                                                             "/var/log/qubes")
-                                                            (mkdir-p
-                                                             "/usr/local")
-                                                            (let ((gid (group-gid
-                                                                        "qubes")))
-                                                              (when gid
-                                                                (false-if-exception
-                                                                 (chown
-                                                                  "/run/qubes"
-                                                                  -1 gid))))
-                                                            (chmod
-                                                             "/run/qubes"
-                                                             #o775))
+            (define (runtime-setup)
+              (setenv "PATH"
+                      (string-append
+                       "/run/setuid-programs:"
+                       "/run/current-system/profile/bin:"
+                       "/run/current-system/profile/sbin"
+                       (let ((path
+                              (getenv
+                               "PATH")))
+                         (if
+                          path
+                          (string-append
+                           ":"
+                           path)
+                          ""))))
+              (setenv
+               "LINUX_MODULE_DIRECTORY"
+               kernel-modules-directory)
+              (for-each (match-lambda
+                          ((name . value)
+                           (setenv
+                            name
+                            value)))
+                        '(("SSL_CERT_DIR" . "/etc/ssl/certs")
+                          ("SSL_CERT_FILE" . "/etc/ssl/certs/ca-certificates.crt")
+                          ("GIT_SSL_CAINFO" . "/etc/ssl/certs/ca-certificates.crt")
+                          ("CURL_CA_BUNDLE" . "/etc/ssl/certs/ca-certificates.crt")))
+              (let ((python-paths
+                     (profile-python-paths)))
+                (prepend-environment
+                 "PYTHONPATH"
+                 python-paths)
+                (prepend-environment
+                 "GUIX_PYTHONPATH"
+                 python-paths))
+              (setenv
+               "QREXEC_SERVICE_PATH"
+               (string-append
+                "/run/qubes-rpc:/usr/local/etc/qubes-rpc:/etc/qubes-rpc:"
+                "/run/current-system/profile/etc/qubes-rpc"))
+              (setenv
+               "QUBES_RPC_CONFIG_PATH"
+               (string-append
+                "/run/qubes/rpc-config:/usr/local/etc/qubes/rpc-config:"
+                "/etc/qubes/rpc-config:"
+                "/run/current-system/profile/etc/qubes/rpc-config"))
+              (mkdir-p
+               "/run/qubes")
+              (mkdir-p
+               "/run/qubes-service")
+              (mkdir-p
+               "/var/run")
+              (mkdir-p
+               "/var/log/qubes")
+              (mkdir-p
+               "/usr/local")
+              (let ((gid (group-gid
+                          "qubes")))
+                (when gid
+                  (false-if-exception
+                   (chown
+                    "/run/qubes"
+                    -1 gid))))
+              (chmod
+               "/run/qubes"
+               #o775))
 
-                                                          ;; The fixed compat symlinks
-                                                          ;; (incl. /var/run/qubes*) are
-                                                          ;; made once by the
-                                                          ;; qubes-vm-compat activation
-                                                          ;; applier, before any Shepherd
-                                                          ;; service; not recreated here.
+            ;; The fixed compat symlinks
+            ;; (incl. /var/run/qubes*) are
+            ;; made once by the
+            ;; qubes-vm-compat activation
+            ;; applier, before any Shepherd
+            ;; service; not recreated here.
 
-                                                          (define (misc-minor
-                                                                   names)
-                                                            (let ((text (read-file
-                                                                         "/proc/misc")))
-                                                              (and text
-                                                                   (any (lambda
-                                                                                (line)
-                                                                          (let
-                                                                               (
-                                                                                (fields
-                                                                                 (string-tokenize
-                                                                                  line)))
-                                                                            (and
-                                                                             (=
-                                                                              (length
-                                                                               fields)
-                                                                              2)
-                                                                             (member
-                                                                              (cadr
-                                                                               fields)
-                                                                              names)
-                                                                             (car
-                                                                              fields))))
-                                                                        (string-split
-                                                                         text
-                                                                         #\newline)))))
+            (define (misc-minor
+                     names)
+              (let ((text (read-file
+                           "/proc/misc")))
+                (and text
+                     (any (lambda
+                                  (line)
+                            (let
+                                 (
+                                  (fields
+                                   (string-tokenize
+                                    line)))
+                              (and
+                               (=
+                                (length
+                                 fields)
+                                2)
+                               (member
+                                (cadr
+                                 fields)
+                                names)
+                               (car
+                                fields))))
+                          (string-split
+                           text
+                           #\newline)))))
 
-                                                          (define (ensure-xen-node
-                                                                   node names)
-                                                            (let ((path (string-append
-                                                                         "/dev/xen/"
-                                                                         node))
-                                                                  (minor (misc-minor
-                                                                          names)))
-                                                              (when (and minor
-                                                                     (not (file-exists?
-                                                                           path)))
-                                                                (try-run*
-                                                                 mknod* path
-                                                                 "c" "10"
-                                                                 minor))))
+            (define (ensure-xen-node
+                     node names)
+              (let ((path (string-append
+                           "/dev/xen/"
+                           node))
+                    (minor (misc-minor
+                            names)))
+                (when (and minor
+                       (not (file-exists?
+                             path)))
+                  (try-run*
+                   mknod* path
+                   "c" "10"
+                   minor))))
 
-                                                          (define (xen-device-setup)
-                                                            (mkdir-p
-                                                             "/dev/xen")
-                                                            (mkdir-p
-                                                             "/proc/xen")
-                                                            (for-each (lambda
-                                                                              (module)
-                                                                        (try-run*
-                                                                         modprobe
-                                                                         module))
-                                                                      '("xenfs"
-                                                                        "xen_evtchn"
-                                                                        "xen_gntalloc"
-                                                                        "xen_gntdev"
-                                                                        "xen_privcmd"))
-                                                            (unless (try-run*
-                                                                     mountpoint
-                                                                     "-q"
-                                                                     "/proc/xen")
-                                                              (try-run* mount
-                                                               "-t" "xenfs"
-                                                               "xenfs"
-                                                               "/proc/xen"))
-                                                            (for-each (lambda
-                                                                              (spec)
-                                                                        (ensure-xen-node
-                                                                         (car
-                                                                          spec)
-                                                                         (cdr
-                                                                          spec)))
-                                                                      '(("xenbus"
-                                                                         "xen/xenbus"
-                                                                         "xenbus")
-                                                                        ("hypercall"
-                                                                         "xen/hypercall"
-                                                                         "hypercall")
-                                                                        ("privcmd"
-                                                                         "xen/privcmd"
-                                                                         "privcmd")
-                                                                        ("evtchn"
-                                                                         "xen/evtchn"
-                                                                         "evtchn")
-                                                                        ("gntdev"
-                                                                         "xen/gntdev"
-                                                                         "gntdev")
-                                                                        ("gntalloc"
-                                                                         "xen/gntalloc"
-                                                                         "gntalloc")))
-                                                            (when (and (not (file-exists?
-                                                                             "/dev/xen/xenbus"))
-                                                                       (file-exists?
-                                                                        "/proc/xen/xenbus"))
-                                                              (false-if-exception
-                                                               (symlink
-                                                                "/proc/xen/xenbus"
-                                                                "/dev/xen/xenbus")))
-                                                            (let ((gid (group-gid
-                                                                        "qubes")))
-                                                              (for-each (lambda
-                                                                                (entry)
-                                                                          (let
-                                                                               (
-                                                                                (path
-                                                                                 (string-append
-                                                                                  "/dev/xen/"
-                                                                                  entry)))
-                                                                            (when gid
+            (define (xen-device-setup)
+              (mkdir-p
+               "/dev/xen")
+              (mkdir-p
+               "/proc/xen")
+              (for-each (lambda
+                                (module)
+                          (try-run*
+                           modprobe
+                           module))
+                        '("xenfs"
+                          "xen_evtchn"
+                          "xen_gntalloc"
+                          "xen_gntdev"
+                          "xen_privcmd"))
+              (unless (try-run*
+                       mountpoint
+                       "-q"
+                       "/proc/xen")
+                (try-run* mount
+                 "-t" "xenfs"
+                 "xenfs"
+                 "/proc/xen"))
+              (for-each (lambda
+                                (spec)
+                          (ensure-xen-node
+                           (car
+                            spec)
+                           (cdr
+                            spec)))
+                        '(("xenbus"
+                           "xen/xenbus"
+                           "xenbus")
+                          ("hypercall"
+                           "xen/hypercall"
+                           "hypercall")
+                          ("privcmd"
+                           "xen/privcmd"
+                           "privcmd")
+                          ("evtchn"
+                           "xen/evtchn"
+                           "evtchn")
+                          ("gntdev"
+                           "xen/gntdev"
+                           "gntdev")
+                          ("gntalloc"
+                           "xen/gntalloc"
+                           "gntalloc")))
+              (when (and (not (file-exists?
+                               "/dev/xen/xenbus"))
+                         (file-exists?
+                          "/proc/xen/xenbus"))
+                (false-if-exception
+                 (symlink
+                  "/proc/xen/xenbus"
+                  "/dev/xen/xenbus")))
+              (let ((gid (group-gid
+                          "qubes")))
+                (for-each (lambda
+                                  (entry)
+                            (let
+                                 (
+                                  (path
+                                   (string-append
+                                    "/dev/xen/"
+                                    entry)))
+                              (when gid
 
-                                                                              (false-if-exception
-                                                                               (chown
-                                                                                path
-                                                                                -1
-                                                                                gid)))
-                                                                            (false-if-exception
-                                                                             (chmod
-                                                                              path
-                                                                              #o660))))
-                                                                        (or (false-if-exception
-                                                                             (scandir
-                                                                              "/dev/xen"
-                                                                              (lambda
-                                                                                      (entry)
+                                (false-if-exception
+                                 (chown
+                                  path
+                                  -1
+                                  gid)))
+                              (false-if-exception
+                               (chmod
+                                path
+                                #o660))))
+                          (or (false-if-exception
+                               (scandir
+                                "/dev/xen"
+                                (lambda
+                                        (entry)
 
-                                                                                (not
-                                                                                 (member
-                                                                                  entry
-                                                                                  '
-                                                                                  ("."
-                                                                                   ".."))))))
-                                                                            '())))
-                                                            (let wait
-                                                              ((attempt 0))
-                                                              (when (and (<
-                                                                          attempt
-                                                                          50)
-                                                                         (any (lambda
-                                                                                      (path)
+                                  (not
+                                   (member
+                                    entry
+                                    '
+                                    ("."
+                                     ".."))))))
+                              '())))
+              (let wait
+                ((attempt 0))
+                (when (and (<
+                            attempt
+                            50)
+                           (any (lambda
+                                        (path)
 
-                                                                                (not
-                                                                                 (file-exists?
-                                                                                  path)))
-                                                                              '
-                                                                              ("/dev/xen/xenbus"
-                                                                               "/dev/xen/evtchn"
-                                                                               "/dev/xen/gntalloc"
-                                                                               "/dev/xen/gntdev"
-                                                                               "/dev/xen/privcmd")))
-                                                                (usleep 100000)
-                                                                (wait (+
-                                                                       attempt
-                                                                       1)))))
+                                  (not
+                                   (file-exists?
+                                    path)))
+                                '
+                                ("/dev/xen/xenbus"
+                                 "/dev/xen/evtchn"
+                                 "/dev/xen/gntalloc"
+                                 "/dev/xen/gntdev"
+                                 "/dev/xen/privcmd")))
+                  (usleep 100000)
+                  (wait (+
+                         attempt
+                         1)))))
 
-                                                          (define (prepare-service-runtime)
-                                                            (runtime-setup)
-                                                            (kernel-modules-setup
-                                                             0)
-                                                            (xen-device-setup))
+            (define (prepare-service-runtime)
+              (runtime-setup)
+              (kernel-modules-setup
+               0)
+              (xen-device-setup))
 
-                                                          (define (service-enabled?
-                                                                   name)
-                                                            (file-exists? (string-append
-                                                                           "/run/qubes-service/"
-                                                                           name)))
+            (define (service-enabled?
+                     name)
+              (file-exists? (string-append
+                             "/run/qubes-service/"
+                             name)))
 
-                                                          (define (wait-for-service-environment
-                                                                   attempts)
-                                                            (let loop
-                                                              ((attempt
-                                                                attempts))
-                                                              (cond
-                                                                ((file-exists?
-                                                                  "/run/qubes-service-environment")
-                                                                 #t)
-                                                                ((zero?
-                                                                  attempt)
-                                                                 #f)
-                                                                (else (usleep
-                                                                              100000)
-                                                                      (loop (-
-                                                                             attempt
-                                                                             1))))))
+            (define (wait-for-service-environment
+                     attempts)
+              (let loop
+                ((attempt
+                  attempts))
+                (cond
+                  ((file-exists?
+                    "/run/qubes-service-environment")
+                   #t)
+                  ((zero?
+                    attempt)
+                   #f)
+                  (else (usleep
+                                100000)
+                        (loop (-
+                               attempt
+                               1))))))
 
-                                                          body
-                                                          ...))))))
+            body
+            ...))))))
 
 (define qubes-kvm-udev-rule
   (udev-rule "90-kvm.rules" "KERNEL==\"kvm\", GROUP=\"kvm\", MODE=\"0660\"\n"))
@@ -1114,52 +1106,37 @@ trigger.  CONFIG is the udev configuration."
                                            qubes-kernel-modules))
                             (documentation
                              "Run eudev without making Qubes boot wait for global settle.")
-                            (start (with-imported-modules (source-module-closure '
-                                                           ((gnu build
-                                                                 linux-boot)))
-                                                          #~(lambda ()
-                                                              (define udevd
-                                                                #$(file-append
-                                                                   udev
-                                                                   "/sbin/udevd"))
+                            (start
+                             (with-imported-modules
+                                 (source-module-closure '((gnu build linux-boot)))
+                               #~(lambda ()
+                                   (define udevd
+                                     #$(file-append udev "/sbin/udevd"))
 
-                                                              (setenv
-                                                               "LINUX_MODULE_DIRECTORY"
-                                                               "/run/qubes-kernel-modules")
+                                   (setenv "LINUX_MODULE_DIRECTORY"
+                                           "/run/qubes-kernel-modules")
 
-                                                              (let* ((kernel-release
-                                                                      (utsname:release
-                                                                       (uname)))
-                                                                     (linux-module-directory
-                                                                      (getenv
-                                                                       "LINUX_MODULE_DIRECTORY"))
-                                                                     (directory
-                                                                      (string-append
-                                                                       linux-module-directory
-                                                                       "/"
-                                                                       kernel-release))
-                                                                     (old-umask
-                                                                      (umask
-                                                                             #o22)))
-                                                                (when (file-exists?
-                                                                       directory)
-                                                                  (make-static-device-nodes
-                                                                   directory))
-                                                                (umask
-                                                                 old-umask))
+                                   (let* ((kernel-release (utsname:release (uname)))
+                                          (linux-module-directory
+                                           (getenv "LINUX_MODULE_DIRECTORY"))
+                                          (directory
+                                           (string-append linux-module-directory "/"
+                                                          kernel-release))
+                                          (old-umask (umask #o22)))
+                                     (when (file-exists? directory)
+                                       (make-static-device-nodes directory))
+                                     (umask old-umask))
 
-                                                              (fork+exec-command
-                                                               (list udevd
-                                                                     #$@(if (udev-configuration-debug?
-                                                                             config)
-                                                                            '("--debug")
-                                                                            '()))
-                                                               #:environment-variables
-                                                               (cons* (string-append
-                                                                       "LINUX_MODULE_DIRECTORY="
-                                                                       (getenv
-                                                                        "LINUX_MODULE_DIRECTORY"))
-                                                                      (default-environment-variables))))))
+                                   (fork+exec-command
+                                    (list udevd
+                                          #$@(if (udev-configuration-debug? config)
+                                                 '("--debug")
+                                                 '()))
+                                    #:environment-variables
+                                    (cons* (string-append
+                                            "LINUX_MODULE_DIRECTORY="
+                                            (getenv "LINUX_MODULE_DIRECTORY"))
+                                           (default-environment-variables))))))
                             (stop #~(make-kill-destructor))
                             (respawn? #f)
                             (modules `((gnu build linux-boot)
@@ -1168,10 +1145,11 @@ trigger.  CONFIG is the udev configuration."
                             (requirement '(udev))
                             (documentation
                              "Trigger Qubes udev coldplug without blocking udev readiness.")
-                            (start #~(make-forkexec-constructor (list #$(qubes-udev-coldplug-program
-                                                                         config))
-                                      #:log-file
-                                      "/var/log/qubes-udev-coldplug.log"))
+                            (start
+                             #~(make-forkexec-constructor
+                                (list #$(qubes-udev-coldplug-program config))
+                                #:log-file
+                                "/var/log/qubes-udev-coldplug.log"))
                             (stop #~(make-kill-destructor))
                             (respawn? #f)))))
 
@@ -1324,10 +1302,11 @@ CONFIG, a @code{sysctl-configuration}."
                                    qubes-sysctl-shepherd-service)))
                 (compose concatenate)
                 (extend (lambda (config settings)
-                          (sysctl-configuration (inherit config)
-                                                (settings (append (sysctl-configuration-settings
-                                                                   config)
-                                                                  settings)))))
+                          (sysctl-configuration
+                           (inherit config)
+                           (settings
+                            (append (sysctl-configuration-settings config)
+                                    settings)))))
                 (default-value (sysctl-configuration))
                 (description
                  "Apply kernel sysctl settings with a Qubes-local Scheme helper.")))
@@ -1572,10 +1551,10 @@ for dom0 ballooning, built from CONFIG, a
                           (documentation
                            "Run the Qubes memory information reporter.")
                           (respawn? #f)
-                          (start #~(make-forkexec-constructor (list #$(qubes-meminfo-writer-program
-                                                                       config))
-                                    #:log-file
-                                    "/var/log/qubes-meminfo-writer.log"))
+                          (start
+                           #~(make-forkexec-constructor
+                              (list #$(qubes-meminfo-writer-program config))
+                              #:log-file "/var/log/qubes-meminfo-writer.log"))
                           (stop #~(make-kill-destructor)))))
 
 (define qubes-meminfo-writer-service-type
@@ -1865,9 +1844,11 @@ The argument is the ignored service value."
                           (documentation
                            "Forward 127.0.0.1:8082 to Qubes UpdatesProxy RPC.")
                           (respawn? #f)
-                          (start #~(make-forkexec-constructor (list #$(qubes-updates-proxy-forwarder-program))
-                                    #:log-file
-                                    "/var/log/qubes-updates-proxy-forwarder.log"))
+                          (start
+                           #~(make-forkexec-constructor
+                              (list #$(qubes-updates-proxy-forwarder-program))
+                              #:log-file
+                              "/var/log/qubes-updates-proxy-forwarder.log"))
                           (stop #~(make-kill-destructor)))))
 
 (define qubes-updates-proxy-forwarder-service-type
@@ -2040,9 +2021,10 @@ is the ignored service value."
   (list (shepherd-service (provision '(qubes-qrexec-agent))
                           (requirement '(qubes-bind-dirs))
                           (documentation "Run the Qubes qrexec agent.")
-                          (start #~(make-forkexec-constructor (list #$(qubes-qrexec-agent-program))
-                                    #:log-file
-                                    "/var/log/qubes-qrexec-agent.log"))
+                          (start
+                           #~(make-forkexec-constructor
+                              (list #$(qubes-qrexec-agent-program))
+                              #:log-file "/var/log/qubes-qrexec-agent.log"))
                           (stop #~(make-kill-destructor)))))
 
 (define qubes-qrexec-agent-service-type
@@ -2106,8 +2088,10 @@ the ignored service value."
                           (requirement '(user-processes qubes-bind-dirs
                                                         qubes-qrexec-agent))
                           (documentation "Run the Qubes GUI agent.")
-                          (start #~(make-forkexec-constructor (list #$(qubes-gui-agent-program))
-                                    #:log-file "/var/log/qubes-gui-agent.log"))
+                          (start
+                           #~(make-forkexec-constructor
+                              (list #$(qubes-gui-agent-program))
+                              #:log-file "/var/log/qubes-gui-agent.log"))
                           (stop #~(make-kill-destructor)))))
 
 (define qubes-gui-agent-service-type
