@@ -5,7 +5,6 @@
   #:use-module (guix gexp)
   #:use-module (gnu)
   #:use-module (gnu bootloader)
-  #:use-module (gnu system nss)
   #:use-module (gnu services)
   #:use-module (gnu services dbus)
   #:use-module (gnu system privilege)
