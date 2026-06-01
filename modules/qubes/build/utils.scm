@@ -65,10 +65,7 @@ emptied as it is consumed; do nothing when SOURCE does not exist."
                       (begin
                         (delete-path to)
                         (rename-file from to)))))
-              (scandir source
-                       (lambda (entry)
-                         (not (member entry
-                                      '("." ".."))))))))
+              (scandir source (lambda (entry) (not (member entry '("." ".."))))))))
 
 (define (python-version-directory root)
   "Return the name (e.g. @code{\"python3.10\"}) of the first
@@ -76,10 +73,7 @@ emptied as it is consumed; do nothing when SOURCE does not exist."
 when ROOT has no such directory."
   (let* ((lib (string-append root "/lib"))
          (entries (and (path-exists? lib)
-                       (scandir lib
-                                (lambda (entry)
-                                  (string-prefix? "python"
-                                                  entry))))))
+                       (scandir lib (lambda (entry) (string-prefix? "python" entry))))))
     (and entries
          (pair? entries)
          (car entries))))
@@ -113,9 +107,7 @@ that source drift fails the build loudly."
     (unless index
       (error "expected text not found" context))
     (string-append (substring text 0 index) replacement
-                   (substring text
-                              (+ index
-                                 (string-length needle))))))
+                   (substring text (+ index (string-length needle))))))
 
 (define (python-quote text)
   "Return TEXT as a single-quoted Python string literal, escaping backslashes,
@@ -126,13 +118,10 @@ source."
                              (string-for-each (lambda (char)
                                                 (case char
                                                   ((#\\ #\')
-                                                   (display
-                                                    "\\" port)
-                                                   (display
-                                                    char port))
+                                                   (display "\\" port)
+                                                   (display char port))
                                                   ((#\newline)
-                                                   (display
-                                                    "\\n" port))
+                                                   (display "\\n" port))
                                                   (else (display
                                                          char
                                                          port))))
@@ -142,6 +131,4 @@ source."
 (define (python-list entries)
   "Return ENTRIES, a list of strings, rendered as a Python list literal of
 single-quoted strings (e.g. @code{[\"a\" \"b\"]} becomes @code{['a', 'b']})."
-  (string-append "["
-                 (string-join (map python-quote entries) ", ")
-                 "]"))
+  (string-append "[" (string-join (map python-quote entries) ", ") "]"))

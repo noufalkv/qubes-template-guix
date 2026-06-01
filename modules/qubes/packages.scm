@@ -98,12 +98,7 @@ ungexp-splicing (#$@), so the write/apply logic is defined a single time.
 Each consuming surface must provide a `warn' procedure (the service prelude
 and the generated helper both do) and import (ice-9 ftw) for `scandir'."
   '((define (sysctl-path family interface name)
-      (string-append "/proc/sys/net/"
-                     family
-                     "/conf/"
-                     interface
-                     "/"
-                     name))
+      (string-append "/proc/sys/net/" family "/conf/" interface "/" name))
 
     (define (write-sysctl path value)
       ;; Skip a knob whose /proc path is absent (e.g. IPv6 disabled), but
@@ -123,8 +118,7 @@ and the generated helper both do) and import (ice-9 ftw) for `scandir'."
       (or (false-if-exception (scandir (string-append "/proc/sys/net/" family
                                                       "/conf")
                                        (lambda (entry)
-                                         (not (member entry
-                                                      '("." ".."))))))
+                                         (not (member entry '("." ".."))))))
           '()))
 
     (define (apply-sysctls-to-iface settings interface)
@@ -414,12 +408,9 @@ script, without adding the full Xen tool stack to native Qubes Guix templates.")
               (invoke "make"
                       "all"
                       "CC=gcc"
-                      (string-append "PREFIX="
-                                     #$output)
-                      (string-append "LIBDIR="
-                                     #$output "/lib")
-                      (string-append "INCLUDEDIR="
-                                     #$output "/include")
+                      (string-append "PREFIX=" #$output)
+                      (string-append "LIBDIR=" #$output "/lib")
+                      (string-append "INCLUDEDIR=" #$output "/include")
                       (string-append "LDFLAGS=-L"
                                      #$xen-vchan-libs
                                      "/lib "
@@ -431,12 +422,9 @@ script, without adding the full Xen tool stack to native Qubes Guix templates.")
               (invoke "make"
                       "install"
                       "DESTDIR="
-                      (string-append "PREFIX="
-                                     #$output)
-                      (string-append "LIBDIR="
-                                     #$output "/lib")
-                      (string-append "INCLUDEDIR="
-                                     #$output "/include")))))))
+                      (string-append "PREFIX=" #$output)
+                      (string-append "LIBDIR=" #$output "/lib")
+                      (string-append "INCLUDEDIR=" #$output "/include")))))))
     (native-inputs (list pkg-config xen))
     (inputs (list xen-vchan-libs))
     (home-page "https://www.qubes-os.org/")
@@ -472,8 +460,7 @@ script, without adding the full Xen tool stack to native Qubes Guix templates.")
                       "-C"
                       "qrexec-lib"
                       "install"
-                      (string-append "DESTDIR="
-                                     #$output)
+                      (string-append "DESTDIR=" #$output)
                       "LIBDIR=/lib"
                       "INCLUDEDIR=/include"))))))
     (native-inputs (list pkg-config))
@@ -521,8 +508,7 @@ script, without adding the full Xen tool stack to native Qubes Guix templates.")
                       "-C"
                       "qmemman"
                       "install"
-                      (string-append "DESTDIR="
-                                     #$output)
+                      (string-append "DESTDIR=" #$output)
                       "BINDIR=/bin"))))))
     (inputs (list xen))
     (home-page "https://www.qubes-os.org/")
@@ -539,8 +525,7 @@ information reporter used by Qubes memory ballooning.")
      (qubes-release-source
       "qubes-core-qubesdb"
       #:patches
-      (list (local-file
-             "patches/guix-specific/qubesdb-vm-db-daemon-foreground.patch"))))
+      (list (local-file "patches/guix-specific/qubesdb-vm-db-daemon-foreground.patch"))))
     (build-system gnu-build-system)
     (arguments
      (list
@@ -569,15 +554,13 @@ information reporter used by Qubes memory ballooning.")
                       "-C"
                       "daemon"
                       "install"
-                      (string-append "DESTDIR="
-                                     #$output)
+                      (string-append "DESTDIR=" #$output)
                       "BINDIR=/bin")
               (invoke "make"
                       "-C"
                       "client"
                       "install"
-                      (string-append "DESTDIR="
-                                     #$output)
+                      (string-append "DESTDIR=" #$output)
                       "LIBDIR=/lib"
                       "BINDIR=/bin")
               ;; The upstream client installs hard-linked applets that infer
@@ -624,15 +607,13 @@ information reporter used by Qubes memory ballooning.")
                   (mkdir-p site)
                   (for-each (lambda (extension)
                               (copy-file extension
-                                         (string-append site "/"
-                                                        (basename extension))))
+                                         (string-append site "/" (basename extension))))
                             extensions)))
               (invoke "make"
                       "-C"
                       "include"
                       "install"
-                      (string-append "DESTDIR="
-                                     #$output)
+                      (string-append "DESTDIR=" #$output)
                       "INCLUDEDIR=/include"))))))
     (native-inputs (list pkg-config python-wrapper python-setuptools))
     (inputs (list bash-minimal qubes-libvchan-xen))
@@ -650,8 +631,7 @@ information reporter used by Qubes memory ballooning.")
      (qubes-release-source
       "qubes-core-qrexec"
       #:patches
-      (list (local-file
-             "patches/should-upstream/qubes-vm-qrexec-env-buf.patch"))))
+      (list (local-file "patches/should-upstream/qubes-vm-qrexec-env-buf.patch"))))
     (build-system gnu-build-system)
     (arguments
      (list
@@ -691,8 +671,7 @@ information reporter used by Qubes memory ballooning.")
               (invoke "make"
                       "install-base"
                       "install-vm"
-                      (string-append "DESTDIR="
-                                     #$output)
+                      (string-append "DESTDIR=" #$output)
                       "HAVE_PAM_APPL=1"
                       "SBINDIR=/bin"
                       "LIBDIR=/lib"
@@ -706,8 +685,7 @@ information reporter used by Qubes memory ballooning.")
                 (define (directory-entries directory)
                   (or (false-if-exception (scandir directory
                                                    (lambda (entry)
-                                                     (not (member entry
-                                                                  '("." ".."))))))
+                                                     (not (member entry '("." ".."))))))
                       '()))
 
                 (define (find-directory root name)
@@ -727,8 +705,7 @@ information reporter used by Qubes memory ballooning.")
                       (error
                        "could not determine Python site-packages version")))
                 (define site
-                  (string-append #$output "/lib/" python-directory
-                                 "/site-packages"))
+                  (string-append #$output "/lib/" python-directory "/site-packages"))
                 (define pythonpath
                   (cons site
                         (filter-map (lambda (root)
@@ -747,8 +724,7 @@ information reporter used by Qubes memory ballooning.")
                 (for-each (lambda (pair)
                             (merge-tree (string-append #$output "/"
                                                        (car pair))
-                                        (string-append #$output "/"
-                                                       (cdr pair))))
+                                        (string-append #$output "/" (cdr pair))))
                           '(("usr/bin" . "bin")
                             ("usr/lib/qubes" . "lib/qubes")
                             ("usr/lib/tmpfiles.d" . "lib/tmpfiles.d")
@@ -763,8 +739,7 @@ information reporter used by Qubes memory ballooning.")
                                   (when (and text
                                              (string-prefix?
                                               "#!/usr/bin/python3" text)
-                                             (string-contains text
-                                                              "from qrexec."))
+                                             (string-contains text "from qrexec."))
                                      (write-text script
                                                  (replace-once
                                                   text
@@ -776,8 +751,7 @@ information reporter used by Qubes memory ballooning.")
                                                   script)))))
                               (scandir bindir
                                        (lambda (entry)
-                                         (not (member entry
-                                                      '("." ".."))))))))
+                                         (not (member entry '("." ".."))))))))
                 (delete-path (string-append #$output "/gnu"))
                 (delete-path (string-append #$output "/usr"))))))))
     (native-inputs (list pkg-config gzip python-setuptools))
@@ -856,8 +830,7 @@ information reporter used by Qubes memory ballooning.")
                                            (let ((trimmed (string-trim-both
                                                            line)))
                                              (and (not (string-null? trimmed))
-                                                  (not (string-prefix? "#"
-                                                        trimmed))
+                                                  (not (string-prefix? "#" trimmed))
                                                   (let ((eq (string-index
                                                              trimmed #\=)))
                                                     (and eq
@@ -876,9 +849,7 @@ information reporter used by Qubes memory ballooning.")
                                                            (match parts
                                                              (("net" family
                                                                "conf" "*" name)
-                                                              (cons* family
-                                                                     name
-                                                                     value))
+                                                              (cons* family name value))
                                                              (_ #f))))))))
                                          lines))
                      (actual (sort-entries parsed)))
@@ -912,8 +883,7 @@ information reporter used by Qubes memory ballooning.")
             (lambda _
               (invoke "make"
                       "install-corevm"
-                      (string-append "DESTDIR="
-                                     #$output)
+                      (string-append "DESTDIR=" #$output)
                       "SBINDIR=/bin"
                       "LIBDIR=/lib"
                       "SYSLIBDIR=/lib"
@@ -924,8 +894,7 @@ information reporter used by Qubes memory ballooning.")
                       "release=Guix")
               (invoke "make"
                       "install-netvm"
-                      (string-append "DESTDIR="
-                                     #$output)
+                      (string-append "DESTDIR=" #$output)
                       "SBINDIR=/bin"
                       "LIBDIR=/lib"
                       "SYSLIBDIR=/lib"
@@ -938,20 +907,17 @@ information reporter used by Qubes memory ballooning.")
                       "-C"
                       "qubes-rpc"
                       "install"
-                      (string-append "DESTDIR="
-                                     #$output)
+                      (string-append "DESTDIR=" #$output)
                       "BINDIR=/bin"
                       "LIBDIR=/lib"
                       "SYSCONFDIR=/etc")
               (invoke "make" "-C" "qubes-rpc/thunar" "install"
-                      (string-append "DESTDIR="
-                                     #$output))
+                      (string-append "DESTDIR=" #$output))
               (invoke "make"
                       "-C"
                       "network"
                       "install"
-                      (string-append "DESTDIR="
-                                     #$output)
+                      (string-append "DESTDIR=" #$output)
                       "BINDIR=/bin"
                       "LIBDIR=/lib"
                       "SYSCONFDIR=/etc")
@@ -961,17 +927,14 @@ information reporter used by Qubes memory ballooning.")
               ;; sync application menus, and expose /usr/share/qubes/marker-vm.
               (mkdir-p (string-append #$output "/usr/share/applications"))
               (invoke "make" "-C" "misc" "install"
-                      (string-append "DESTDIR="
-                                     #$output))
+                      (string-append "DESTDIR=" #$output))
               (invoke "make" "-C" "app-menu" "install"
-                      (string-append "DESTDIR="
-                                     #$output))
+                      (string-append "DESTDIR=" #$output))
               (invoke "make"
                       "-C"
                       "filesystem"
                       "install"
-                      (string-append "DESTDIR="
-                                     #$output)
+                      (string-append "DESTDIR=" #$output)
                       "LIBDIR=/lib"
                       "SYSCONFDIR=/etc"
                       "STATEDIR=/var/lib")
@@ -1014,8 +977,7 @@ information reporter used by Qubes memory ballooning.")
                       (error
                        "could not determine Python site-packages version")))
                 (define site
-                  (string-append #$output "/lib/" python-directory
-                                 "/site-packages"))
+                  (string-append #$output "/lib/" python-directory "/site-packages"))
                 (define extra-pythonpath
                   (filter-map (lambda (root)
                                 (python-site-packages root python-directory))
@@ -1033,8 +995,7 @@ information reporter used by Qubes memory ballooning.")
                 (for-each (lambda (pair)
                             (merge-tree (string-append #$output "/"
                                                        (car pair))
-                                        (string-append #$output "/"
-                                                       (cdr pair))))
+                                        (string-append #$output "/" (cdr pair))))
                           '(("usr/bin" . "bin") ("usr/lib" . "lib")
                             ("usr/share" . "share")))
                 (delete-path (string-append #$output "/usr"))
@@ -1137,18 +1098,15 @@ information reporter used by Qubes memory ballooning.")
                       (("#!/run/current-system/profile/bin/python3")
                        (set! python-matched
                              (+ python-matched 1))
-                       (string-append "#!"
-                                      #$python "/bin/python3"))
+                       (string-append "#!" #$python "/bin/python3"))
                       (("\\[\"curl\"")
                        (set! curl-matched
                              (+ curl-matched 1))
-                       (string-append "[\""
-                                      #$curl "/bin/curl\""))
+                       (string-append "[\"" #$curl "/bin/curl\""))
                       (("\\[\"zstd\"")
                        (set! zstd-matched
                              (+ zstd-matched 1))
-                       (string-append "[\""
-                                      #$zstd "/bin/zstd\"")))
+                       (string-append "[\"" #$zstd "/bin/zstd\"")))
                     (unless (> python-matched 0)
                       (error "substitute* found no matches"
                              "qvm-template-repo-query-guix: python3 shebang"))
@@ -1196,8 +1154,7 @@ information reporter used by Qubes memory ballooning.")
                                          '#$%qubes-network-sysctl-settings)
 
                                        (define (warn message)
-                                         (display message
-                                                  (current-error-port))
+                                         (display message (current-error-port))
                                          (newline (current-error-port)))
 
                                        #$@(qubes-network-sysctl-helper-forms)
@@ -1205,8 +1162,7 @@ information reporter used by Qubes memory ballooning.")
                                        (define (arg-prefix arg)
                                          (and (string-prefix? "--prefix=" arg)
                                               (substring arg
-                                                         (string-length
-                                                          "--prefix="))))
+                                                         (string-length "--prefix="))))
 
                                        ;; Parse to (family . interface) and
                                        ;; apply only that family's settings,
@@ -1237,9 +1193,7 @@ information reporter used by Qubes memory ballooning.")
                                         (delete-duplicates
                                          (filter-map
                                           prefix->target
-                                          (filter-map
-                                           arg-prefix
-                                           (cdr (command-line))))
+                                          (filter-map arg-prefix (cdr (command-line))))
                                          equal?))))
                 (for-each (lambda (helper)
                             (let ((destination (string-append qubes-libdir "/"
@@ -1389,9 +1343,7 @@ import sys
      (qubes-release-source "qubes-gui-common"))
     (build-system copy-build-system)
     (arguments
-     (list
-      #:install-plan
-      #~'(("include" "include"))))
+     (list #:install-plan #~'(("include" "include"))))
     (home-page "https://www.qubes-os.org/")
     (synopsis "Qubes GUI protocol headers")
     (description "Common Qubes GUI protocol headers.")
@@ -1405,8 +1357,7 @@ import sys
      (qubes-release-source
       "qubes-gui-agent-linux"
       #:patches
-      (list (local-file
-             "patches/guix-specific/qubes-vm-gui-config-shell.patch"))))
+      (list (local-file "patches/guix-specific/qubes-vm-gui-config-shell.patch"))))
     (build-system gnu-build-system)
     (arguments
      (list
@@ -1429,9 +1380,7 @@ import sys
               (let ((shell (which "sh")))
                 (setenv "CONFIG_SHELL" shell)
                 (setenv "SHELL" shell))
-              (setenv "CPPFLAGS"
-                      (string-append "-I"
-                                     #$xen "/include"))
+              (setenv "CPPFLAGS" (string-append "-I" #$xen "/include"))
               (setenv "LDFLAGS"
                       (string-append "-L"
                                      #$xen-vchan-libs
@@ -1463,14 +1412,12 @@ import sys
                                 (rename-file from to)))
                             (scandir source
                                      (lambda (entry)
-                                       (not (member entry
-                                                    '("." ".."))))))))
+                                       (not (member entry '("." ".."))))))))
 
               (invoke "make"
                       "install-common"
                       "install-systemd"
-                      (string-append "DESTDIR="
-                                     #$output)
+                      (string-append "DESTDIR=" #$output)
                       "LIBDIR=/lib"
                       "USRLIBDIR=/lib"
                       "SYSLIBDIR=/lib")
@@ -1526,8 +1473,7 @@ import sys
                         (display (string-append
                                   (substring text 0 index)
                                   replacement
-                                  (substring text
-                                             (+ index (string-length needle))))
+                                  (substring text (+ index (string-length needle))))
                                  port)))))
                 (patch-run-xorg
                  "qubes-xorg-wrapper $DISPLAY_XORG -nolisten"
@@ -1674,8 +1620,7 @@ import sys
                                                      "/etc/qubes-rpc/"
                                                      (car entry))))
                             (false-if-exception (delete-file link))
-                            (symlink (string-append "../../bin/"
-                                                    (cdr entry)) link)))
+                            (symlink (string-append "../../bin/" (cdr entry)) link)))
                         '(("qubes.SetMonitorLayout" . "qubes-set-monitor-layout")
                           ("qubes.GuiVMSession" . "qubes-start-xephyr")))
               (when (file-exists? (string-append #$output "/usr"))
@@ -1802,10 +1747,8 @@ import sys
                                    "/share/licenses/pipewire-qubes")))
                 (install-file "pipewire/qubes-pw-module.so" modules)
                 (rename-file (string-append modules "/qubes-pw-module.so")
-                             (string-append modules
-                                            "/libpipewire-module-qubes.so"))
-                (chmod (string-append modules "/libpipewire-module-qubes.so")
-                       #o755)
+                             (string-append modules "/libpipewire-module-qubes.so"))
+                (chmod (string-append modules "/libpipewire-module-qubes.so") #o755)
                 (install-file "pipewire/30_qubes.conf" confd)
                 (chmod (string-append confd "/30_qubes.conf") #o644)
                 (install-file "pipewire/COPYING" license-dir)
@@ -1856,8 +1799,7 @@ OnlyShowIn=X-QUBES;
 X-GNOME-Autostart-Phase=Initialization
 "
                      port)))
-                 (chmod (string-append autostart "/qubes-pipewire.desktop")
-                        #o644)
+                 (chmod (string-append autostart "/qubes-pipewire.desktop") #o644)
 
                  ;; Advertise PipeWire audio support to dom0, exactly as
                  ;; upstream qubes-gui-agent-linux does.  dom0 only attaches an

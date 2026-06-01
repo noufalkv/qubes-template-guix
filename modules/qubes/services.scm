@@ -48,8 +48,7 @@ template.  The argument is the ignored service value."
       (define (empty-directory? directory)
         (null? (scandir directory
                         (lambda (entry)
-                          (not (member entry
-                                       '("." "..")))))))
+                          (not (member entry '("." "..")))))))
 
       (define (replace-symlink target link)
         (mkdir-p (dirname link))
@@ -102,8 +101,7 @@ template.  The argument is the ignored service value."
                             (symlink target link))))
                       (scandir source
                                (lambda (entry)
-                                 (not (member entry
-                                              '("." "..")))))))))
+                                 (not (member entry '("." "..")))))))))
 
       (define (write-text-file path text)
         (mkdir-p (dirname path))
@@ -135,8 +133,7 @@ template.  The argument is the ignored service value."
                    (absolute-target (if (and (positive? (string-length target))
                                              (char=? (string-ref target 0) #\/))
                                         target
-                                        (string-append (dirname directory) "/"
-                                                       target)))
+                                        (string-append (dirname directory) "/" target)))
                    (temporary (string-append directory ".qubes-tmp")))
               (when (file-exists? temporary)
                 (delete-file-recursively temporary))
@@ -155,8 +152,7 @@ template.  The argument is the ignored service value."
                    (absolute-target (if (and (positive? (string-length target))
                                              (char=? (string-ref target 0) #\/))
                                         target
-                                        (string-append (dirname file) "/"
-                                                       target)))
+                                        (string-append (dirname file) "/" target)))
                    (temporary (string-append file ".qubes-tmp")))
               (when (file-exists? temporary)
                 (delete-file temporary))
@@ -208,8 +204,7 @@ template.  The argument is the ignored service value."
                                   (string-append (substring text 0 index)
                                                  actions "\n"
                                                  (substring text index)))
-                      (write-text uca
-                                  (string-append text "\n" actions "\n")))))))))
+                      (write-text uca (string-append text "\n" actions "\n")))))))))
 
       ;; The upstream Qubes VM tools use fixed paths. Keep those paths as
       ;; compatibility links into the current Guix system profile.
@@ -249,8 +244,7 @@ template.  The argument is the ignored service value."
                                    (and index
                                         (substring target 0
                                                    (+ index
-                                                      (string-length
-                                                       "/zoneinfo"))))))))
+                                                      (string-length "/zoneinfo"))))))))
         (materialize-symlinked-file "/etc/localtime")
         (let ((tz (qubesdb-read "/qubes-timezone")))
           (when (and tz
@@ -316,8 +310,7 @@ action=/etc/acpi/actions/qubes-poweroff
                   "/run/qubes/bin/guix"))
       (write-text-file "/etc/profile.d/qubes-guix-tls.sh" tls-profile-script)
       (chmod "/etc/profile.d/qubes-guix-tls.sh" #o644)
-      (write-text-file "/etc/profile.d/qubes-guix-cache.sh"
-                       guix-cache-profile-script)
+      (write-text-file "/etc/profile.d/qubes-guix-cache.sh" guix-cache-profile-script)
       (chmod "/etc/profile.d/qubes-guix-cache.sh" #o644)
       (link-directory-contents "/run/current-system/profile/bin" "/bin")
       (link-directory-contents "/run/current-system/profile/bin" "/usr/bin")
@@ -375,8 +368,7 @@ PipeWire can run with elevated priority."
 (define (qubes-qrexec-pam-services _)
   "Return the list of PAM services for the qrexec and GUI agent user
 sessions.  The argument is the ignored service value."
-  (list (qubes-pam-service "qrexec")
-        (qubes-pam-service "qubes-gui-agent")))
+  (list (qubes-pam-service "qrexec") (qubes-pam-service "qubes-gui-agent")))
 
 (define qubes-qrexec-pam-service-type
   (service-type (name 'qubes-qrexec-pam)
@@ -462,8 +454,7 @@ the VM.  The argument is the ignored service value."
               (newline (current-error-port)))
 
             (define (try-run* program . args)
-              (false-if-exception
-               (zero? (apply system* program args))))
+              (false-if-exception (zero? (apply system* program args))))
 
             (define (run* program . args)
               (unless (apply try-run* program args)
@@ -480,8 +471,7 @@ the VM.  The argument is the ignored service value."
             (define (string-trim-newlines text)
               (let loop ((end (string-length text)))
                 (if (and (> end 0)
-                         (memv (string-ref text (- end 1))
-                               '(#\newline #\return)))
+                         (memv (string-ref text (- end 1)) '(#\newline #\return)))
                     (loop (- end 1))
                     (substring text 0 end))))
 
@@ -532,15 +522,10 @@ the VM.  The argument is the ignored service value."
               (utsname:release (uname)))
 
             (define (kernel-modules-release-directory)
-              (string-append
-               kernel-modules-directory
-               "/"
-               (kernel-release)))
+              (string-append kernel-modules-directory "/" (kernel-release)))
 
             (define (kernel-modules-mounted?)
-              (try-run*
-               mountpoint "-q"
-               kernel-modules-directory))
+              (try-run* mountpoint "-q" kernel-modules-directory))
 
             (define (kernel-modules-available?)
               (file-exists? (kernel-modules-release-directory)))
@@ -560,16 +545,11 @@ the VM.  The argument is the ignored service value."
               (cond
                 ((kernel-modules-available?)
                  #t)
-                ((wait-for-path
-                  kernel-modules-device
-                  attempts)
+                ((wait-for-path kernel-modules-device attempts)
                  (unless (kernel-modules-mounted?)
-                   (unless (try-run*
-                            mount
-                            "-o"
-                            "ro"
-                            kernel-modules-device
-                            kernel-modules-directory)
+                   (unless (try-run* mount "-o" "ro"
+                                     kernel-modules-device
+                                     kernel-modules-directory)
                      (warn (string-append
                             "failed to mount Qubes dom0 kernel modules image: "
                             kernel-modules-device))
@@ -590,66 +570,39 @@ the VM.  The argument is the ignored service value."
                        "/run/setuid-programs:"
                        "/run/current-system/profile/bin:"
                        "/run/current-system/profile/sbin"
-                       (let ((path
-                              (getenv
-                               "PATH")))
-                         (if
-                          path
-                          (string-append
-                           ":"
-                           path)
-                          ""))))
-              (setenv
-               "LINUX_MODULE_DIRECTORY"
-               kernel-modules-directory)
+                       (let ((path (getenv "PATH")))
+                         (if path
+                             (string-append ":" path)
+                             ""))))
+              (setenv "LINUX_MODULE_DIRECTORY" kernel-modules-directory)
               (for-each (match-lambda
                           ((name . value)
-                           (setenv
-                            name
-                            value)))
+                           (setenv name value)))
                         '(("SSL_CERT_DIR" . "/etc/ssl/certs")
                           ("SSL_CERT_FILE" . "/etc/ssl/certs/ca-certificates.crt")
                           ("GIT_SSL_CAINFO" . "/etc/ssl/certs/ca-certificates.crt")
                           ("CURL_CA_BUNDLE" . "/etc/ssl/certs/ca-certificates.crt")))
-              (let ((python-paths
-                     (profile-python-paths)))
-                (prepend-environment
-                 "PYTHONPATH"
-                 python-paths)
-                (prepend-environment
-                 "GUIX_PYTHONPATH"
-                 python-paths))
-              (setenv
-               "QREXEC_SERVICE_PATH"
-               (string-append
-                "/run/qubes-rpc:/usr/local/etc/qubes-rpc:/etc/qubes-rpc:"
-                "/run/current-system/profile/etc/qubes-rpc"))
-              (setenv
-               "QUBES_RPC_CONFIG_PATH"
-               (string-append
-                "/run/qubes/rpc-config:/usr/local/etc/qubes/rpc-config:"
-                "/etc/qubes/rpc-config:"
-                "/run/current-system/profile/etc/qubes/rpc-config"))
-              (mkdir-p
-               "/run/qubes")
-              (mkdir-p
-               "/run/qubes-service")
-              (mkdir-p
-               "/var/run")
-              (mkdir-p
-               "/var/log/qubes")
-              (mkdir-p
-               "/usr/local")
-              (let ((gid (group-gid
-                          "qubes")))
+              (let ((python-paths (profile-python-paths)))
+                (prepend-environment "PYTHONPATH" python-paths)
+                (prepend-environment "GUIX_PYTHONPATH" python-paths))
+              (setenv "QREXEC_SERVICE_PATH"
+                      (string-append
+                       "/run/qubes-rpc:/usr/local/etc/qubes-rpc:/etc/qubes-rpc:"
+                       "/run/current-system/profile/etc/qubes-rpc"))
+              (setenv "QUBES_RPC_CONFIG_PATH"
+                      (string-append
+                       "/run/qubes/rpc-config:/usr/local/etc/qubes/rpc-config:"
+                       "/etc/qubes/rpc-config:"
+                       "/run/current-system/profile/etc/qubes/rpc-config"))
+              (mkdir-p "/run/qubes")
+              (mkdir-p "/run/qubes-service")
+              (mkdir-p "/var/run")
+              (mkdir-p "/var/log/qubes")
+              (mkdir-p "/usr/local")
+              (let ((gid (group-gid "qubes")))
                 (when gid
-                  (false-if-exception
-                   (chown
-                    "/run/qubes"
-                    -1 gid))))
-              (chmod
-               "/run/qubes"
-               #o775))
+                  (false-if-exception (chown "/run/qubes" -1 gid))))
+              (chmod "/run/qubes" #o775))
 
             ;; The fixed compat symlinks
             ;; (incl. /var/run/qubes*) are
@@ -709,8 +662,7 @@ the VM.  The argument is the ignored service value."
                            "gntalloc")))
               (when (and (not (file-exists? "/dev/xen/xenbus"))
                          (file-exists? "/proc/xen/xenbus"))
-                (false-if-exception
-                 (symlink "/proc/xen/xenbus" "/dev/xen/xenbus")))
+                (false-if-exception (symlink "/proc/xen/xenbus" "/dev/xen/xenbus")))
               (let ((gid (group-gid "qubes")))
                 (for-each (lambda (entry)
                             (let ((path (string-append "/dev/xen/" entry)))
@@ -736,8 +688,7 @@ the VM.  The argument is the ignored service value."
 
             (define (prepare-service-runtime)
               (runtime-setup)
-              (kernel-modules-setup
-               0)
+              (kernel-modules-setup 0)
               (xen-device-setup))
 
             (define (service-enabled? name)
@@ -885,9 +836,7 @@ present at boot are processed.  CONFIG is the udev configuration."
                                    (and exit-code
                                         (zero? exit-code))))))
                          ((zero? remaining)
-                          (format #t
-                                  "udevadm command timed out: ~s~%"
-                                  args)
+                          (format #t "udevadm command timed out: ~s~%" args)
                           (terminate-child pid) #f)
                          (else (usleep 100000)
                                (wait (- remaining 1)))))))))
@@ -927,18 +876,14 @@ trigger.  CONFIG is the udev configuration."
                     (linux-module-directory
                      (getenv "LINUX_MODULE_DIRECTORY"))
                     (directory
-                     (string-append linux-module-directory "/"
-                                    kernel-release))
+                     (string-append linux-module-directory "/" kernel-release))
                     (old-umask (umask #o22)))
                (when (file-exists? directory)
                  (make-static-device-nodes directory))
                (umask old-umask))
 
              (fork+exec-command
-              (list udevd
-                    #$@(if (udev-configuration-debug? config)
-                           '("--debug")
-                           '()))
+              (list udevd #$@(if (udev-configuration-debug? config) '("--debug") '()))
               #:environment-variables
               (cons* (string-append
                       "LINUX_MODULE_DIRECTORY="
@@ -1077,8 +1022,7 @@ path is missing or unwritable."
                                        (value (cdr setting))
                                        (path (sysctl-key->path key)))
                                   (unless (file-exists? path)
-                                    (warn (string-append
-                                           "sysctl path is missing: " path))
+                                    (warn (string-append "sysctl path is missing: " path))
                                     (exit 1))
                                   (catch #t
                                          (lambda ()
@@ -1164,8 +1108,7 @@ all interfaces, reusing the helper forms from (qubes packages)."
 
                             #$@(qubes-network-sysctl-helper-forms)
 
-                            (apply-sysctls-to-all-ifaces
-                             network-sysctl-settings)))
+                            (apply-sysctls-to-all-ifaces network-sysctl-settings)))
 
 (define (qubes-network-sysctl-shepherd-service _)
   "Return the one-shot Shepherd service that applies the Qubes network sysctl
@@ -1189,9 +1132,8 @@ settings.  The argument is the ignored service value."
 VM daemon."
   (qubes-vm-service-program "qubes-db"
                             (prepare-service-runtime)
-                            (exec*
-                             "/run/current-system/profile/bin/qubesdb-daemon"
-                             "0")))
+                            (exec* "/run/current-system/profile/bin/qubesdb-daemon"
+                                   "0")))
 
 (define (qubes-db-shepherd-service _)
   "Return the Shepherd service that runs the QubesDB VM daemon.  The argument
@@ -1217,8 +1159,7 @@ is the ignored service value."
 as the hostname and timezone."
   (qubes-vm-service-program "qubes-early-vm-config"
                             (prepare-service-runtime)
-                            (exec*
-                             "/usr/lib/qubes/init/qubes-early-vm-config.sh")))
+                            (exec* "/usr/lib/qubes/init/qubes-early-vm-config.sh")))
 
 (define (qubes-early-vm-config-shepherd-service _)
   "Return the one-shot Shepherd service that runs the early VM configuration
@@ -1317,19 +1258,13 @@ CONFIG, exiting cleanly when the meminfo-writer service flag is absent."
                   (> pid 1))
              (sigaction SIGTERM
                         (lambda _
-                          (false-if-exception (kill
-                                               pid
-                                               SIGTERM))
-                          (false-if-exception (delete-file
-                                               pidfile))
+                          (false-if-exception (kill pid SIGTERM))
+                          (false-if-exception (delete-file pidfile))
                           (exit 0)))
              (sigaction SIGINT
                         (lambda _
-                          (false-if-exception (kill
-                                               pid
-                                               SIGTERM))
-                          (false-if-exception (delete-file
-                                               pidfile))
+                          (false-if-exception (kill pid SIGTERM))
+                          (false-if-exception (delete-file pidfile))
                           (exit 0)))
              (let loop ()
                (if (false-if-exception (kill pid 0))
@@ -1337,8 +1272,7 @@ CONFIG, exiting cleanly when the meminfo-writer service flag is absent."
                      (sleep 60)
                      (loop))
                    (begin
-                     (false-if-exception (delete-file
-                                          pidfile))
+                     (false-if-exception (delete-file pidfile))
                      (exit 1)))))
             ((< attempt 50)
              (usleep 100000)
@@ -1461,9 +1395,7 @@ network is configured."
 
     (define (write-required-file path value)
       (unless (file-exists? path)
-        (warn (string-append
-               "required network control file is missing: "
-               path))
+        (warn (string-append "required network control file is missing: " path))
         (exit 1))
       (catch #t
              (lambda ()
@@ -1472,9 +1404,7 @@ network is configured."
                    (display value port)
                    (newline port))))
              (lambda (key . args)
-               (warn (string-append
-                      "failed to write network control file: "
-                      path))
+               (warn (string-append "failed to write network control file: " path))
                (exit 1))))
 
     (define (write-optional-file path value)
@@ -1496,8 +1426,7 @@ network is configured."
                   (try-run* modprobe "netbk")
                   (try-run* modprobe "xen-netback")
                   (network-backend-loaded?))
-        (warn
-         "could not load Xen network backend module")
+        (warn "could not load Xen network backend module")
         (exit 1)))
 
     (prepare-service-runtime)
@@ -1693,9 +1622,7 @@ repairs the writable /etc/fstab /rw entry, and runs @file{mount-dirs.sh}."
                     (let ((fields (string-tokenize
                                    line)))
                       (and (>= (length fields) 2)
-                           (not (string-prefix? "#"
-                                                (car
-                                                 fields)))
+                           (not (string-prefix? "#" (car fields)))
                            (string=? (cadr fields)
                                      "/rw"))))
                   (string-split text #\newline)))))
@@ -1874,8 +1801,7 @@ dom0 has not enabled the GUI for this VM."
                             (setenv "DISPLAY" ":0")
                             (run* "/usr/lib/qubes/qubes-gui-agent-pre.sh")
                             (let* ((entries (read-service-environment))
-                                   (display (environment-ref entries "DISPLAY"
-                                                             ":0"))
+                                   (display (environment-ref entries "DISPLAY" ":0"))
                                    (gui-opts (environment-ref entries
                                                               "GUI_OPTS" "")))
                               (setenv "DISPLAY" display)
