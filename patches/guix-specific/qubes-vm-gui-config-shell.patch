@@ -1,0 +1,42 @@
+Invoke the generated Xorg-helper configure scripts through ${CONFIG_SHELL:-sh}
+instead of relying on an executable ./configure / $srcdir/configure.  After
+Guix's shebang-patching phase the generated scripts may not be directly
+executable inside the build container; the explicit shell avoids that.
+
+Guix-specific: build-container shell handling.
+Upstream file: qubes-gui-agent-linux Makefile, xf86-input-mfndev/autogen.sh,
+xf86-video-dummy/autogen.sh
+
+diff --git a/Makefile b/Makefile
+index 37248ef..3012b73 100644
+--- a/Makefile
++++ b/Makefile
+@@ -64,7 +64,7 @@ gui-agent/qubes-gui gui-agent/qubes-gui-runuser:
+ 	$(MAKE) -C gui-agent
+ 
+ xf86-input-mfndev/src/.libs/qubes_drv.so: xf86-qubes-common/libxf86-qubes-common.so
+-	(cd xf86-input-mfndev && ./autogen.sh && ./configure)
++	(cd xf86-input-mfndev && ./autogen.sh && ${CONFIG_SHELL:-sh} ./configure)
+ 	$(MAKE) -C xf86-input-mfndev
+ 
+ xf86-video-dummy/src/.libs/dummyqbs_drv.so: xf86-qubes-common/libxf86-qubes-common.so
+diff --git a/xf86-input-mfndev/autogen.sh b/xf86-input-mfndev/autogen.sh
+index cc1069b..8a8d698 100755
+--- a/xf86-input-mfndev/autogen.sh
++++ b/xf86-input-mfndev/autogen.sh
+@@ -12,4 +12,4 @@ autoupdate -v -f || exit 1
+ autoreconf -v --install || exit 1
+ cd $ORIGDIR || exit $?
+ 
+-$srcdir/configure --enable-maintainer-mode "$@"
++${CONFIG_SHELL:-sh} $srcdir/configure --enable-maintainer-mode "$@"
+diff --git a/xf86-video-dummy/autogen.sh b/xf86-video-dummy/autogen.sh
+index 904cd67..36433be 100755
+--- a/xf86-video-dummy/autogen.sh
++++ b/xf86-video-dummy/autogen.sh
+@@ -9,4 +9,4 @@ cd $srcdir
+ autoreconf -v --install || exit 1
+ cd $ORIGDIR || exit $?
+ 
+-$srcdir/configure --enable-maintainer-mode "$@"
++${CONFIG_SHELL:-sh} $srcdir/configure --enable-maintainer-mode "$@"
