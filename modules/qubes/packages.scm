@@ -542,10 +542,11 @@ information reporter used by Qubes memory ballooning.")
     (name "qubesdb-vm")
     (version (qubes-release-version "qubes-core-qubesdb"))
     (source
-     (qubes-release-source "qubes-core-qubesdb"
-                           #:patches
-                           (list (local-file
-                                  "patches/guix-specific/qubesdb-vm-db-daemon-foreground.patch"))))
+     (qubes-release-source
+      "qubes-core-qubesdb"
+      #:patches
+      (list (local-file
+             "patches/guix-specific/qubesdb-vm-db-daemon-foreground.patch"))))
     (build-system gnu-build-system)
     (arguments
      (list
@@ -652,10 +653,11 @@ information reporter used by Qubes memory ballooning.")
     (name "qubes-vm-qrexec")
     (version (qubes-release-version "qubes-core-qrexec"))
     (source
-     (qubes-release-source "qubes-core-qrexec"
-                           #:patches
-                           (list (local-file
-                                  "patches/should-upstream/qubes-vm-qrexec-env-buf.patch"))))
+     (qubes-release-source
+      "qubes-core-qrexec"
+      #:patches
+      (list (local-file
+             "patches/should-upstream/qubes-vm-qrexec-env-buf.patch"))))
     (build-system gnu-build-system)
     (arguments
      (list
@@ -770,15 +772,15 @@ information reporter used by Qubes memory ballooning.")
                                               "#!/usr/bin/python3" text)
                                              (string-contains text
                                                               "from qrexec."))
-                                    (write-text script
-                                                (replace-once text
-                                                              "\nfrom qrexec."
-                                                              (string-append
-                                                               "\nimport sys\nsys.path[:0] = "
-                                                               (python-list
-                                                                pythonpath)
-                                                               "\nfrom qrexec.")
-                                                              script)))))
+                                     (write-text script
+                                                 (replace-once
+                                                  text
+                                                  "\nfrom qrexec."
+                                                  (string-append
+                                                   "\nimport sys\nsys.path[:0] = "
+                                                   (python-list pythonpath)
+                                                   "\nfrom qrexec.")
+                                                  script)))))
                               (scandir bindir
                                        (lambda (entry)
                                          (not (member entry
@@ -798,16 +800,17 @@ information reporter used by Qubes memory ballooning.")
     (name "qubes-vm-core")
     (version (qubes-release-version "qubes-core-agent-linux"))
     (source
-     (qubes-release-source "qubes-core-agent-linux"
-                           #:patches
-                           (list (local-file
-                                  "patches/guix-specific/qubes-vm-core-init-functions-skel.patch")
-                                 (local-file
-                                  "patches/guix-specific/qubes-vm-core-setup-ip-sysctl.patch")
-                                 (local-file
-                                  "patches/guix-specific/qubes-vm-core-vif-route-sysctl.patch")
-                                 (local-file
-                                  "patches/should-upstream/qubes-vm-core-wait-for-session-guard.patch"))))
+     (qubes-release-source
+      "qubes-core-agent-linux"
+      #:patches
+      (list (local-file
+             "patches/guix-specific/qubes-vm-core-init-functions-skel.patch")
+            (local-file
+             "patches/guix-specific/qubes-vm-core-setup-ip-sysctl.patch")
+            (local-file
+             "patches/guix-specific/qubes-vm-core-vif-route-sysctl.patch")
+            (local-file
+             "patches/should-upstream/qubes-vm-core-wait-for-session-guard.patch"))))
     (build-system gnu-build-system)
     (arguments
      (list
@@ -1397,10 +1400,11 @@ import sys
     (name "qubes-vm-gui")
     (version (qubes-release-version "qubes-gui-agent-linux"))
     (source
-     (qubes-release-source "qubes-gui-agent-linux"
-                           #:patches
-                           (list (local-file
-                                  "patches/guix-specific/qubes-vm-gui-config-shell.patch"))))
+     (qubes-release-source
+      "qubes-gui-agent-linux"
+      #:patches
+      (list (local-file
+             "patches/guix-specific/qubes-vm-gui-config-shell.patch"))))
     (build-system gnu-build-system)
     (arguments
      (list
@@ -1470,8 +1474,10 @@ import sys
               ;; qrexec-fork-server daemonizes itself.  Keep upstream's XDG
               ;; autostart launcher as the single owner of that user-session
               ;; daemon instead of supervising it from Shepherd.
-              (unless (file-exists? (string-append #$output
-                                     "/etc/xdg/autostart/qubes-qrexec-fork-server.desktop"))
+              (unless (file-exists?
+                       (string-append
+                        #$output
+                        "/etc/xdg/autostart/qubes-qrexec-fork-server.desktop"))
                 (error "missing qrexec-fork-server.desktop"))
               (install-file "appvm-scripts/etc/sysconfig/desktop"
                             (string-append #$output "/etc/sysconfig"))
