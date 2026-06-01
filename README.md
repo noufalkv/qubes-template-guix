@@ -43,17 +43,29 @@ This is a reviewable prototype, not a published Qubes community template.
 guix pull -p <temporary-profile> --allow-downgrades -C config/channels.scm
 ```
 
-The refreshed Guix command is used only for template generation.  The generated
-template does not install the pinned channel as root or user `guix pull` state.
-The image installs this repository's channel modules under
-`/etc/qubes-guix-channel/modules` so `/etc/config.scm` can be reconfigured
-offline with `guix system -L /etc/qubes-guix-channel/modules reconfigure
-/etc/config.scm`, and it ships `/etc/guix/channels.scm` so a user can instead
-`guix pull` the Qubes channel and update the idiomatic way.
+The refreshed Guix command is used only for template generation.  The Guix
+channel is unpinned (tracks `master`), so each build uses a current Guix.  The
+generated template does not install the pinned channel as root or user `guix
+pull` state.  In the running template the idiomatic update flow is:
 
-`config/channels.scm` uses Guix's official Codeberg channel URL.  That is an
-upstream channel pin for the builder, not a checkout or file-channel rewrite.
-There is no unauthenticated channel fallback, channel-file override, or
+```sh
+guix pull
+sudo guix system reconfigure /etc/config.scm
+```
+
+`guix pull` reads the installed `/etc/guix/channels.scm`, which adds this Qubes
+channel (and tracks upstream Guix via `%default-channels`), so `(qubes vm)`
+resolves with no `-L`.  The image also ships the channel modules under
+`/etc/qubes-guix-channel/modules` as an offline fallback:
+
+```sh
+sudo guix system -L /etc/qubes-guix-channel/modules reconfigure /etc/config.scm
+```
+
+`config/channels.scm` uses Guix's official Codeberg channel URL on its `master`
+branch with no commit pin, so template builds track current Guix.  That is an
+upstream channel reference for the builder, not a checkout or file-channel
+rewrite.  There is no unauthenticated channel fallback, channel-file override, or
 developer checkout override in the build path.
 
 ## Build Root Images
@@ -138,10 +150,11 @@ The system definition is `config/qubes-os-normal.scm` and `config/qubes-os-minim
 `operating-system` form that imports `(qubes vm)` and wires its package sets,
 services, and privileged programs.
 These concrete configs are installed as
-`/etc/config.scm`.  The image also carries the channel modules under
-`/etc/qubes-guix-channel/modules` (for offline `guix system -L … reconfigure`)
-and `/etc/guix/channels.scm` (for `guix pull`).  Build-time evaluation uses the
-same modules with `guix system -L modules`.
+`/etc/config.scm`.  Users update with `guix pull && sudo guix system reconfigure
+/etc/config.scm` via the installed `/etc/guix/channels.scm`.  The image also
+carries the channel modules under `/etc/qubes-guix-channel/modules` as an offline
+fallback (`guix system -L … reconfigure`).  Build-time evaluation uses the same
+modules with `guix system -L modules`.
 
 After adding a package with a desktop entry, add that desktop-file ID to the
 matching appmenu allowlist under `builder-v2-template/`.  Use package-provided

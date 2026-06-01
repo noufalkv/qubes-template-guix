@@ -1,15 +1,16 @@
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
 ;; Installed as /etc/guix/channels.scm in the Qubes Guix template.  It lets the
-;; user run "guix pull" to update the Qubes channel modules the idiomatic way
-;; instead of staying pinned to the modules baked into the image.  No commit is
-;; pinned, so pulls track the branch; release reproducibility comes from the
-;; build-time config/channels.scm.  During development this points at the
-;; GitHub mirror; move it to the Qubes-hosted URL for publication.
+;; user run "guix pull" to update both Guix and the Qubes channel the idiomatic
+;; way instead of staying pinned to the modules baked into the image.  No commit
+;; is pinned, so pulls track the branch head; Guix itself tracks upstream via
+;; %default-channels and updates naturally.  During development this points at
+;; the GitHub mirror's default branch; move it to the Qubes-hosted URL for
+;; publication.
 (cons (channel
         (name 'qubes)
         (url "https://github.com/noufalkv/qubes-template-guix.git")
-        (branch "main")
+        (branch "quality-refactor")
         (introduction
          (make-channel-introduction "0e2aef5aca27851bd9d00b4c036f790b1c2ad979"
           (openpgp-fingerprint
