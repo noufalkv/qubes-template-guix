@@ -35,18 +35,13 @@ existing).  Return @code{#f} otherwise."
 (define (non-symlink-directory? path)
   "Return @code{#t} when PATH is a real directory and not a symbolic link to
 one, and @code{#f} otherwise."
-  (let ((st (false-if-exception (lstat path))))
-    (and st
-         (eq? (stat:type st)
-              'directory))))
+  (let ((st (false-if-exception (lstat path)))) (and st (eq? (stat:type st) 'directory))))
 
 (define (delete-path path)
   "Delete PATH if it exists, recursing into it when it is a real directory and
 unlinking it directly otherwise.  Do nothing when PATH is absent."
   (when (path-exists? path)
-    (if (non-symlink-directory? path)
-        (delete-file-recursively path)
-        (delete-file path))))
+    (if (non-symlink-directory? path) (delete-file-recursively path) (delete-file path))))
 
 (define (merge-tree source destination)
   "Move every entry under SOURCE into DESTINATION, merging recursively when an
@@ -59,12 +54,8 @@ emptied as it is consumed; do nothing when SOURCE does not exist."
                       (to (string-append destination "/" name)))
                   (if (and (non-symlink-directory? from)
                            (non-symlink-directory? to))
-                      (begin
-                        (merge-tree from to)
-                        (rmdir from))
-                      (begin
-                        (delete-path to)
-                        (rename-file from to)))))
+                      (begin (merge-tree from to) (rmdir from))
+                      (begin (delete-path to) (rename-file from to)))))
               (scandir source (lambda (entry) (not (member entry '("." ".."))))))))
 
 (define (python-version-directory root)
@@ -74,9 +65,7 @@ when ROOT has no such directory."
   (let* ((lib (string-append root "/lib"))
          (entries (and (path-exists? lib)
                        (scandir lib (lambda (entry) (string-prefix? "python" entry))))))
-    (and entries
-         (pair? entries)
-         (car entries))))
+    (and entries (pair? entries) (car entries))))
 
 (define (python-site-packages root python-directory)
   "Return ROOT's @file{lib/PYTHON-DIRECTORY/site-packages} path when it
@@ -88,24 +77,20 @@ returned by @code{python-version-directory}."
 
 (define (read-text path)
   "Read and return the entire contents of the file at PATH as a string."
-  (call-with-input-file path
-    get-string-all))
+  (call-with-input-file path get-string-all))
 
 (define (write-text path text)
   "Write the string TEXT to the file at PATH, creating PATH's parent directory
 first when necessary."
   (mkdir-p (dirname path))
-  (call-with-output-file path
-    (lambda (port)
-      (display text port))))
+  (call-with-output-file path (lambda (port) (display text port))))
 
 (define (replace-once text needle replacement context)
   "Return TEXT with the first occurrence of the substring NEEDLE replaced by
 REPLACEMENT.  Raise an error mentioning CONTEXT when NEEDLE is not present, so
 that source drift fails the build loudly."
   (let ((index (string-contains text needle)))
-    (unless index
-      (error "expected text not found" context))
+    (unless index (error "expected text not found" context))
     (string-append (substring text 0 index) replacement
                    (substring text (+ index (string-length needle))))))
 
@@ -120,11 +105,8 @@ source."
                                                   ((#\\ #\')
                                                    (display "\\" port)
                                                    (display char port))
-                                                  ((#\newline)
-                                                   (display "\\n" port))
-                                                  (else (display
-                                                         char
-                                                         port))))
+                                                  ((#\newline) (display "\\n" port))
+                                                  (else (display char port))))
                                               text)
                              (display "'" port))))
 

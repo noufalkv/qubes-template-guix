@@ -107,9 +107,7 @@ and the generated helper both do) and import (ice-9 ftw) for `scandir'."
       (when (file-exists? path)
         (catch #t
                (lambda ()
-                 (call-with-output-file path
-                   (lambda (port)
-                     (display value port))))
+                 (call-with-output-file path (lambda (port) (display value port))))
                (lambda (key . args)
                  (warn (string-append "failed to write network sysctl: " path))
                  (exit 1)))))
@@ -117,8 +115,7 @@ and the generated helper both do) and import (ice-9 ftw) for `scandir'."
     (define (interface-names family)
       (or (false-if-exception (scandir (string-append "/proc/sys/net/" family
                                                       "/conf")
-                                       (lambda (entry)
-                                         (not (member entry '("." ".."))))))
+                                       (lambda (entry) (not (member entry '("." ".."))))))
           '()))
 
     (define (apply-sysctls-to-iface settings interface)
@@ -167,8 +164,7 @@ and the generated helper both do) and import (ice-9 ftw) for `scandir'."
 (define (qubes-source-field component index)
   "Return field INDEX of COMPONENT's entry in %qubes-source-components."
   (let ((entry (assoc component %qubes-source-components)))
-    (unless entry
-      (error "unknown Qubes source component" component))
+    (unless entry (error "unknown Qubes source component" component))
     (list-ref entry index)))
 
 (define (qubes-release-version component)
@@ -187,8 +183,7 @@ the fetched source; it defaults to the empty list."
     (uri (git-reference (url (string-append "https://github.com/QubesOS/"
                                             component ".git"))
                         (commit (qubes-source-field component 2))))
-    (file-name (git-file-name component
-                              (qubes-source-field component 1)))
+    (file-name (git-file-name component (qubes-source-field component 1)))
     (sha256 (base32 (qubes-source-field component 3)))
     (patches patches)))
 
@@ -196,8 +191,7 @@ the fetched source; it defaults to the empty list."
   (package
     (name "qubes-dom0-kernel")
     (version "0")
-    (source
-     #f)
+    (source #f)
     (build-system trivial-build-system)
     (arguments
      (list
@@ -207,8 +201,7 @@ the fetched source; it defaults to the empty list."
           (mkdir (string-append #$output "/lib"))
           (mkdir (string-append #$output "/lib/modules"))
           (call-with-output-file (string-append #$output "/bzImage")
-            (lambda (port)
-              (display "Qubes dom0 supplies the VM kernel.\n" port))))))
+            (lambda (port) (display "Qubes dom0 supplies the VM kernel.\n" port))))))
     (home-page "https://www.qubes-os.org/")
     (synopsis "Placeholder kernel for Qubes TemplateVM images")
     (description
@@ -221,8 +214,7 @@ root image does not need a guest kernel package.")
   (package
     (name "xen-vchan-libs")
     (version (package-version xen))
-    (source
-     #f)
+    (source #f)
     (build-system trivial-build-system)
     (arguments
      (list
@@ -253,8 +245,7 @@ root image does not need a guest kernel package.")
           (define (string-prefix? prefix value)
             (let ((prefix-length (string-length prefix)))
               (and (>= (string-length value) prefix-length)
-                   (string=? prefix
-                             (substring value 0 prefix-length)))))
+                   (string=? prefix (substring value 0 prefix-length)))))
 
           (define (wanted-library? entry)
             (and (string-match "\\.so" entry)
@@ -266,10 +257,8 @@ root image does not need a guest kernel package.")
           (define (copy-entry source destination)
             (let ((stat (lstat source)))
               (case (stat:type stat)
-                ((symlink)
-                 (symlink (readlink source) destination))
-                ((regular)
-                 (copy-file source destination)))))
+                ((symlink) (symlink (readlink source) destination))
+                ((regular) (copy-file source destination)))))
 
           (define (command-line-output . args)
             (let* ((port (apply open-pipe* OPEN_READ args))
@@ -305,8 +294,7 @@ root image does not need a guest kernel package.")
             (for-each (lambda (entry)
                         (let ((file (string-append out-lib "/" entry)))
                           (when (and (wanted-library? entry)
-                                     (eq? (stat:type (lstat file))
-                                          'regular))
+                                     (eq? (stat:type (lstat file)) 'regular))
                             (let* ((rpath (command-line-output patchelf
                                            "--print-rpath" file))
                                    (new-rpath (replace-substring rpath
@@ -331,8 +319,7 @@ vchan and qrexec components, without Xen hypervisor tools, QEMU, or firmware.")
   (package
     (name "xen-network-hotplug-tools")
     (version (package-version xen))
-    (source
-     #f)
+    (source #f)
     (build-system trivial-build-system)
     (arguments
      (list
@@ -361,14 +348,10 @@ vchan and qrexec components, without Xen hypervisor tools, QEMU, or firmware.")
             (let ((matched 0))
               (for-each (lambda (script)
                           (let ((target (string-append out-scripts "/" script)))
-                            (copy-file (string-append xen-scripts "/" script)
-                                       target)
+                            (copy-file (string-append xen-scripts "/" script) target)
                             (chmod target #o755)
                             (substitute* target
-                              ((#$xen)
-                               (set! matched
-                                     (+ matched 1))
-                               #$output))))
+                              ((#$xen) (set! matched (+ matched 1)) #$output))))
                         '("hotplugpath.sh" "locking.sh"
                           "logging.sh"
                           "vif-common.sh"
@@ -392,8 +375,7 @@ script, without adding the full Xen tool stack to native Qubes Guix templates.")
   (package
     (name "qubes-libvchan-xen")
     (version (qubes-release-version "qubes-core-vchan-xen"))
-    (source
-     (qubes-release-source "qubes-core-vchan-xen"))
+    (source (qubes-release-source "qubes-core-vchan-xen"))
     (build-system gnu-build-system)
     (arguments
      (list
@@ -436,8 +418,7 @@ script, without adding the full Xen tool stack to native Qubes Guix templates.")
   (package
     (name "qubes-linux-utils-qrexec")
     (version (qubes-release-version "qubes-linux-utils"))
-    (source
-     (qubes-release-source "qubes-linux-utils"))
+    (source (qubes-release-source "qubes-linux-utils"))
     (build-system gnu-build-system)
     (arguments
      (list
@@ -467,16 +448,14 @@ script, without adding the full Xen tool stack to native Qubes Guix templates.")
     (inputs (list icu4c))
     (home-page "https://www.qubes-os.org/")
     (synopsis "Qubes qrexec file-copy support libraries")
-    (description
-     "Qubes RPC file-copy and pure utility libraries used by VM-side agents.")
+    (description "Qubes RPC file-copy and pure utility libraries used by VM-side agents.")
     (license license:gpl2+)))
 
 (define qubes-vm-utils
   (package
     (name "qubes-vm-utils")
     (version (qubes-release-version "qubes-linux-utils"))
-    (source
-     (qubes-release-source "qubes-linux-utils"))
+    (source (qubes-release-source "qubes-linux-utils"))
     (build-system gnu-build-system)
     (arguments
      (list
@@ -574,8 +553,7 @@ information reporter used by Qubes memory ballooning.")
                             (let ((path (string-append #$output "/bin/"
                                                        (car entry)))
                                   (command (cadr entry)))
-                              (when (file-exists? path)
-                                (delete-file path))
+                              (when (file-exists? path) (delete-file path))
                               (call-with-output-file path
                                 (lambda (port)
                                   (format port "#!~a~%exec ~a -c ~a \"$@\"~%"
@@ -590,14 +568,12 @@ information reporter used by Qubes memory ballooning.")
                             ("qubesdb-list" "list")
                             ("qubesdb-watch" "watch"))))
               (let* ((extensions (find-files "python/build" "^qubesdb.*\\.so$"))
-                     (first-extension (and (pair? extensions)
-                                           (car extensions)))
+                     (first-extension (and (pair? extensions) (car extensions)))
                      (python-tag (and first-extension
                                       (string-match
                                        "\\.cpython-([0-9])([0-9]+)"
                                        (basename first-extension)))))
-                (unless python-tag
-                  (error "no built qubesdb Python extension found"))
+                (unless python-tag (error "no built qubesdb Python extension found"))
                 (let ((site (string-append #$output
                                            "/lib/python"
                                            (match:substring python-tag 1)
@@ -619,8 +595,7 @@ information reporter used by Qubes memory ballooning.")
     (inputs (list bash-minimal qubes-libvchan-xen))
     (home-page "https://www.qubes-os.org/")
     (synopsis "QubesDB VM daemon and client tools")
-    (description
-     "QubesDB VM-side daemon, command-line client, and Python bindings.")
+    (description "QubesDB VM-side daemon, command-line client, and Python bindings.")
     (license license:gpl2+)))
 
 (define qubes-vm-qrexec
@@ -696,31 +671,26 @@ information reporter used by Qubes memory ballooning.")
                              (any (lambda (entry)
                                     (let ((child (string-append directory "/"
                                                                 entry)))
-                                      (and (non-symlink-directory? child)
-                                           (loop child))))
+                                      (and (non-symlink-directory? child) (loop child))))
                                   (directory-entries directory))))))
 
                 (define python-directory
                   (or (python-version-directory #$python-pyinotify)
-                      (error
-                       "could not determine Python site-packages version")))
+                      (error "could not determine Python site-packages version")))
                 (define site
                   (string-append #$output "/lib/" python-directory "/site-packages"))
                 (define pythonpath
                   (cons site
                         (filter-map (lambda (root)
-                                      (python-site-packages root
-                                                            python-directory))
+                                      (python-site-packages root python-directory))
                                     (list #$python-pyinotify))))
 
                 (mkdir-p site)
                 (let ((qrexec-source (find-directory (string-append #$output
                                                       "/gnu/store") "qrexec")))
-                  (unless qrexec-source
-                    (error "qrexec Python package was not installed"))
+                  (unless qrexec-source (error "qrexec Python package was not installed"))
                   (delete-path (string-append site "/qrexec"))
-                  (copy-recursively qrexec-source
-                                    (string-append site "/qrexec")))
+                  (copy-recursively qrexec-source (string-append site "/qrexec")))
                 (for-each (lambda (pair)
                             (merge-tree (string-append #$output "/"
                                                        (car pair))
@@ -734,11 +704,9 @@ information reporter used by Qubes memory ballooning.")
                   (when (path-exists? bindir)
                     (for-each (lambda (name)
                                 (let* ((script (string-append bindir "/" name))
-                                       (text (false-if-exception (read-text
-                                                                  script))))
+                                       (text (false-if-exception (read-text script))))
                                   (when (and text
-                                             (string-prefix?
-                                              "#!/usr/bin/python3" text)
+                                             (string-prefix? "#!/usr/bin/python3" text)
                                              (string-contains text "from qrexec."))
                                      (write-text script
                                                  (replace-once
@@ -772,10 +740,8 @@ information reporter used by Qubes memory ballooning.")
       #:patches
       (list (local-file
              "patches/guix-specific/qubes-vm-core-init-functions-skel.patch")
-            (local-file
-             "patches/guix-specific/qubes-vm-core-setup-ip-sysctl.patch")
-            (local-file
-             "patches/guix-specific/qubes-vm-core-vif-route-sysctl.patch")
+            (local-file "patches/guix-specific/qubes-vm-core-setup-ip-sysctl.patch")
+            (local-file "patches/guix-specific/qubes-vm-core-vif-route-sysctl.patch")
             (local-file
              "patches/should-upstream/qubes-vm-core-wait-for-session-guard.patch"))))
     (build-system gnu-build-system)
@@ -820,8 +786,7 @@ information reporter used by Qubes memory ballooning.")
                      (sort-entries (lambda (entries)
                                      (sort entries
                                            (lambda (a b)
-                                             (string<? (entry-key a)
-                                                       (entry-key b))))))
+                                             (string<? (entry-key a) (entry-key b))))))
                      (expected (sort-entries '#$%qubes-network-sysctl-settings))
                      (file "network/81-qubes.conf.optional")
                      (lines (string-split (call-with-input-file file
@@ -841,8 +806,7 @@ information reporter used by Qubes memory ballooning.")
                                                                 (value (string-trim
                                                                         (substring
                                                                          trimmed
-                                                                         (+ eq
-                                                                          1))))
+                                                                         (+ eq 1))))
                                                                 (parts (string-split
                                                                         key
                                                                         #\.)))
@@ -926,8 +890,7 @@ information reporter used by Qubes memory ballooning.")
               ;; qrexec hooks need these helpers to report supported features,
               ;; sync application menus, and expose /usr/share/qubes/marker-vm.
               (mkdir-p (string-append #$output "/usr/share/applications"))
-              (invoke "make" "-C" "misc" "install"
-                      (string-append "DESTDIR=" #$output))
+              (invoke "make" "-C" "misc" "install" (string-append "DESTDIR=" #$output))
               (invoke "make" "-C" "app-menu" "install"
                       (string-append "DESTDIR=" #$output))
               (invoke "make"
@@ -941,8 +904,7 @@ information reporter used by Qubes memory ballooning.")
               (let ()
                 (define (patch-file-once path needle replacement)
                   (write-text path
-                              (replace-once (read-text path) needle
-                                            replacement path)))
+                              (replace-once (read-text path) needle replacement path)))
 
                 (define (write-guile-script path expression)
                   (mkdir-p (dirname path))
@@ -974,8 +936,7 @@ information reporter used by Qubes memory ballooning.")
 
                 (define python-directory
                   (or (python-version-directory #$python-pygobject)
-                      (error
-                       "could not determine Python site-packages version")))
+                      (error "could not determine Python site-packages version")))
                 (define site
                   (string-append #$output "/lib/" python-directory "/site-packages"))
                 (define extra-pythonpath
@@ -1096,16 +1057,13 @@ information reporter used by Qubes memory ballooning.")
                         (zstd-matched 0))
                     (substitute* guix-repo-query
                       (("#!/run/current-system/profile/bin/python3")
-                       (set! python-matched
-                             (+ python-matched 1))
+                       (set! python-matched (+ python-matched 1))
                        (string-append "#!" #$python "/bin/python3"))
                       (("\\[\"curl\"")
-                       (set! curl-matched
-                             (+ curl-matched 1))
+                       (set! curl-matched (+ curl-matched 1))
                        (string-append "[\"" #$curl "/bin/curl\""))
                       (("\\[\"zstd\"")
-                       (set! zstd-matched
-                             (+ zstd-matched 1))
+                       (set! zstd-matched (+ zstd-matched 1))
                        (string-append "[\"" #$zstd "/bin/zstd\"")))
                     (unless (> python-matched 0)
                       (error "substitute* found no matches"
@@ -1186,8 +1144,7 @@ information reporter used by Qubes memory ballooning.")
                                            (apply-sysctls-to-iface
                                             (filter
                                              (lambda (setting)
-                                               (string=? (car setting)
-                                                         family))
+                                               (string=? (car setting) family))
                                              settings)
                                             interface)))
                                         (delete-duplicates
@@ -1303,8 +1260,7 @@ import sys
                             ("qubes-vmexec" . "qubesagent.vmexec")))
                 (delete-path (string-append #$output "/gnu"))
                 (for-each (lambda (stale)
-                            (delete-path (string-append #$output "/usr/bin/"
-                                                        stale)))
+                            (delete-path (string-append #$output "/usr/bin/" stale)))
                           '("qubes-firewall" "qubes-vmexec"))))))))
     (native-inputs (list desktop-file-utils
                          pandoc
@@ -1331,19 +1287,16 @@ import sys
                   socat))
     (home-page "https://www.qubes-os.org/")
     (synopsis "Qubes Linux VM core scripts")
-    (description
-     "Core VM-side Qubes scripts, RPC services, and compatibility files.")
+    (description "Core VM-side Qubes scripts, RPC services, and compatibility files.")
     (license license:gpl2+)))
 
 (define qubes-vm-gui-common
   (package
     (name "qubes-vm-gui-common")
     (version (qubes-release-version "qubes-gui-common"))
-    (source
-     (qubes-release-source "qubes-gui-common"))
+    (source (qubes-release-source "qubes-gui-common"))
     (build-system copy-build-system)
-    (arguments
-     (list #:install-plan #~'(("include" "include"))))
+    (arguments (list #:install-plan #~'(("include" "include"))))
     (home-page "https://www.qubes-os.org/")
     (synopsis "Qubes GUI protocol headers")
     (description "Common Qubes GUI protocol headers.")
@@ -1407,12 +1360,10 @@ import sys
                   (for-each (lambda (entry)
                               (let ((from (string-append source "/" entry))
                                     (to (string-append destination "/" entry)))
-                                (when (file-exists? to)
-                                  (delete-file-recursively to))
+                                (when (file-exists? to) (delete-file-recursively to))
                                 (rename-file from to)))
                             (scandir source
-                                     (lambda (entry)
-                                       (not (member entry '("." ".."))))))))
+                                     (lambda (entry) (not (member entry '("." ".."))))))))
 
               (invoke "make"
                       "install-common"
@@ -1431,11 +1382,11 @@ import sys
                 (error "missing qrexec-fork-server.desktop"))
               (install-file "appvm-scripts/etc/sysconfig/desktop"
                             (string-append #$output "/etc/sysconfig"))
-              (for-each
-               (lambda (script)
-                 (install-file
-                  script
-                  (string-append #$output "/etc/X11/xinit/xinitrc.d")))
+               (for-each
+                (lambda (script)
+                  (install-file script
+                                (string-append #$output
+                                               "/etc/X11/xinit/xinitrc.d")))
                '("appvm-scripts/etc/X11/xinit/xinitrc.d/20qt-x11-no-mitshm.sh"
                  "appvm-scripts/etc/X11/xinit/xinitrc.d/20qt-gnome-desktop-session-id.sh"
                  "appvm-scripts/etc/X11/xinit/xinitrc.d/50guivm-windows-prefix.sh"
@@ -1466,8 +1417,7 @@ import sys
                   (let* ((text (call-with-input-file qubes-run-xorg
                                  get-string-all))
                          (index (string-contains text needle)))
-                    (unless index
-                      (error "expected text not found" needle))
+                    (unless index (error "expected text not found" needle))
                     (call-with-output-file qubes-run-xorg
                       (lambda (port)
                         (display (string-append
@@ -1523,8 +1473,7 @@ import sys
                   (let ((matched 0))
                     (substitute* qubes-session
                       (("export QUBES_ENV_SOURCED=1\n")
-                       (set! matched
-                             (+ matched 1))
+                       (set! matched (+ matched 1))
                        (string-append
                         "export QUBES_ENV_SOURCED=1\n"
                         "\n"
@@ -1576,8 +1525,7 @@ import sys
                   (let ((matched 0))
                     (substitute* qubes-session
                       (("dbus-update-activation-environment --systemd --all")
-                       (set! matched
-                             (+ matched 1))
+                       (set! matched (+ matched 1))
                        "dbus-update-activation-environment --all || true"))
                     (unless (> matched 0)
                       (error "substitute* found no matches"
@@ -1588,24 +1536,21 @@ import sys
                                (python-directory
                                 (car (scandir python-lib
                                               (lambda (entry)
-                                                (string-prefix? "python"
-                                                                entry))))))
+                                                (string-prefix? "python" entry))))))
                           (string-append python-lib "/" python-directory
                                          "/site-packages"))))
                      (pythonpath (map python-site-packages
                                       (list #$python-xcffib
                                             #$python-cffi
                                             #$python-pycparser)))
-                     (icon-sender (string-append #$output
-                                                 "/lib/qubes/icon-sender")))
+                     (icon-sender (string-append #$output "/lib/qubes/icon-sender")))
                 (when (file-exists? icon-sender)
                   ;; upstream: qubes-gui-agent-linux icon-sender — the
                   ;; "import xcffib" statement.
                   (let ((matched 0))
                     (substitute* icon-sender
                       (("import xcffib")
-                       (set! matched
-                             (+ matched 1))
+                       (set! matched (+ matched 1))
                        (string-append "import sys\n" "sys.path[:0] = ['"
                                       (string-join pythonpath "', '") "']\n"
                                       "import xcffib")))
@@ -1634,12 +1579,7 @@ import sys
                                                  "/lib/xorg/modules/drivers/"
                                                  driver)))
                         '("qubes_drv.so" "dummyqbs_drv.so")))))))
-    (native-inputs (list autoconf
-                         automake
-                         libtool
-                         patchelf
-                         pkg-config
-                         xen))
+    (native-inputs (list autoconf automake libtool patchelf pkg-config xen))
     (inputs (list dbus
                   libunistring
                   libx11
@@ -1666,8 +1606,7 @@ import sys
   (package
     (name "pipewire-qubes")
     (version (qubes-release-version "qubes-gui-agent-linux"))
-    (source
-     (qubes-release-source "qubes-gui-agent-linux"))
+    (source (qubes-release-source "qubes-gui-agent-linux"))
     (build-system gnu-build-system)
     (arguments
      (list
@@ -1738,8 +1677,7 @@ import sys
               ;; subdirectories, so PipeWire's default config search merges the
               ;; drop-in and finds libpipewire-module-qubes by name.
               (let* ((modules (string-append #$output "/lib/pipewire-0.3"))
-                     (confd (string-append #$output
-                                           "/share/pipewire/pipewire.conf.d"))
+                     (confd (string-append #$output "/share/pipewire/pipewire.conf.d"))
                      (autostart (string-append #$output "/etc/xdg/autostart"))
                      (bin (string-append #$output "/bin"))
                      (launcher (string-append bin "/qubes-pipewire-start"))
@@ -1809,8 +1747,7 @@ X-GNOME-Autostart-Phase=Initialization
                  ;; Fedora/Debian qubes do.
                  (let* ((postinst (string-append #$output
                                    "/etc/qubes/post-install.d"))
-                        (advertiser (string-append postinst
-                                     "/20-qubes-pipewire.sh")))
+                        (advertiser (string-append postinst "/20-qubes-pipewire.sh")))
                    (mkdir-p postinst)
                    (call-with-output-file advertiser
                      (lambda (port)
@@ -1841,15 +1778,13 @@ PipeWire equivalent of the older PulseAudio Qubes module.")
         xen-network-hotplug-tools))
 
 (define %qubes-vm-gui-packages
-  (append %qubes-vm-headless-packages
-          (list qubes-vm-gui-common qubes-vm-gui)))
+  (append %qubes-vm-headless-packages (list qubes-vm-gui-common qubes-vm-gui)))
 
 (define xterm-desktop-entry
   (package
     (name "xterm-desktop-entry")
     (version (package-version xterm))
-    (source
-     #f)
+    (source #f)
     (build-system trivial-build-system)
     (arguments
      (list
@@ -1974,8 +1909,7 @@ is either 'minimal (the common base packages only) or 'normal (the base plus
 the desktop, audio, and networking package sets).  Raise an error for any
 other variant."
   (case variant
-    ((minimal)
-     %qubes-common-packages)
+    ((minimal) %qubes-common-packages)
     ((normal)
      (append %qubes-normal-desktop-packages %qubes-normal-audio-packages
              %qubes-normal-network-packages %qubes-common-packages))
