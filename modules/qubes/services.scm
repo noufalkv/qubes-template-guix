@@ -1674,6 +1674,16 @@ action=/etc/acpi/actions/qubes-poweroff
                                                           "supported-service."
                                                           service) "1"))
                                       supported-services)
+                            ;; Advertise PipeWire audio only when it is actually
+                            ;; installed (normal variant), so dom0 attaches the
+                            ;; AudioVM vchan for sound.
+                            (when (file-exists?
+                                   "/run/current-system/profile/bin/pipewire")
+                              (request-feature "supported-service.pipewire" "1"))
+                            ;; qrexec-agent's shepherd service may report started
+                            ;; before its client socket exists; wait for it so
+                            ;; the commit does not race and fail.
+                            (wait-for-path "/var/run/qubes/qrexec-agent" 600)
                             (unless (try-run* qrexec-client-vm* "dom0"
                                               "qubes.FeaturesRequest")
                               (warn "failed to commit Qubes feature requests")
