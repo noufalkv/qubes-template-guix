@@ -1824,8 +1824,29 @@ OnlyShowIn=X-QUBES;
 X-GNOME-Autostart-Phase=Initialization
 "
                      port)))
-                (chmod (string-append autostart "/qubes-pipewire.desktop")
-                       #o644)))))))
+                 (chmod (string-append autostart "/qubes-pipewire.desktop")
+                        #o644)
+
+                 ;; Advertise PipeWire audio support to dom0, exactly as
+                 ;; upstream qubes-gui-agent-linux does.  dom0 only attaches an
+                 ;; AudioVM vchan (and writes /qubes-audio-domain-xid, which the
+                 ;; module needs to find its peer) to qubes it knows do audio;
+                 ;; without this request a Guix template gets no sound while
+                 ;; Fedora/Debian qubes do.
+                 (let* ((postinst (string-append #$output
+                                   "/etc/qubes/post-install.d"))
+                        (advertiser (string-append postinst
+                                     "/20-qubes-pipewire.sh")))
+                   (mkdir-p postinst)
+                   (call-with-output-file advertiser
+                     (lambda (port)
+                       (format port
+                        "#!~a
+# SPDX-License-Identifier: GPL-2.0-or-later
+qvm-features-request supported-service.pipewire=1
+"
+                        #$(file-append bash-minimal "/bin/sh"))))
+                   (chmod advertiser #o755))))))))
     (native-inputs (list pkg-config))
     (inputs (list bash-minimal pipewire qubes-libvchan-xen qubesdb-vm))
     (home-page "https://www.qubes-os.org/")
