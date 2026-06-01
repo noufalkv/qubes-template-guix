@@ -1904,7 +1904,8 @@ StartupWMClass=XTerm
     (home-page (package-home-page xterm))
     (synopsis "Desktop entry for xterm")
     (description
-     "Install a desktop entry for xterm when the distribution package does not provide one.")
+     "Install a desktop entry for xterm when the distribution package does not
+provide one.")
     (license (package-license xterm))))
 
 (define %qubes-common-packages
@@ -1995,6 +1996,10 @@ StartupWMClass=XTerm
   (list dnsmasq))
 
 (define (qubes-variant-packages variant)
+  "Return the package list for the Qubes Guix template VARIANT, a symbol that
+is either 'minimal (the common base packages only) or 'normal (the base plus
+the desktop, audio, and networking package sets).  Raise an error for any
+other variant."
   (case variant
     ((minimal)
      %qubes-common-packages)
