@@ -1,0 +1,23 @@
+Force the VM-side QubesDB daemon to stay in the foreground in non-systemd
+builds so the Shepherd can track the process it starts.  Without this the
+daemon double-forks and leaves duplicate daemons racing for the same vchan.
+
+Guix-specific: the Shepherd needs a foreground process.  A more general,
+upstreamable form would add a proper --foreground flag to db-daemon;
+this minimal edit only flips the no-systemd daemonize branch so the
+behavior matches what this channel previously did via substitute*.
+Upstream file: QubesOS/qubes-core-qubesdb, daemon/db-daemon.c.
+
+diff --git a/daemon/db-daemon.c b/daemon/db-daemon.c
+index ce20999..6c9ab65 100644
+--- a/daemon/db-daemon.c
++++ b/daemon/db-daemon.c
+@@ -745,7 +745,7 @@ int fuzz_main(int argc, char **argv) {
+ #ifdef HAVE_SYSTEMD
+     if (!getenv("NOTIFY_SOCKET")) {
+ #else
+-    if (1) {
++    if (0) {
+ #endif
+         char buf[6];
+         char log_path[MAX_FILE_PATH];

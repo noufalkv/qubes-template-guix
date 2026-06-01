@@ -1,0 +1,24 @@
+Skip the final "systemctl --user --wait" check in qubes.WaitForSession when
+systemctl is not installed.  Native Guix templates use the Shepherd and ship
+no systemd, so the unconditional call would fail; guarding it keeps the rest
+of the upstream script verbatim (Marek's preferred minimal adaptation).
+
+Upstream: QubesOS/qubes-core-agent-linux, qubes-rpc/qubes.WaitForSession.
+Status: should-upstream (Marek's preferred minimal adaptation: guard the
+systemctl call rather than carry a full alternate script); intended for
+submission to the Qubes project.
+
+diff --git a/qubes-rpc/qubes.WaitForSession b/qubes-rpc/qubes.WaitForSession
+index 9146b24..f849294 100755
+--- a/qubes-rpc/qubes.WaitForSession
++++ b/qubes-rpc/qubes.WaitForSession
+@@ -8,6 +8,8 @@ if test "$(qubesdb-read --default=True /qubes-gui-enabled)" = "True"; then
+     done
+ fi
+ 
+-systemctl --user --wait --quiet is-system-running
++if command -v systemctl >/dev/null 2>&1; then
++    systemctl --user --wait --quiet is-system-running
++fi
+ 
+ exit 0

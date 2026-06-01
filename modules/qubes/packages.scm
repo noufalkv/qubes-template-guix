@@ -155,7 +155,7 @@ and the generated helper both do) and import (ice-9 ftw) for `scandir'."
   ;; channel (Guix templates ship no DNF).  Kept as a standalone file under
   ;; files/ rather than an embedded plain-file string so it is
   ;; lint/test-friendly; installed and store-path-substituted below.
-  (local-file "../../files/qvm-template-repo-query-guix.py"))
+  (local-file "files/qvm-template-repo-query-guix.py"))
 
 ;;; Qubes VM package definitions
 
@@ -553,7 +553,7 @@ information reporter used by Qubes memory ballooning.")
      (qubes-release-source "qubes-core-qubesdb"
                            #:patches
                            (list (local-file
-                                  "../../patches/guix-specific/qubesdb-vm-db-daemon-foreground.patch"))))
+                                  "patches/guix-specific/qubesdb-vm-db-daemon-foreground.patch"))))
     (build-system gnu-build-system)
     (arguments
      (list
@@ -663,7 +663,7 @@ information reporter used by Qubes memory ballooning.")
      (qubes-release-source "qubes-core-qrexec"
                            #:patches
                            (list (local-file
-                                  "../../patches/should-upstream/qubes-vm-qrexec-env-buf.patch"))))
+                                  "patches/should-upstream/qubes-vm-qrexec-env-buf.patch"))))
     (build-system gnu-build-system)
     (arguments
      (list
@@ -809,13 +809,13 @@ information reporter used by Qubes memory ballooning.")
      (qubes-release-source "qubes-core-agent-linux"
                            #:patches
                            (list (local-file
-                                  "../../patches/guix-specific/qubes-vm-core-init-functions-skel.patch")
+                                  "patches/guix-specific/qubes-vm-core-init-functions-skel.patch")
                                  (local-file
-                                  "../../patches/guix-specific/qubes-vm-core-setup-ip-sysctl.patch")
+                                  "patches/guix-specific/qubes-vm-core-setup-ip-sysctl.patch")
                                  (local-file
-                                  "../../patches/guix-specific/qubes-vm-core-vif-route-sysctl.patch")
+                                  "patches/guix-specific/qubes-vm-core-vif-route-sysctl.patch")
                                  (local-file
-                                  "../../patches/should-upstream/qubes-vm-core-wait-for-session-guard.patch"))))
+                                  "patches/should-upstream/qubes-vm-core-wait-for-session-guard.patch"))))
     (build-system gnu-build-system)
     (arguments
      (list
@@ -1404,7 +1404,7 @@ import sys
      (qubes-release-source "qubes-gui-agent-linux"
                            #:patches
                            (list (local-file
-                                  "../../patches/guix-specific/qubes-vm-gui-config-shell.patch"))))
+                                  "patches/guix-specific/qubes-vm-gui-config-shell.patch"))))
     (build-system gnu-build-system)
     (arguments
      (list

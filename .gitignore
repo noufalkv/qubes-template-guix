@@ -23,4 +23,4 @@
 # Agent working directory (plans, evidence, captured review context)
 /.omo/
 # Python bytecode generated when py_compile checks files/
-files/__pycache__/
+__pycache__/

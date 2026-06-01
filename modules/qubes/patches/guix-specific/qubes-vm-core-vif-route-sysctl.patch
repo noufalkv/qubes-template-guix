@@ -1,0 +1,21 @@
+Per-interface hardening sysctls are applied per attached vif device by
+vif-route-qubes.  Native Guix templates have no systemd-sysctl, so route that
+call to the qubes-network-interface-sysctl helper installed by this channel,
+preserving the per-vif behavior.
+
+Guix-specific: no systemd; per-vif sysctls applied by a Guile helper.
+Upstream file: qubes-core-agent-linux network/vif-route-qubes
+
+diff --git a/network/vif-route-qubes b/network/vif-route-qubes
+index 580ddd0..ae93235 100755
+--- a/network/vif-route-qubes
++++ b/network/vif-route-qubes
+@@ -182,7 +182,7 @@ qubesdb_read_bool () {
+ # Harden against various attacks if requested
+ if [[ "$command" = 'online' ]] &&
+     qubesdb_read_bool /qubes-service/harden-network-interfaces 1; then
+-    /usr/lib/systemd/systemd-sysctl \
++    /usr/lib/qubes/qubes-network-interface-sysctl \
+         "--prefix=/net/ipv4/conf/all" \
+         "--prefix=/net/ipv4/neigh/all" \
+         "--prefix=/net/ipv6/conf/all" \
