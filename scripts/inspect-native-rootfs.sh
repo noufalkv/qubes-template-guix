@@ -257,6 +257,10 @@ verify_installed_channel_sources() {
         die "missing installed Qubes Guix channel metadata"
     [ -r "$mount_dir/etc/qubes-guix-channel/modules/qubes/packages.scm" ] ||
         die "missing installed Qubes Guix channel module"
+    [ -r "$mount_dir/etc/qubes-guix-channel/modules/qubes/files/qvm-template-repo-query-guix.py" ] ||
+        die "missing installed Qubes Guix channel files asset"
+    [ -d "$mount_dir/etc/qubes-guix-channel/modules/qubes/patches" ] ||
+        die "missing installed Qubes Guix channel patches"
 }
 
 verify_expected_commands() {

@@ -113,14 +113,12 @@ install_channel_sources() {
     as_root rm -rf "$channel_dir"
     as_root mkdir -p "$channel_dir"
     as_root install -m 0644 "$repo_root/.guix-channel" "$channel_dir/.guix-channel"
+    # The channel keeps its non-Scheme assets (patches/, files/) inside the
+    # module tree (modules/qubes/{patches,files}), so copying modules/ ships
+    # them too.  This keeps every local-file reference inside the channel root
+    # so it resolves identically under "guix build -L", "guix pull", and an
+    # offline "guix system reconfigure" in the installed image.
     as_root cp -a "$repo_root/modules" "$channel_dir/modules"
-    # Ship files/ alongside modules/ so local-file references in the channel
-    # (e.g. ../../files/qvm-template-repo-query-guix.py) resolve during
-    # offline guix system reconfigure inside the installed image.
-    if [ -d "$repo_root/files" ]; then
-        as_root cp -a "$repo_root/files" "$channel_dir/files"
-        as_root chmod -R u+rwX,go+rX "$channel_dir/files"
-    fi
     as_root chmod -R u+rwX,go+rX "$channel_dir/modules"
 }
 

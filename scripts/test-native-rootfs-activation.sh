@@ -124,6 +124,8 @@ verify_activation_paths() {
     test -s /etc/ssl/certs/ca-certificates.crt
     test -r /etc/qubes-guix-channel/.guix-channel
     test -r /etc/qubes-guix-channel/modules/qubes/packages.scm
+    test -r /etc/qubes-guix-channel/modules/qubes/files/qvm-template-repo-query-guix.py
+    test -d /etc/qubes-guix-channel/modules/qubes/patches
     test -f /etc/fstab
     test ! -L /etc/fstab
     printf "\n# qubes-guix activation fstab write check\n" >> /etc/fstab
