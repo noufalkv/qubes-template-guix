@@ -897,7 +897,12 @@ information reporter used by Qubes memory ballooning.")
                ;; (drop_unsolicited_na) are deliberately out of this per-interface
                ;; table's scope and are not compared here.
                (let* ((entry-key (lambda (entry)
-                                   (string-append (car entry) "." (cadr entry))))
+                                   ;; Total order over family, knob, and value
+                                   ;; so duplicated knob names across families
+                                   ;; cannot cause a false drift on reorder.
+                                   (string-append (car entry) "\x00"
+                                                  (cadr entry) "\x00"
+                                                  (cddr entry))))
                       (sort-entries (lambda (entries)
                                       (sort entries
                                             (lambda (a b)
@@ -1333,19 +1338,32 @@ information reporter used by Qubes memory ballooning.")
                       (and (string-prefix? "--prefix=" arg)
                            (substring arg (string-length "--prefix="))))
 
-                    (define (prefix->interface prefix)
+                    ;; Parse to (family . interface) and apply only that
+                    ;; family's settings, preserving the upstream systemd-sysctl
+                    ;; --prefix contract: a /net/ipv4/conf/IF prefix applies the
+                    ;; ipv4 knobs to IF, /net/ipv6/conf/IF the ipv6 knobs, and
+                    ;; non-conf (e.g. neigh) or unknown-family prefixes apply
+                    ;; nothing.
+                    (define (prefix->target prefix)
                       (match (string-split prefix #\/)
-                        (("" "net" _ "conf" interface) interface)
+                        (("" "net" family "conf" interface)
+                         (and (member family '("ipv4" "ipv6"))
+                              (cons family interface)))
                         (_ #f)))
 
                     (for-each
-                     (lambda (interface)
-                       (apply-sysctls-to-iface settings interface))
+                     (match-lambda
+                       ((family . interface)
+                        (apply-sysctls-to-iface
+                         (filter (lambda (setting)
+                                   (string=? (car setting) family))
+                                 settings)
+                         interface)))
                      (delete-duplicates
-                      (filter-map prefix->interface
+                      (filter-map prefix->target
                                   (filter-map arg-prefix
                                               (cdr (command-line))))
-                      string=?))))
+                      equal?))))
                 (for-each
                  (lambda (helper)
                    (let ((destination (string-append qubes-libdir "/" helper)))
