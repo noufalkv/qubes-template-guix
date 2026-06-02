@@ -279,10 +279,51 @@ compute_component_sha256() {
     guix hash -rx "$checkout"
 }
 
-# Confirm the resulting git diff stays within the pin table (lines 384-405).
 verify_diff_range() {
-    local lo=384 hi=405
+    local lo hi
     local line plus start cnt end out_of_range=0
+
+    lo=$(grep -n -m 1 '^(define %qubes-source-components' "$packages_file" | cut -d: -f1)
+    if [ -z "$lo" ]; then
+        printf 'error: could not find (define %%qubes-source-components in %s\n' "$packages_file" >&2
+        exit 1
+    fi
+
+    hi=$(awk -v start="$lo" '
+        BEGIN { balance = 0; in_string = 0; escaped = 0 }
+        NR < start { next }
+        {
+            for (i = 1; i <= length($0); i++) {
+                ch = substr($0, i, 1)
+                if (in_string) {
+                    if (escaped) {
+                        escaped = 0
+                    } else if (ch == "\\") {
+                        escaped = 1
+                    } else if (ch == """) {
+                        in_string = 0
+                    }
+                } else {
+                    if (ch == """) {
+                        in_string = 1
+                    } else if (ch == "(") {
+                        balance++
+                    } else if (ch == ")") {
+                        balance--
+                        if (balance == 0) {
+                            print NR
+                            exit
+                        }
+                    }
+                }
+            }
+        }
+    ' "$packages_file")
+    if [ -z "$hi" ]; then
+        printf 'error: could not determine closing line for (define %%qubes-source-components in %s\n' "$packages_file" >&2
+        exit 1
+    fi
+
     while IFS= read -r line; do
         case "$line" in
             @@*)
