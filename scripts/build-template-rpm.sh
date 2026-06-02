@@ -95,7 +95,7 @@ main() {
     parse_args "$@"
     resolve_variant
 
-    cd "$repo_root"
+    cd "$repo_root" || die "cannot change to repository root: $repo_root"
     mkdir -p "$output_dir"
 
     build_root_image
