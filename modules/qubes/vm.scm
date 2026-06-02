@@ -19,6 +19,7 @@
                                      %qubes-vm-gui-packages
                                      %qubes-normal-audio-packages
                                      %qubes-normal-desktop-packages
+                                     %qubes-normal-network-packages
                                      %qubes-common-packages
                                      qubes-variant-packages
                                      %qubes-network-sysctl-settings
