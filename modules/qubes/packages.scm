@@ -1105,20 +1105,19 @@ information reporter used by Qubes memory ballooning.")
                                                  (cons family interface)))
                                            (_ #f)))
 
-                                       (for-each
-                                        (match-lambda
-                                          ((family . interface)
-                                           (apply-sysctls-to-iface
-                                            (filter
-                                             (lambda (setting)
-                                               (string=? (car setting) family))
-                                             settings)
-                                            interface)))
-                                        (delete-duplicates
-                                         (filter-map
-                                          prefix->target
-                                          (filter-map arg-prefix (cdr (command-line))))
-                                         equal?))))
+                                        (for-each (match-lambda
+                                                    ((family . interface)
+                                                     (apply-sysctls-to-iface
+                                                      (filter
+                                                       (lambda (setting)
+                                                         (string=? (car setting) family))
+                                                       settings)
+                                                      interface)))
+                                          (delete-duplicates
+                                           (filter-map
+                                            prefix->target
+                                            (filter-map arg-prefix (cdr (command-line))))
+                                           equal?))))
                 (for-each (lambda (helper)
                             (let ((destination (string-append qubes-libdir "/" helper)))
                               (copy-file (string-append "package-managers/"
