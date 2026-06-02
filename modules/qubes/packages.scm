@@ -1312,10 +1312,13 @@ import sys
     (build-system gnu-build-system)
     (arguments
      (list
-      #:modules '((guix build gnu-build-system)
+      #:imported-modules `((qubes build utils) ,@%default-gnu-imported-modules)
+      #:modules '((qubes build utils)
+                  (guix build gnu-build-system)
                   (guix build utils)
                   (ice-9 ftw)
                   (ice-9 textual-ports)
+                  (srfi srfi-1)
                   (srfi srfi-13))
       ;; GUI agent tests require a running Qubes GUI/Xen display environment;
       ;; this package build installs the VM-side GUI agent and Xorg helpers.
@@ -1571,19 +1574,16 @@ import sys
                     (unless (> matched 0)
                       (error "substitute* found no matches"
                              "qubes-gui-agent-linux:qubes-session")))))
-              (let* ((python-site-packages
-                      (lambda (package)
-                        (let* ((python-lib (string-append package "/lib"))
-                               (python-directory
-                                (car (scandir python-lib
-                                              (lambda (entry)
-                                                (string-prefix? "python" entry))))))
-                          (string-append python-lib "/" python-directory
-                                         "/site-packages"))))
-                     (pythonpath (map python-site-packages
-                                      (list #$python-xcffib
-                                            #$python-cffi
-                                            #$python-pycparser)))
+              (let* ((pythonpath
+                      (filter-map
+                       (lambda (root)
+                         (let ((python-directory
+                                (python-version-directory root)))
+                           (and python-directory
+                                (python-site-packages root python-directory))))
+                       (list #$python-xcffib
+                             #$python-cffi
+                             #$python-pycparser)))
                      (icon-sender (string-append #$output "/lib/qubes/icon-sender")))
                 (when (file-exists? icon-sender)
                   ;; upstream: qubes-gui-agent-linux icon-sender — the
