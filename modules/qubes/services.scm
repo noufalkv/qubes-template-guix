@@ -31,6 +31,16 @@
     ("/run/current-system/profile/lib/qubes" . "/usr/lib/qubes")
     ("/run/current-system/profile/lib/qubes-bind-dirs.d" . "/usr/lib/qubes-bind-dirs.d")))
 
+;; Bounds for the service programs that poll for an expected early-boot artifact
+;; (a device node, the loopback link, a daemon pid-file) at a 100ms cadence
+;; before giving up.  Named here so the budgets are tunable in one place instead
+;; of being repeated as bare literals across the service programs below.
+;;   short = ~5s  (50 * 100ms): artifacts the hypervisor exposes almost at once.
+;;   long  = ~30s (300 * 100ms): block devices/interfaces that can lag on a busy
+;;                               host.
+(define %qubes-wait-attempts-short 50)
+(define %qubes-wait-attempts-long 300)
+
 (define (qubes-vm-compat-activation _)
   "Return a gexp run at system activation that materializes the fixed Qubes
 compatibility symlinks (the @file{/usr/...} and @file{/var/run/qubes*}
@@ -589,7 +599,7 @@ the VM.  The argument is the ignored service value."
                                           (not (member entry '("." ".."))))))
                               '())))
               (let wait ((attempt 0))
-                (when (and (< attempt 50)
+                (when (and (< attempt #$%qubes-wait-attempts-short)
                            (any (lambda (path)
                                   (not (file-exists? path)))
                                 '("/dev/xen/xenbus"
@@ -879,7 +889,7 @@ about five seconds for the @file{lo} device to appear before failing."
                                 ((file-exists? "/sys/class/net/lo")
                                  (run* ip "link" "set" "lo" "up")
                                  (exit 0))
-                                ((< attempt 50) (usleep 100000) (wait (+ attempt 1)))
+                                ((< attempt #$%qubes-wait-attempts-short) (usleep 100000) (wait (+ attempt 1)))
                                 (else (warn "loopback network device did not appear")
                                       (exit 1))))))
 
@@ -1060,7 +1070,7 @@ CONFIG, exiting cleanly when the meminfo-writer service flag is absent."
                (if (false-if-exception (kill pid 0))
                    (begin (sleep 60) (loop))
                    (begin (false-if-exception (delete-file pidfile)) (exit 1)))))
-            ((< attempt 50) (usleep 100000) (wait-for-pid (+ attempt 1)))
+            ((< attempt #$%qubes-wait-attempts-short) (usleep 100000) (wait-for-pid (+ attempt 1)))
             (else (warn "meminfo-writer did not create a valid pid file") (exit 1))))))))
 
 (define (qubes-meminfo-writer-shepherd-service config)
@@ -1137,7 +1147,7 @@ seconds for the interface to appear."
                                   (iface (apply-sysctls-to-iface
                                           network-sysctl-settings iface)
                                          (exec* "/usr/lib/qubes/setup-ip" "add" iface))
-                                  ((< attempt 300) (usleep 100000) (wait (+ attempt 1)))
+                                  ((< attempt #$%qubes-wait-attempts-long) (usleep 100000) (wait (+ attempt 1)))
                                   (else (display
                                          "No Qubes managed network interface found
 ")
@@ -1391,7 +1401,7 @@ repairs the writable /etc/fstab /rw entry, and runs @file{mount-dirs.sh}."
         (let loop ((attempt 0))
           (cond
             ((file-exists? "/dev/xvdb") #t)
-            ((< attempt 300) (usleep 100000) (loop (+ attempt 1)))
+            ((< attempt #$%qubes-wait-attempts-long) (usleep 100000) (loop (+ attempt 1)))
             (else (warn "Qubes private-volume device /dev/xvdb did not appear")
                   (exit 1))))))
 
