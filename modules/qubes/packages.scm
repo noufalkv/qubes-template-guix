@@ -1527,10 +1527,38 @@ import sys
                         "        fi\n"
                         "    fi\n"
                         ;; Append the fragment just before the closing tag, the
-                        ;; same insertion upstream's postinst does with sed.
+                        ;; same insertion upstream's postinst does with sed,
+                        ;; then rewrite its deprecated GTK2 stock icon names to
+                        ;; freedesktop names the Tango theme ships (the stock
+                        ;; names render in no installed theme).
                         "    sed -i '/<\\/actions>/e cat /usr/lib/qubes"
                         "/uca_qubes.xml' \"$qubes_uca\"\n"
+                        "    sed -i"
+                        " -e 's|<icon>stock_folder-copy</icon>"
+                        "|<icon>edit-copy</icon>|'"
+                        " -e 's|<icon>stock_folder-move</icon>"
+                        "|<icon>edit-cut</icon>|'"
+                        " -e '0,/<icon>gtk-convert</"
+                        "s|<icon>gtk-convert</icon>"
+                        "|<icon>document-save-as</icon>|'"
+                        " -e 's|<icon>gtk-convert</icon>"
+                        "|<icon>image-x-generic</icon>|'"
+                        " \"$qubes_uca\"\n"
                         "fi\n"
+                        ;; Thunar honors the GTK icon theme; no theme is set by
+                        ;; default, so action and app icons fall back to the
+                        ;; sparse hicolor set.  Default to Tango (a full raster
+                        ;; theme that ships the freedesktop action icons) unless
+                        ;; the user already chose a theme.
+                        "for gtkver in 3.0 4.0; do\n"
+                        "    gtkini=\"${XDG_CONFIG_HOME:-$HOME/.config}"
+                        "/gtk-$gtkver/settings.ini\"\n"
+                        "    if [ ! -e \"$gtkini\" ]; then\n"
+                        "        mkdir -p \"$(dirname \"$gtkini\")\"\n"
+                        "        printf '%s\\n%s\\n' '[Settings]' "
+                        "'gtk-icon-theme-name=Tango' > \"$gtkini\"\n"
+                        "    fi\n"
+                        "done\n"
                         "PATH=\"/run/setuid-programs"
                         ":/run/current-system/profile/bin"
                         ":/run/current-system/profile/sbin${PATH:+:$PATH}\"\n"
