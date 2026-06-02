@@ -40,11 +40,7 @@
   #:use-module (gnu packages xfce)
   #:use-module (gnu packages xdisorg)
   #:use-module (gnu packages xorg)
-  #:use-module (ice-9 match)
-  #:use-module (ice-9 rdelim)
-  #:use-module (ice-9 textual-ports)
   #:use-module (srfi srfi-1)
-  #:use-module (srfi srfi-13)
   #:export (qubes-release-version qubes-libvchan-xen
                                   qubes-linux-utils-qrexec
                                   qubes-vm-utils
