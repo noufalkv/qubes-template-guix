@@ -12,6 +12,9 @@ template_variant=""
 artifacts_dir="${ARTIFACTS_DIR:-$repo_root/work.builder-v2}"
 template_root_size="${TEMPLATE_ROOT_SIZE:-20G}"
 
+# shellcheck source=scripts/lib.sh
+. "$repo_root/scripts/lib.sh"
+
 usage() {
     cat <<'EOF'
 Usage: builder-v2-template-adapter.sh build-rootimg|build-rpm
@@ -21,11 +24,6 @@ Adapter for Qubes Builder v2's template plugin.  The plugin calls
 build, with TEMPLATE_* and ARTIFACTS_DIR in the environment.  This script maps
 those calls to the native Guix rootfs and template RPM scripts.
 EOF
-}
-
-die() {
-    printf 'error: %s\n' "$*" >&2
-    exit 1
 }
 
 set_template_defaults() {

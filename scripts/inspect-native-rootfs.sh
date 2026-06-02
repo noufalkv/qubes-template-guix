@@ -13,6 +13,9 @@ profile=""
 PATH="/usr/sbin:/sbin:$PATH"
 export PATH
 
+# shellcheck source=scripts/lib.sh
+. "$repo_root/scripts/lib.sh"
+
 usage() {
     cat <<'EOF'
 Usage: inspect-native-rootfs.sh [options]
@@ -26,27 +29,6 @@ Options:
   --fs-label NAME       Expected ext4 filesystem label. Default: guix-root
   -h, --help            Show this help.
 EOF
-}
-
-die() {
-    printf 'error: %s\n' "$*" >&2
-    exit 1
-}
-
-need() {
-    command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
-}
-
-require_arg() {
-    [ "$#" -ge 2 ] || die "$1 requires a value"
-}
-
-as_root() {
-    if [ "$(id -u)" -eq 0 ]; then
-        "$@"
-    else
-        sudo "$@"
-    fi
 }
 
 desktop_entry_value() {

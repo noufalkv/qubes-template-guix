@@ -5,6 +5,9 @@ set -euo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 packages_file="$repo_root/modules/qubes/packages.scm"
 
+# shellcheck source=scripts/lib.sh
+. "$repo_root/scripts/lib.sh"
+
 # Mode/state set by argument parsing.
 mode="check"
 assume_yes=0
@@ -69,13 +72,6 @@ parse_args() {
         usage >&2
         exit 2
     fi
-}
-
-need() {
-    command -v "$1" >/dev/null 2>&1 || {
-        printf 'error: missing required command: %s\n' "$1" >&2
-        exit 1
-    }
 }
 
 latest_series_tag() {

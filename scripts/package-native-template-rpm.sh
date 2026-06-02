@@ -20,6 +20,9 @@ rpm_path=""
 PATH="/usr/sbin:/sbin:$PATH"
 export PATH
 
+# shellcheck source=scripts/lib.sh
+. "$repo_root/scripts/lib.sh"
+
 usage() {
     cat <<'EOF'
 Usage: package-native-template-rpm.sh [options]
@@ -40,19 +43,6 @@ The generated package follows the Qubes qvm-template package layout:
   var/lib/qubes/vm-templates/NAME/template.conf
   var/lib/qubes/vm-templates/NAME/*whitelisted-appmenus.list
 EOF
-}
-
-die() {
-    printf 'error: %s\n' "$*" >&2
-    exit 1
-}
-
-need() {
-    command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
-}
-
-require_arg() {
-    [ "$#" -ge 2 ] || die "$1 requires a value"
 }
 
 validate_version_field() {

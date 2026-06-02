@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 
-die() {
-    printf 'error: %s\n' "$*" >&2
-    exit 1
-}
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# shellcheck source=scripts/lib.sh
+. "$repo_root/scripts/lib.sh"
 
 usage() {
     cat <<'EOF'

@@ -9,6 +9,9 @@ release="$(date -u +%Y%m%d%H%M)"
 output_dir="$repo_root/dist"
 image=""
 
+# shellcheck source=scripts/lib.sh
+. "$repo_root/scripts/lib.sh"
+
 usage() {
     cat <<'EOF'
 Usage: build-template-rpm.sh [options]
@@ -24,15 +27,6 @@ Options:
   --image FILE              Root image path. Default is variant-specific.
   -h, --help                Show this help.
 EOF
-}
-
-die() {
-    printf 'error: %s\n' "$*" >&2
-    exit 1
-}
-
-require_arg() {
-    [ "$#" -ge 2 ] || die "$1 requires a value"
 }
 
 parse_args() {

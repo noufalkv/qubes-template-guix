@@ -4,10 +4,8 @@ set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
-die() {
-    printf 'error: %s\n' "$*" >&2
-    exit 1
-}
+# shellcheck source=scripts/lib.sh
+. "$repo_root/scripts/lib.sh"
 
 usage() {
     cat <<'EOF'
@@ -28,10 +26,6 @@ target_dir=""
 template=""
 appmenus_file=""
 entries=()
-
-require_arg() {
-    [ "$#" -ge 2 ] || die "$1 requires a value"
-}
 
 validate_entry() {
     local entry="$1"

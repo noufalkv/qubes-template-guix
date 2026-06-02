@@ -20,6 +20,9 @@ rendered_config=""
 PATH="$PATH:/usr/sbin:/sbin"
 export PATH
 
+# shellcheck source=scripts/lib.sh
+. "$repo_root/scripts/lib.sh"
+
 usage() {
     cat <<'EOF'
 Usage: build-native-rootfs.sh [options]
@@ -41,27 +44,6 @@ Options:
 Environment:
   GUIX              Guix command to refresh/use. Default: guix.
 EOF
-}
-
-die() {
-    printf 'error: %s\n' "$*" >&2
-    exit 1
-}
-
-need() {
-    command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
-}
-
-require_arg() {
-    [ "$#" -ge 2 ] || die "$1 requires a value"
-}
-
-as_root() {
-    if [ "$(id -u)" -eq 0 ]; then
-        "$@"
-    else
-        sudo "$@"
-    fi
 }
 
 ensure_pull_work_dir() {
