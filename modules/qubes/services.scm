@@ -90,14 +90,11 @@ template.  The argument is the ignored service value."
         (call-with-output-file path (lambda (port) (display text port))))
 
       (define tls-profile-script
-        (string-append "export SSL_CERT_DIR=${SSL_CERT_DIR:-/etc/ssl/certs}
-"
-         "export SSL_CERT_FILE=${SSL_CERT_FILE:-/etc/ssl/certs/ca-certificates.crt}
-"
-         "export GIT_SSL_CAINFO=${GIT_SSL_CAINFO:-/etc/ssl/certs/ca-certificates.crt}
-"
-         "export CURL_CA_BUNDLE=${CURL_CA_BUNDLE:-/etc/ssl/certs/ca-certificates.crt}
-"))
+        #$(apply string-append
+                 (map (lambda (entry)
+                        (string-append "export " (car entry)
+                                       "=${" (car entry) ":-" (cdr entry) "}\n"))
+                      %qubes-tls-cert-environment)))
 
       (define guix-cache-profile-script
         (string-append "if [ \"${XDG_CACHE_HOME+x}\" != x ]; then\n"
@@ -518,10 +515,7 @@ the VM.  The argument is the ignored service value."
               (setenv "LINUX_MODULE_DIRECTORY" kernel-modules-directory)
               (for-each (match-lambda
                           ((name . value) (setenv name value)))
-                        '(("SSL_CERT_DIR" . "/etc/ssl/certs")
-                          ("SSL_CERT_FILE" . "/etc/ssl/certs/ca-certificates.crt")
-                          ("GIT_SSL_CAINFO" . "/etc/ssl/certs/ca-certificates.crt")
-                          ("CURL_CA_BUNDLE" . "/etc/ssl/certs/ca-certificates.crt")))
+                        '#$%qubes-tls-cert-environment)
               (let ((python-paths (profile-python-paths)))
                 (prepend-environment "PYTHONPATH" python-paths)
                 (prepend-environment "GUIX_PYTHONPATH" python-paths))

@@ -61,6 +61,7 @@
                                   %qubes-common-packages
                                   qubes-variant-packages
                                   %qubes-network-sysctl-settings
+                                  %qubes-tls-cert-environment
                                   qubes-network-sysctl-helper-forms
                                   xterm-desktop-entry))
 
@@ -83,6 +84,39 @@
     ("ipv6" "accept_dad" . "0")
     ("ipv6" "autoconf" . "0")
     ("ipv6" "drop_unicast_in_l2_multicast" . "1")))
+
+;; Single source of truth for the TLS/CA-certificate environment variables.
+;; These name the FHS @file{/etc/ssl/certs} paths that stock Guix populates:
+;; the system profile aggregates nss-certs and stock activation links
+;; @file{/etc/ssl} -> @file{/run/current-system/profile/etc/ssl}
+;; (see (gnu build activation)), so these paths resolve at runtime.
+;;
+;; Stock Guix already exports these for *login* shells (the profile's
+;; etc/profile sets SSL_CERT_DIR/SSL_CERT_FILE/CURL_CA_BUNDLE from the
+;; openssl/curl search paths) and for PAM logins that load pam_env from
+;; /etc/environment.  We still set them explicitly at three sites because the
+;; Qubes execution paths bypass those mechanisms:
+;;   1. The /etc/profile.d login-shell script keeps non-login qrexec/guix-pull
+;;      shells covered (the qrexec/GUI PAM services here use pam_permit only,
+;;      not pam_env, so /etc/environment does not reach them).
+;;   2. Shepherd daemons inherit neither /etc/profile nor /etc/environment, so
+;;      each Qubes service program sets them in its runtime setup.
+;;   3. The qubes-session GUI wrapper runs from xinit and seeds them as
+;;      defaults for the desktop session.
+;; Folding the three verbatim copies into this one list removes the drift risk
+;; without changing behavior; pruning any site to rely on stock Guix instead is
+;; a separate change that needs live qrexec (L3) proof first.
+;;
+;; The three consumers render this data in different shell forms, so only the
+;; data is shared here; the order is part of the contract.  Lives in
+;; (qubes packages) because (qubes services) imports it (not the other way
+;; around), so both the service/activation gexps and the qubes-session build
+;; phase can reach it without an import cycle.
+(define %qubes-tls-cert-environment
+  '(("SSL_CERT_DIR" . "/etc/ssl/certs")
+    ("SSL_CERT_FILE" . "/etc/ssl/certs/ca-certificates.crt")
+    ("GIT_SSL_CAINFO" . "/etc/ssl/certs/ca-certificates.crt")
+    ("CURL_CA_BUNDLE" . "/etc/ssl/certs/ca-certificates.crt")))
 
 (define (qubes-network-sysctl-helper-forms)
   "Return a list of definition forms implementing the shared per-interface
@@ -1448,13 +1482,11 @@ import sys
                         ":=/run/current-system/profile/share}\"\n"
                         ": \"${GI_TYPELIB_PATH"
                         ":=/run/current-system/profile/lib/girepository-1.0}\"\n"
-                        ": \"${SSL_CERT_DIR:=/etc/ssl/certs}\"\n"
-                        ": \"${SSL_CERT_FILE"
-                        ":=/etc/ssl/certs/ca-certificates.crt}\"\n"
-                        ": \"${GIT_SSL_CAINFO"
-                        ":=/etc/ssl/certs/ca-certificates.crt}\"\n"
-                        ": \"${CURL_CA_BUNDLE"
-                        ":=/etc/ssl/certs/ca-certificates.crt}\"\n"
+                        #$(apply string-append
+                                 (map (lambda (entry)
+                                        (string-append ": \"${" (car entry)
+                                                       ":=" (cdr entry) "}\"\n"))
+                                      %qubes-tls-cert-environment))
                         ": \"${XDG_CACHE_HOME"
                         ":=/var/tmp/guix-cache-${USER:-user}}\"\n"
                         "mkdir -p \"$XDG_RUNTIME_DIR\"\n"
