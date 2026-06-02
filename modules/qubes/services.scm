@@ -867,72 +867,6 @@ The argument is the ignored service value."
                 (default-value #f)
                 (description "Mount the Qubes dom0-provided kernel modules image.")))
 
-(define (qubes-sysctl-settings-file settings)
-  "Return a @code{plain-file} holding the serialized SETTINGS alist, read back
-at runtime by the sysctl program."
-  (plain-file "qubes-sysctl-settings.scm" (object->string settings)))
-
-(define (qubes-sysctl-program settings)
-  "Return the program that applies the kernel sysctl SETTINGS by writing each
-@code{key->value} pair to its @file{/proc/sys} path, failing loudly when a
-path is missing or unwritable."
-  (let ((settings-file (qubes-sysctl-settings-file settings)))
-    (qubes-vm-service-program "qubes-sysctl"
-                              (define sysctl-settings
-                                (call-with-input-file #$settings-file read))
-
-                              (define (sysctl-key->path key)
-                                (string-append "/proc/sys/"
-                                               (list->string (map (lambda (char)
-                                                                    (if (char=? char #\.)
-                                                                        #\/
-                                                                        char))
-                                                                  (string->list key)))))
-
-                              (define (write-sysctl setting)
-                                (let* ((key (car setting))
-                                       (value (cdr setting))
-                                       (path (sysctl-key->path key)))
-                                  (unless (file-exists? path)
-                                    (warn (string-append "sysctl path is missing: " path))
-                                    (exit 1))
-                                  (catch #t
-                                         (lambda ()
-                                           (call-with-output-file path
-                                             (lambda (port)
-                                               (display value port)
-                                               (newline port))))
-                                         (lambda (key . args)
-                                           (warn (string-append
-                                                  "failed to write sysctl path: "
-                                                  path))
-                                           (exit 1)))))
-
-                              (for-each write-sysctl sysctl-settings))))
-
-(define (qubes-sysctl-shepherd-service config)
-  "Return the one-shot Shepherd service that applies the sysctl settings from
-CONFIG, a @code{sysctl-configuration}."
-  (list (one-shot-service 'sysctl
-                          '(root-file-system)
-                          (qubes-sysctl-program (sysctl-configuration-settings config))
-                          "/var/log/sysctl.log")))
-
-(define qubes-sysctl-service-type
-  (service-type (name 'sysctl)
-                (extensions (list (service-extension
-                                   shepherd-root-service-type
-                                   qubes-sysctl-shepherd-service)))
-                (compose concatenate)
-                (extend (lambda (config settings)
-                          (sysctl-configuration
-                           (inherit config)
-                           (settings
-                            (append (sysctl-configuration-settings config) settings)))))
-                (default-value (sysctl-configuration))
-                (description
-                 "Apply kernel sysctl settings with a Qubes-local Scheme helper.")))
-
 (define (qubes-loopback-program)
   "Return the program that brings the loopback interface up, waiting up to
 about five seconds for the @file{lo} device to appear before failing."
@@ -1684,7 +1618,14 @@ the ignored service value."
   %base-services)
 
 (define %qubes-sysctl-service
-  (service qubes-sysctl-service-type
+  ;; Use the built-in sysctl-service-type from (gnu services sysctl): it
+  ;; provisions the 'sysctl Shepherd service (so the per-VIF network services
+  ;; that require 'sysctl keep their ordering edge) and applies the settings
+  ;; with the procps "sysctl --load" mechanism referenced from the store.  The
+  ;; kernel tunables here always exist in a Qubes Linux VM, so the built-in's
+  ;; best-effort application is sufficient and the previous fail-loud Scheme
+  ;; helper is unnecessary.
+  (service sysctl-service-type
            (sysctl-configuration (settings (append
                                             %qubes-kernel-sysctl-settings
                                             %default-sysctl-settings)))))
