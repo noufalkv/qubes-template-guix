@@ -889,9 +889,10 @@ about five seconds for the @file{lo} device to appear before failing."
                                 ((file-exists? "/sys/class/net/lo")
                                  (run* ip "link" "set" "lo" "up")
                                  (exit 0))
-                                ((< attempt #$%qubes-wait-attempts-short) (usleep 100000) (wait (+ attempt 1)))
-                                (else (warn "loopback network device did not appear")
-                                      (exit 1))))))
+                                 ((< attempt #$%qubes-wait-attempts-short)
+                                  (usleep 100000) (wait (+ attempt 1)))
+                                 (else (warn "loopback network device did not appear")
+                                       (exit 1))))))
 
 (define (qubes-loopback-shepherd-service _)
   "Return the one-shot Shepherd service that brings up the loopback interface.
@@ -1070,7 +1071,8 @@ CONFIG, exiting cleanly when the meminfo-writer service flag is absent."
                (if (false-if-exception (kill pid 0))
                    (begin (sleep 60) (loop))
                    (begin (false-if-exception (delete-file pidfile)) (exit 1)))))
-            ((< attempt #$%qubes-wait-attempts-short) (usleep 100000) (wait-for-pid (+ attempt 1)))
+            ((< attempt #$%qubes-wait-attempts-short)
+             (usleep 100000) (wait-for-pid (+ attempt 1)))
             (else (warn "meminfo-writer did not create a valid pid file") (exit 1))))))))
 
 (define (qubes-meminfo-writer-shepherd-service config)
@@ -1147,11 +1149,12 @@ seconds for the interface to appear."
                                   (iface (apply-sysctls-to-iface
                                           network-sysctl-settings iface)
                                          (exec* "/usr/lib/qubes/setup-ip" "add" iface))
-                                  ((< attempt #$%qubes-wait-attempts-long) (usleep 100000) (wait (+ attempt 1)))
-                                  (else (display
-                                         "No Qubes managed network interface found
+                                   ((< attempt #$%qubes-wait-attempts-long)
+                                    (usleep 100000) (wait (+ attempt 1)))
+                                   (else (display
+                                          "No Qubes managed network interface found
 ")
-                                        (exit 0)))))))
+                                         (exit 0)))))))
 
 (define (qubes-network-uplink-shepherd-service _)
   "Return the one-shot Shepherd service that configures the Qubes VM network
@@ -1401,7 +1404,8 @@ repairs the writable /etc/fstab /rw entry, and runs @file{mount-dirs.sh}."
         (let loop ((attempt 0))
           (cond
             ((file-exists? "/dev/xvdb") #t)
-            ((< attempt #$%qubes-wait-attempts-long) (usleep 100000) (loop (+ attempt 1)))
+            ((< attempt #$%qubes-wait-attempts-long)
+             (usleep 100000) (loop (+ attempt 1)))
             (else (warn "Qubes private-volume device /dev/xvdb did not appear")
                   (exit 1))))))
 
