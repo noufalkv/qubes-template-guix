@@ -952,6 +952,20 @@ is the ignored service value."
 as the hostname and timezone."
   (qubes-vm-service-program "qubes-early-vm-config"
                             (prepare-service-runtime)
+                            ;; qubes-db is "started" as soon as the daemon
+                            ;; forks, but its socket is not immediately
+                            ;; answerable; the config script reads several
+                            ;; qubesdb keys and silently skips them (leaving the
+                            ;; VM on UTC) if QubesDB is not ready yet.  Wait for
+                            ;; a successful read before running it.
+                            (let wait ((attempt 0))
+                              (cond
+                                ((qubesdb-read "/name")
+                                 #t)
+                                ((< attempt #$%qubes-wait-attempts-short)
+                                 (usleep 100000) (wait (+ attempt 1)))
+                                (else
+                                 (warn "QubesDB not ready; early VM config may be incomplete"))))
                             (exec* "/usr/lib/qubes/init/qubes-early-vm-config.sh")))
 
 (define (qubes-early-vm-config-shepherd-service _)
