@@ -12,6 +12,7 @@
   #:use-module (gnu)
   #:use-module (gnu packages admin)
   #:use-module (gnu packages autotools)
+  #:use-module (gnu packages base)
   #:use-module (gnu packages bash)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages curl)
@@ -1899,6 +1900,7 @@ provide one.")
                                    socat
                                    sudo
                                    tango-icon-theme
+                                   tzdata
                                    xdpyinfo
                                    xev
                                    xinput
