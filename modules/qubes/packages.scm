@@ -1500,6 +1500,31 @@ import sys
                         " --address=\"$DBUS_SESSION_BUS_ADDRESS\""
                         " --fork --nopidfile\n"
                         "fi\n"
+                        ;; Thunar reads the first uca.xml found across
+                        ;; XDG_CONFIG_HOME then XDG_CONFIG_DIRS and does not
+                        ;; merge; on Guix the winning file is the immutable
+                        ;; profile copy with no Qubes actions.  Seed the
+                        ;; per-user file (highest priority) from that stock file
+                        ;; plus uca_qubes.xml so the \"copy to other qube\"
+                        ;; actions appear, unless the user already has one.
+                        "qubes_uca=\"${XDG_CONFIG_HOME:-$HOME/.config}"
+                        "/Thunar/uca.xml\"\n"
+                        "if [ ! -e \"$qubes_uca\" ] && "
+                        "[ -e /usr/lib/qubes/uca_qubes.xml ]; then\n"
+                        "    stock=/run/current-system/profile"
+                        "/etc/xdg/Thunar/uca.xml\n"
+                        "    mkdir -p \"$(dirname \"$qubes_uca\")\"\n"
+                        "    if [ -e \"$stock\" ]; then\n"
+                        "        sed '/<\\/actions>/d' \"$stock\" "
+                        "> \"$qubes_uca\"\n"
+                        "    else\n"
+                        "        printf '%s\\n%s\\n' "
+                        "'<?xml version=\"1.0\" encoding=\"UTF-8\"?>' "
+                        "'<actions>' > \"$qubes_uca\"\n"
+                        "    fi\n"
+                        "    cat /usr/lib/qubes/uca_qubes.xml >> \"$qubes_uca\"\n"
+                        "    printf '</actions>\\n' >> \"$qubes_uca\"\n"
+                        "fi\n"
                         "PATH=\"/run/setuid-programs"
                         ":/run/current-system/profile/bin"
                         ":/run/current-system/profile/sbin${PATH:+:$PATH}\"\n"

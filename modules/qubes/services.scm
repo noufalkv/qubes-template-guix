@@ -159,25 +159,8 @@ template.  The argument is the ignored service value."
                                         (status (close-pipe port)))
                                    (and (zero? status) (string-trim-right text))))))
 
-      (define (read-text file)
-        (call-with-input-file file get-string-all))
-
       (define (write-text file text)
         (call-with-output-file file (lambda (port) (display text port))))
-
-      (define (install-thunar-qubes-actions)
-        (let ((uca "/etc/xdg/Thunar/uca.xml") (qubes-uca "/usr/lib/qubes/uca_qubes.xml"))
-          (when (and (file-exists? uca) (file-exists? qubes-uca))
-            (materialize-symlinked-file uca)
-            (let ((text (read-text uca)) (actions (read-text qubes-uca)))
-              (unless (string-contains text "/usr/lib/qubes/qvm-actions.sh")
-                (let ((index (string-contains text "</actions>")))
-                  (if index
-                      (write-text uca
-                                  (string-append (substring text 0 index)
-                                                 actions "\n"
-                                                 (substring text index)))
-                      (write-text uca (string-append text "\n" actions "\n")))))))))
 
       ;; The upstream Qubes VM tools use fixed paths. Keep those paths as
       ;; compatibility links into the current Guix system profile.
@@ -252,7 +235,6 @@ action=/etc/acpi/actions/qubes-poweroff
       ;; writable instead of immutable profile symlinks.
       (link-directory-contents "/run/current-system/profile/etc/qubes-rpc"
                                "/etc/qubes-rpc")
-      (install-thunar-qubes-actions)
       ;; Qubes' init/functions still use /var/run/qubes-service* while
       ;; qubes-sysinit.sh populates /run/qubes-service*.  Bridge those paths
       ;; only on systems where /var/run is not already /run.
