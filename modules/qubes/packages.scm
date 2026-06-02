@@ -758,7 +758,11 @@ information reporter used by Qubes memory ballooning.")
             (local-file "patches/guix-specific/qubes-vm-core-setup-ip-sysctl.patch")
             (local-file "patches/guix-specific/qubes-vm-core-vif-route-sysctl.patch")
             (local-file
-             "patches/should-upstream/qubes-vm-core-wait-for-session-guard.patch"))))
+             "patches/should-upstream/qubes-vm-core-wait-for-session-guard.patch")
+            (local-file
+             "patches/should-upstream/qubes-vm-core-features-request-is-active-guard.patch")
+            (local-file
+             "patches/should-upstream/qubes-vm-core-upgrades-installed-check-guix.patch"))))
     (build-system gnu-build-system)
     (arguments
      (list
@@ -1160,49 +1164,13 @@ information reporter used by Qubes memory ballooning.")
                               (chmod destination #o755)))
                           '("upgrades-installed-check" "upgrades-status-notify"))
 
-                (let ((installed-check (string-append qubes-libdir
-                                        "/upgrades-installed-check")))
-                  (unless (string-contains (read-text installed-check) "## Guix System")
-                    (patch-file-once
-                     installed-check
-                     "elif [ -e /etc/arch-release ]; then\n"
-                     (string-append
-                      "elif [ -e /run/current-system ]; then\n"
-                      "    ## Guix System\n"
-                      "    # There is no cheap metadata-only Guix System update"
-                      " check comparable to\n"
-                      "    # dnf check-update or apt-get -s upgrade.  The Qubes"
-                      " vmupdate backend\n"
-                      "    # reports system/profile changes while reconfiguring;"
-                      " this helper only\n"
-                      "    # clears the post-update notification state after that"
-                      " succeeds.\n"
-                      "    echo true\n"
-                      "    exit_code=0\n"
-                      "elif [ -e /etc/arch-release ]; then\n"))))
-
                 (let ((features-request (string-append bindir "/qvm-features-request")))
                   (when (path-exists? features-request)
                     (patch-file-once features-request "import argparse\n"
                                      (string-append
                                                     "import sys\nsys.path[:0] = "
                                                     (python-list pythonpath)
-                                                    "\n\nimport argparse\n"))
-                    ;; Native Guix templates use Shepherd, not systemd.  Treat a
-                    ;; successful post-install RPC as the qrexec-agent active
-                    ;; signal when systemctl is absent.
-                    (patch-file-once features-request
-                     "def is_active(service):
-    status = subprocess.call([\"systemctl\", \"is-active\", \"--quiet\", service])
-    return status == 0
-"
-                     "def is_active(service):
-    try:
-        status = subprocess.call([\"systemctl\", \"is-active\", \"--quiet\", service])
-    except FileNotFoundError:
-        return service == \"qubes-qrexec-agent\"
-    return status == 0
-")))
+                                                    "\n\nimport argparse\n"))))
 
                 (let ((session-autostart (string-append bindir
                                           "/qubes-session-autostart")))

@@ -1,0 +1,33 @@
+Report Guix System update state in upgrades-installed-check.
+
+upgrades-installed-check walks a chain of per-distribution branches to decide
+whether updates are available.  Add a Guix System branch (detected by
+/run/current-system) before the Archlinux branch.  Guix has no cheap
+metadata-only "are updates available" probe comparable to dnf check-update or
+apt-get -s upgrade; the Qubes vmupdate backend reports system/profile changes
+while reconfiguring, so this helper only needs to clear the post-update
+notification state afterwards.
+
+Upstream: QubesOS/qubes-core-agent-linux,
+package-managers/upgrades-installed-check.
+Status: should-upstream (adds a new distro branch alongside the existing
+debian/arch/gentoo/alpine branches; other distributions are unaffected).
+
+diff --git a/package-managers/upgrades-installed-check b/package-managers/upgrades-installed-check
+index ceb3be2..1323d01 100755
+--- a/package-managers/upgrades-installed-check
++++ b/package-managers/upgrades-installed-check
+@@ -46,6 +46,13 @@ elif [ -e /etc/debian_version ]; then
+     # shellcheck disable=SC2266
+     echo "$apt_get_upgrade_output" | awk "/^Inst/{ print $2 }" | [ "$(wc -L)" -eq 0 ] && echo "true" || echo "false"
+     echo "$apt_get_upgrade_output" >&2
++elif [ -e /run/current-system ]; then
++    ## Guix System
++    # No cheap metadata-only update check exists; the Qubes vmupdate
++    # backend reports system/profile changes while reconfiguring, so only
++    # clear the post-update notification state here.
++    echo true
++    exit_code=0
+ elif [ -e /etc/arch-release ]; then
+     ## Archlinux
+     checkupdates >/dev/null 2>&1

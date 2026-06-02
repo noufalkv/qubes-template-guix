@@ -1,0 +1,29 @@
+Tolerate a missing systemd in qvm-features-request is_active().
+
+is_active() shells out to "systemctl is-active" to decide whether to advertise
+the qrexec-agent feature.  On a systemd-less VM (for example a native Guix
+template using the Shepherd) systemctl is absent and the call raises
+FileNotFoundError, aborting feature advertisement.  Catch that and fall back to
+treating the qrexec agent as active, since a running qvm-features-request itself
+proves the qrexec path works.  systemd distributions are unaffected: systemctl
+is present, so the original call runs unchanged.
+
+Upstream: QubesOS/qubes-core-agent-linux, misc/qvm-features-request.
+Status: should-upstream (portable; only adds a fallback for systemd-less VMs).
+
+diff --git a/misc/qvm-features-request b/misc/qvm-features-request
+index 6eccea6..7918451 100755
+--- a/misc/qvm-features-request
++++ b/misc/qvm-features-request
+@@ -31,7 +31,10 @@ import qubesdb
+ 
+ 
+ def is_active(service):
+-    status = subprocess.call(["systemctl", "is-active", "--quiet", service])
++    try:
++        status = subprocess.call(["systemctl", "is-active", "--quiet", service])
++    except FileNotFoundError:
++        return service == "qubes-qrexec-agent"
+     return status == 0
+ 
+ 
