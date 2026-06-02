@@ -1,0 +1,30 @@
+Make qubes-session tolerate a missing systemd user manager.  Upstream syncs
+the session environment with "dbus-update-activation-environment --systemd
+--all"; the --systemd flag requires a systemd user manager and fails without
+one.  Guard the --systemd variant on systemctl availability and fall back to
+the dbus-only sync otherwise.  On systemd distributions the behavior is
+unchanged (systemctl is present, so the original command runs); only systemd-
+less sessions (e.g. native Guix, which uses the Shepherd) take the fallback.
+
+Upstream: QubesOS/qubes-gui-agent-linux, appvm-scripts/usrbin/qubes-session.
+Status: should-upstream (portable: preserves the existing systemd behavior and
+only adds a fallback for systemd-less sessions); intended for submission to the
+Qubes project.
+
+diff --git a/appvm-scripts/usrbin/qubes-session b/appvm-scripts/usrbin/qubes-session
+index 3cbbbcc..6a1d2e0 100755
+--- a/appvm-scripts/usrbin/qubes-session
++++ b/appvm-scripts/usrbin/qubes-session
+@@ -53,7 +53,11 @@ UPDTYPE=$(/usr/bin/qubesdb-read /qubes-vm-updateable)
+ 
+ # Sync environment variables from the user session into the systemd user
+ # manager and dbus-daemon
+-dbus-update-activation-environment --systemd --all
++if command -v systemctl >/dev/null 2>&1; then
++    dbus-update-activation-environment --systemd --all
++else
++    dbus-update-activation-environment --all
++fi
+ 
+ # process /etc/xdg/autostart and friends (according to Desktop Application
+ # Autostart Specification)

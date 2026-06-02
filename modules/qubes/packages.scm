@@ -1305,7 +1305,9 @@ import sys
      (qubes-release-source
       "qubes-gui-agent-linux"
       #:patches
-      (list (local-file "patches/guix-specific/qubes-vm-gui-config-shell.patch"))))
+      (list (local-file "patches/guix-specific/qubes-vm-gui-config-shell.patch")
+            (local-file
+             "patches/should-upstream/qubes-vm-gui-session-dbus-no-systemd.patch"))))
     (build-system gnu-build-system)
     (arguments
      (list
@@ -1506,16 +1508,6 @@ import sys
                         "export XDG_CONFIG_DIRS XDG_DATA_DIRS GI_TYPELIB_PATH\n"
                         "export SSL_CERT_DIR SSL_CERT_FILE GIT_SSL_CAINFO"
                         " CURL_CA_BUNDLE XDG_CACHE_HOME PATH\n")))
-                    (unless (> matched 0)
-                      (error "substitute* found no matches"
-                             "qubes-gui-agent-linux:qubes-session")))
-                  ;; upstream: qubes-gui-agent-linux qubes-session — the
-                  ;; "dbus-update-activation-environment --systemd --all" call.
-                  (let ((matched 0))
-                    (substitute* qubes-session
-                      (("dbus-update-activation-environment --systemd --all")
-                       (set! matched (+ matched 1))
-                       "dbus-update-activation-environment --all || true"))
                     (unless (> matched 0)
                       (error "substitute* found no matches"
                              "qubes-gui-agent-linux:qubes-session")))))
