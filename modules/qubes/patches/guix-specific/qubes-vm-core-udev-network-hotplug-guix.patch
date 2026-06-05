@@ -1,0 +1,43 @@
+Make the vif-hotplug udev rule work on a Shepherd (systemd-less) system.
+
+udev-qubes-network.rules (installed as 99-qubes-network.rules) reconfigures a
+VM's interface when dom0 dynamically (de)attaches a vif at runtime.  Upstream
+asks systemd to (re)start qubes-network-uplink@<iface>.service.  On a native
+Guix template there is no systemd/systemctl/templated unit.
+
+Bridge the hotplug event into Shepherd instead: the ADD action runs
+`herd reconfigure qubes-network-uplink <iface>`, a re-runnable custom action on
+the existing uplink service.  Routing through Shepherd reuses its serialized,
+ordered action dispatch (the direct analog of upstream's udev->systemd), so the
+rule needs no in-script locking; the action is idempotent and no-ops if the
+interface has already vanished.  REMOVE does nothing: the vanished netdev drops
+its own kernel addresses/routes, and the next add reconfigures.
+
+Guix-specific: systemd distributions need the systemctl form.
+
+Upstream file: QubesOS/qubes-core-agent-linux, network/udev-qubes-network.rules.
+diff --git a/network/udev-qubes-network.rules b/network/udev-qubes-network.rules
+index 208bf15..e6d146b 100644
+--- a/network/udev-qubes-network.rules
++++ b/network/udev-qubes-network.rules
+@@ -1,8 +1,16 @@
+ # new udev has DRIVERS
+-SUBSYSTEMS=="xen", KERNEL=="eth*", ACTION=="add", DRIVERS=="vif", RUN+="/usr/bin/systemctl restart --job-mode=replace qubes-network-uplink@%k.service", GOTO="QUBES-NET-END"
+-SUBSYSTEMS=="xen", KERNEL=="eth*", ACTION=="remove", DRIVERS=="vif", RUN+="/usr/bin/systemctl stop --job-mode=replace qubes-network-uplink@%k.service", GOTO="QUBES-NET-END"
++# On a Shepherd (systemd-less) system there is no systemctl and no
++# qubes-network-uplink@<iface> templated unit.  Bridge the hotplug event
++# into Shepherd: `herd reconfigure qubes-network-uplink <iface>` runs the
++# uplink (re)configuration through Shepherd's serialized, ordered action
++# dispatch (the analog of upstream udev->systemd), so no in-script locking
++# is needed.  The action is idempotent and no-ops if the interface has
++# already vanished.  remove: nothing (the vanished device drops its own
++# kernel addrs/routes; the next add reconfigures).
++SUBSYSTEMS=="xen", KERNEL=="eth*", ACTION=="add", DRIVERS=="vif", RUN+="/run/current-system/profile/bin/herd reconfigure qubes-network-uplink %k", GOTO="QUBES-NET-END"
++SUBSYSTEMS=="xen", KERNEL=="eth*", ACTION=="remove", DRIVERS=="vif", GOTO="QUBES-NET-END"
+ # old udev has ENV{NET_ID_DRIVER}
+-SUBSYSTEMS=="xen", KERNEL=="eth*", ACTION=="add", ENV{NET_ID_DRIVER}=="vif", RUN+="/usr/bin/systemctl restart --job-mode=replace qubes-network-uplink@%k.service", GOTO="QUBES-NET-END"
+-SUBSYSTEMS=="xen", KERNEL=="eth*", ACTION=="remove", ENV{NET_ID_DRIVER}=="vif", RUN+="/usr/bin/systemctl stop --job-mode=replace qubes-network-uplink@%k.service", GOTO="QUBES-NET-END"
++SUBSYSTEMS=="xen", KERNEL=="eth*", ACTION=="add", ENV{NET_ID_DRIVER}=="vif", RUN+="/run/current-system/profile/bin/herd reconfigure qubes-network-uplink %k", GOTO="QUBES-NET-END"
++SUBSYSTEMS=="xen", KERNEL=="eth*", ACTION=="remove", ENV{NET_ID_DRIVER}=="vif", GOTO="QUBES-NET-END"
+ 
+ LABEL="QUBES-NET-END"

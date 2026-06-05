@@ -1,0 +1,79 @@
+Make qubes-setup-dnat-to-ns portable to systemd-less VMs (no systemd-resolved,
+no python-dbus, no systemctl).
+
+qubes-setup-dnat-to-ns runs on every NetVM/ProxyVM (qubes-core integration tests
+invoke it from configure_netvm).  On a native Guix template using the Shepherd it
+fails in three ways, each of which makes the whole script exit non-zero so that
+configure_netvm fails and networking tests error in setUp:
+
+1. `import dbus` raises ModuleNotFoundError when python-dbus is not installed,
+   before the existing /etc/resolv.conf fallback in get_dns_resolved() can run.
+   Make the import optional and, when absent, read /etc/resolv.conf directly.
+
+2. get_dns_resolved() unconditionally calls dbus.SystemBus(); short-circuit to
+   the resolv.conf fallback when dbus is unavailable.
+
+3. The firewall reload uses "systemctl --no-block try-reload-or-restart
+   qubes-firewall.service"; systemctl is absent, raising FileNotFoundError.
+   Fall back to SIGHUP'ing the running qubes-firewall daemon, which it already
+   handles as a rules reload (see qubesagent/firewall.py main()).
+
+systemd distributions are unaffected: dbus imports, systemd-resolved answers, and
+systemctl is present, so all original paths run unchanged and the fallbacks are
+never reached.
+
+Upstream: QubesOS/qubes-core-agent-linux, network/qubes-setup-dnat-to-ns.
+Status: should-upstream (portable; only adds fallbacks for systemd-less VMs).
+diff --git a/network/qubes-setup-dnat-to-ns b/network/qubes-setup-dnat-to-ns
+index caf95e4..b962585 100644
+--- a/network/qubes-setup-dnat-to-ns
++++ b/network/qubes-setup-dnat-to-ns
+@@ -25,7 +25,13 @@ from itertools import cycle
+ import subprocess
+ import sys
+ 
+-import dbus
++try:
++    import dbus
++except ImportError:
++    # systemd-resolved (queried over D-Bus) is unavailable on systemd-less VMs
++    # such as a native Guix template using the Shepherd, and python-dbus may not
++    # be installed.  Fall back to /etc/resolv.conf in get_dns_resolved() below.
++    dbus = None
+ import qubesdb
+ from ipaddress import IPv4Address
+ import os
+@@ -48,6 +54,9 @@ def get_dns_resolv_conf():
+     return nameservers
+ 
+ def get_dns_resolved():
++    if dbus is None:
++        # No python-dbus / no systemd-resolved: use /etc/resolv.conf directly.
++        return get_dns_resolv_conf()
+     try:
+         bus = dbus.SystemBus()
+     except dbus.exceptions.DBusException as s:
+@@ -142,11 +151,18 @@ def install_firewall_rules(dns):
+         sys.exit(100)
+ 
+     if os.path.exists('/run/qubes-service/qubes-firewall'):
+-        subprocess.call(["systemctl",
+-                         "--no-block",
+-                         "try-reload-or-restart",
+-                         "qubes-firewall.service"
+-        ])
++        try:
++            subprocess.call(["systemctl",
++                             "--no-block",
++                             "try-reload-or-restart",
++                             "qubes-firewall.service"
++            ])
++        except FileNotFoundError:
++            # systemd-less VM (e.g. a native Guix template using the
++            # Shepherd): systemctl is absent, so reload the running
++            # qubes-firewall daemon directly via SIGHUP, which it handles as a
++            # rules reload (see qubesagent/firewall.py main()).
++            subprocess.call(["pkill", "-HUP", "-f", "/qubes-firewall"])
+ 
+     os.execvp("nft", ("nft", "--", "\n".join(preamble + rules)))
+ 

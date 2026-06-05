@@ -767,12 +767,17 @@ information reporter used by Qubes memory ballooning.")
       (list (local-file "patches/guix-specific/qubes-vm-core-init-functions-skel.patch")
             (local-file "patches/guix-specific/qubes-vm-core-setup-ip-sysctl.patch")
             (local-file "patches/guix-specific/qubes-vm-core-vif-route-sysctl.patch")
+            (local-file "patches/guix-specific/qubes-vm-core-udev-network-hotplug-guix.patch")
             (local-file
              "patches/should-upstream/qubes-vm-core-wait-for-session-guard.patch")
             (local-file
              "patches/should-upstream/qubes-vm-core-features-request-is-active-guard.patch")
             (local-file
-             "patches/should-upstream/qubes-vm-core-upgrades-installed-check-guix.patch"))))
+             "patches/should-upstream/qubes-vm-core-upgrades-installed-check-guix.patch")
+            (local-file
+             "patches/should-upstream/qubes-vm-core-dnat-to-ns-no-systemd.patch")
+            (local-file
+             "patches/should-upstream/qubes-vm-core-wait-for-network-uplink-no-systemd.patch"))))
     (build-system gnu-build-system)
     (arguments
      (list

@@ -1,0 +1,92 @@
+Make qubes.WaitForNetworkUplink work without systemd, fast-path when already up,
+and actively (re)configure the uplink only when needed on a deferred/paused
+netvm change.
+
+dom0 (qubes-core-admin apply_deferred_netvm) invokes this qrexec service after a
+deferred/paused netvm change, wrapped in asyncio.wait_for(..., timeout=10).  On
+domain-unpaused that 10s window also has to absorb qrexec/vchan re-establishment
+to the just-unpaused VM, so the guest side must spend as little time as possible.
+
+Upstream polls `systemctl is-active qubes-network-uplink@<iface>.service` -- a
+unit whose ExecStart is `setup-ip add`, so polling implicitly drives
+reconfiguration (the matching udev rule does `systemctl restart` of that unit on
+vif add).  On a native Guix template using the Shepherd there is no systemd, no
+systemctl, and no per-interface uplink unit; and a netvm pause/unpause does not
+necessarily remove and re-add the AppVM frontend interface, so the vif-hotplug
+udev rule (which runs `herd reconfigure qubes-network-uplink <iface>') may not
+fire.  When systemctl is absent:
+  1. fast path: if the managed interface is already carrier/LOWER_UP, exit 0
+     immediately (do not spend the dom0 budget on a needless reconfigure);
+  2. otherwise actively run `herd reconfigure qubes-network-uplink <iface>`
+     (idempotent, serialized by Shepherd) with a tight 3s bound, then poll
+     briefly for readiness -- total guest-side time stays well under dom0's 10s.
+
+systemd distributions are unaffected: systemctl is present, so the original
+`systemctl is-active` poll runs unchanged.
+
+Upstream: QubesOS/qubes-core-agent-linux, qubes-rpc/qubes.WaitForNetworkUplink.
+Status: should-upstream (portable; adds a fast Shepherd-driven path for systemd-less VMs).
+diff --git a/qubes-rpc/qubes.WaitForNetworkUplink b/qubes-rpc/qubes.WaitForNetworkUplink
+index 359ee32..ee0b9af 100644
+--- a/qubes-rpc/qubes.WaitForNetworkUplink
++++ b/qubes-rpc/qubes.WaitForNetworkUplink
+@@ -9,13 +9,51 @@ if test -z "$iface"; then
+   exit
+ fi
+ 
+-i=0
+-while test $i -le 10; do
+-  if systemctl is-active --quiet "qubes-network-uplink@$iface.service"; then
+-    ip link show "$iface" | grep "state UP" || exit 4
++if command -v systemctl >/dev/null 2>&1; then
++  # systemd: poll the per-interface uplink unit (its ExecStart runs setup-ip).
++  i=0
++  while test $i -le 10; do
++    if systemctl is-active --quiet "qubes-network-uplink@$iface.service"; then
++      ip link show "$iface" | grep "state UP" || exit 4
++      exit 0
++    fi
++    sleep 0.3
++    i=$((i+1))
++  done
++  exit 3
++else
++  # No systemd (native Guix template using the Shepherd): there is no
++  # qubes-network-uplink@<iface> unit whose start runs setup-ip.  dom0 invokes
++  # this service from apply_deferred_netvm() and waits at most ~10s for the WHOLE
++  # qrexec call -- which, on domain-unpaused, also includes qrexec/vchan
++  # re-establishment to the just-unpaused VM.  So minimise guest-side latency:
++  # check readiness FIRST and exit immediately if the link is already usable;
++  # only repair (drive a Shepherd reconfigure) when it is not, then poll briefly.
++  # A netvm pause/unpause does not necessarily re-add the AppVM frontend
++  # interface, so the vif-hotplug udev rule (which runs `herd reconfigure') may
++  # not fire -- hence the active repair when needed.
++  uplink_ready() {
++    [ -d "/sys/class/net/$iface" ] || return 1
++    if [ -r "/sys/class/net/$iface/carrier" ] &&
++       [ "$(cat "/sys/class/net/$iface/carrier" 2>/dev/null)" = 1 ]; then
++      return 0
++    fi
++    ip link show dev "$iface" 2>/dev/null | grep -q "LOWER_UP"
++  }
++  # Fast path: already usable after resume -> succeed without touching Shepherd.
++  if uplink_ready; then
+     exit 0
+   fi
+-  sleep 0.3
+-  i=$((i+1))
+-done
+-exit 3
++  # Repair only when needed, with a tight bound, leaving margin under dom0's 10s.
++  herd=/run/current-system/profile/bin/herd
++  timeout 3 "$herd" reconfigure qubes-network-uplink "$iface" >/dev/null 2>&1 || true
++  i=0
++  while test $i -le 12; do
++    if uplink_ready; then
++      exit 0
++    fi
++    sleep 0.25
++    i=$((i+1))
++  done
++  exit 3
++fi
