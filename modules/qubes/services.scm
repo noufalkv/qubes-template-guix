@@ -895,14 +895,17 @@ always reports success; otherwise it reports PROGRAM's exit status."
 
       (let ((status (run/logged))) (if #$best-effort? #t (status-success? status)))))
 
-(define* (one-shot-service name requirements program log-file #:key (best-effort? #f))
+(define* (one-shot-service name requirements program log-file #:key (best-effort? #f) (actions '()))
   "Return a one-shot @code{shepherd-service} provisioning NAME that runs
 PROGRAM once after REQUIREMENTS are met, logging to LOG-FILE.  When
-BEST-EFFORT? is true the service succeeds regardless of PROGRAM's exit status."
+BEST-EFFORT? is true the service succeeds regardless of PROGRAM's exit status.
+ACTIONS is a list of @code{shepherd-action} records exposing extra, re-runnable
+operations on the (otherwise inert) one-shot service."
   (shepherd-service (provision (list name))
                     (requirement requirements)
                     (one-shot? #t)
                     (respawn? #f)
+                    (actions actions)
                     (documentation (string-append "Run " (symbol->string name) " once."))
                     (start (run-one-shot-gexp program log-file best-effort?))
                     (stop #~(const #f))))
@@ -1209,27 +1212,136 @@ seconds for the interface to appear."
                             #$@(qubes-network-sysctl-helper-forms)
 
                             (prepare-service-runtime)
+
+                            ;; Configure a single uplink interface, idempotently.
+                            ;; setup-ip is best-effort: configuring the uplink
+                            ;; must never make the service fail.
+                            (define (configure-iface iface)
+                              (apply-sysctls-to-iface network-sysctl-settings
+                                                      iface)
+                              (unless (try-run* "/usr/lib/qubes/setup-ip"
+                                                "add" iface)
+                                (warn (string-append "setup-ip add failed for "
+                                                     iface " (non-fatal)"))))
+
                             (try-run* ip "link" "set" "lo" "up")
+                            ;; Boot one-shot: discover the dom0-assigned managed
+                            ;; interface by MAC, waiting for it to appear, then
+                            ;; configure it.  Runtime vif (re)attach is handled
+                            ;; separately by the `reconfigure' Shepherd action.
                             (let wait ((attempt 0))
                               (let ((iface (qubes-managed-iface)))
                                 (cond
-                                  (iface (apply-sysctls-to-iface
-                                          network-sysctl-settings iface)
-                                         (exec* "/usr/lib/qubes/setup-ip" "add" iface))
-                                   ((< attempt #$%qubes-wait-attempts-long)
-                                    (usleep 100000) (wait (+ attempt 1)))
-                                   (else (display
-                                          "No Qubes managed network interface found
+                                  (iface (configure-iface iface)
+                                         (exit 0))
+                                  ((< attempt #$%qubes-wait-attempts-long)
+                                   (usleep 100000) (wait (+ attempt 1)))
+                                  (else (display
+                                         "No Qubes managed network interface found
 ")
-                                         (exit 0)))))))
+                                        (exit 0)))))))
+
+(define (qubes-network-uplink-reconfigure-program)
+  "Return a lightweight program that (re)configures a SINGLE already-present
+uplink interface, named as its sole argument.  Unlike
+@code{qubes-network-uplink-program} it does NOT run @code{prepare-service-runtime}
+(kernel-module mount, Xen device setup, etc.): at vif-hotplug time the runtime is
+already prepared, so this path only applies the per-interface network sysctls and
+runs @command{setup-ip add}.  Invoked by the @code{reconfigure} Shepherd action
+from the vif-hotplug udev rule."
+  (qubes-vm-service-program "qubes-network-uplink-reconfigure"
+    (define timeout* "/run/current-system/profile/bin/timeout")
+    (define network-sysctl-settings '#$%qubes-network-sysctl-settings)
+    (define (sysctl-path family interface name)
+      (string-append "/proc/sys/net/" family "/conf/" interface "/" name))
+    (define (write-sysctl path value)
+      (when (file-exists? path)
+        (false-if-exception
+         (call-with-output-file path
+           (lambda (port) (display value port))))))
+    (define (apply-sysctls-to-iface settings interface)
+      (for-each (lambda (setting)
+                  (write-sysctl (sysctl-path (car setting) interface
+                                             (cadr setting))
+                                (cddr setting)))
+                settings))
+    ;; Run setup-ip bounded by a hard timeout so a not-yet-ready cold attach
+    ;; cannot block the Shepherd action fiber; retry briefly because QubesDB /
+    ;; device state may still be settling at the first udev event.
+    (define (run-setup-ip iface)
+      (let retry ((attempt 0))
+        (let ((rc (status:exit-val
+                   (false-if-exception
+                    (cdr (waitpid
+                          (let ((pid (primitive-fork)))
+                            (if (= pid 0)
+                                (execl timeout* timeout* "15s"
+                                       "/usr/lib/qubes/setup-ip" "add" iface)
+                                pid))))))))
+          (cond
+            ((and rc (= rc 0)) #t)
+            ((< attempt 3) (sleep 1) (retry (+ attempt 1)))
+            (else #f)))))
+    (match (cdr (command-line))
+      ((iface _ ...)
+       (cond
+         ((not (file-exists? (string-append "/sys/class/net/" iface)))
+          (exit 0))
+         (else
+          (apply-sysctls-to-iface network-sysctl-settings iface)
+          (unless (run-setup-ip iface)
+            (warn (string-append "setup-ip add failed for " iface
+                                 " (non-fatal)")))
+          (exit 0))))
+      (()
+       (exit 0)))))
 
 (define (qubes-network-uplink-shepherd-service _)
   "Return the one-shot Shepherd service that configures the Qubes VM network
-uplink.  The argument is the ignored service value."
-  (list (one-shot-service 'qubes-network-uplink
-                          '(qubes-sysinit sysctl qubes-network-sysctl)
-                          (qubes-network-uplink-program)
-                          "/var/log/qubes-network-uplink.log")))
+uplink.  The argument is the ignored service value.
+
+In addition to the boot-time one-shot start (which discovers the managed
+interface by MAC), the service exposes a re-runnable @code{reconfigure} action.
+The vif-hotplug udev rule invokes @command{herd reconfigure
+qubes-network-uplink <iface>} when dom0 (de)attaches a vif at runtime; routing
+the hotplug event through Shepherd reuses its serialized, ordered action
+dispatch (the direct analog of the upstream udev->systemd path) instead of
+hand-rolled locking.  The action runs the same uplink program with the
+interface as an argument; the program is idempotent and no-ops if the interface
+has already vanished, so a remove/re-add storm converges harmlessly."
+  (let ((program (qubes-network-uplink-program))
+        (reconfigure-program (qubes-network-uplink-reconfigure-program)))
+    (list (one-shot-service
+           'qubes-network-uplink
+           '(qubes-sysinit sysctl qubes-network-sysctl)
+           program
+           "/var/log/qubes-network-uplink.log"
+           #:actions
+           (list (shepherd-action
+                  (name 'reconfigure)
+                  (documentation "Reconfigure a (re)attached uplink interface,
+given as an argument; idempotent and serialized by Shepherd.")
+                  (procedure
+                   #~(lambda (running . args)
+                       (let ((iface (and (pair? args) (car args))))
+                         ;; Fork/exec the lightweight reconfigure program (no
+                         ;; prepare-service-runtime) on the named interface.
+                         (let ((pid (primitive-fork)))
+                           (if (= pid 0)
+                               (let ((port (open-file
+                                            "/var/log/qubes-network-uplink.log"
+                                            "a")))
+                                 (dup2 (fileno port) 1)
+                                 (dup2 (fileno port) 2)
+                                 (close-port port)
+                                 (if iface
+                                     (execl #$reconfigure-program
+                                            #$reconfigure-program iface)
+                                     (execl #$reconfigure-program
+                                            #$reconfigure-program)))
+                               (let ((status (cdr (waitpid pid))))
+                                 (and (not (status:term-sig status))
+                                      (eqv? 0 (status:exit-val status)))))))))))))))
 
 (define qubes-network-uplink-service-type
   (service-type (name 'qubes-network-uplink)
@@ -1241,9 +1353,10 @@ uplink.  The argument is the ignored service value."
 
 (define (qubes-network-program)
   "Return the program that activates the Qubes network backend in a NetVM: it
-loads the Xen netback module and writes the required network control files,
-exiting cleanly when the qubes-network service flag is absent or no netvm
-network is configured."
+loads the Xen netback module, enables IPv4 (and optionally IPv6) forwarding, and
+runs the DNS-DNAT helper.  Forwarding setup runs whenever the qubes-network
+service flag marks this VM as a network provider, independent of whether it has
+its own upstream uplink; it exits cleanly only when the provider flag is absent."
   (qubes-vm-service-program "qubes-network"
     (define dnat-helper
       "/usr/lib/qubes/qubes-setup-dnat-to-ns")
@@ -1275,31 +1388,59 @@ network is configured."
       (unless (or (network-backend-loaded?)
                   (try-run* modprobe "netbk")
                   (try-run* modprobe "xen-netback")
-                  (network-backend-loaded?))
+                   (network-backend-loaded?))
         (warn "could not load Xen network backend module")
         (exit 1)))
 
     (prepare-service-runtime)
     (wait-for-service-environment 600)
-    (cond
-      ((not (service-enabled? "qubes-network"))
-       (display "qubes-network service flag not present; network backend inactive\n")
-       (exit 0))
-      ((string-null? (or (qubesdb-read "/qubes-netvm-network") ""))
-       (display "No Qubes downstream network configured for this VM\n")
-       (exit 0))
-      (else (load-network-backend)
-            (run* dnat-helper)
-            (write-required-file "/proc/sys/net/ipv4/ip_forward" "1")
-            (unless (string-null? (or (qubesdb-read "/qubes-netvm-gateway6") ""))
-              (write-optional-file "/proc/sys/net/ipv6/conf/all/forwarding" "1"))))))
+    ;; A Qubes NetVM provides network to its DOWNSTREAM qubes; that role is
+    ;; signalled by the qubes-network service flag.  It must enable IPv4
+    ;; forwarding and load the Xen netback backend WHETHER OR NOT it has its own
+    ;; UPSTREAM uplink.  The QubesDB key /qubes-netvm-network is written by
+    ;; qubes-core-admin whenever provides_network=True (it is provider-role
+    ;; metadata, only checked for being non-empty), so it must NOT be used as a
+    ;; reason to skip forwarding setup: a provider NetVM with no upstream still
+    ;; needs ip_forward=1, otherwise downstream traffic is silently not routed.
+    (let* ((provider? (service-enabled? "qubes-network"))
+           (gateway6 (or (qubesdb-read "/qubes-netvm-gateway6") "")))
+      (cond
+        ((not provider?)
+         (display "qubes-network service flag not present; network backend inactive\n")
+         (exit 0))
+        (else
+         (load-network-backend)
+         ;; Enable forwarding BEFORE dnat-helper so a DNS-DNAT failure cannot
+         ;; leave forwarding disabled.
+         (write-required-file "/proc/sys/net/ipv4/ip_forward" "1")
+         (unless (string-null? gateway6)
+           (write-optional-file "/proc/sys/net/ipv6/conf/all/forwarding" "1"))
+          (let ((dnat-ok? (try-run* dnat-helper)))
+            ;; DNS-DNAT (qubes-setup-dnat-to-ns) is best-effort: it only adds an
+            ;; nft dnat-dns chain redirecting downstream DNS to this VM's
+            ;; nameservers.  It must NOT make the whole network-provider service
+            ;; fail: IPv4 forwarding, the netback backend and anti-spoofing
+            ;; (set above) are the critical pieces and are already in place by
+            ;; this point.  A failed one-shot would otherwise mark qubes-network
+            ;; as failed and can poison Shepherd dependency expectations.
+            (unless dnat-ok?
+              (warn (string-append "DNS-DNAT helper failed (non-fatal): "
+                                   dnat-helper)))))))))
 
 (define (qubes-network-shepherd-service _)
   "Return the one-shot Shepherd service that activates the Qubes network
 backend role.  The argument is the ignored service value."
   (list (one-shot-service 'qubes-network
-                          '(qubes-sysinit sysctl qubes-network-sysctl
-                                          qubes-network-uplink)
+                          ;; Do NOT require qubes-network-uplink: a VM's
+                          ;; DOWNSTREAM provider role (loading xen-netback,
+                          ;; enabling ip_forward, DNS-DNAT) must not be gated on
+                          ;; whether its own UPSTREAM uplink came up.  On a
+                          ;; ProxyVM (which has an uplink) the uplink one-shot
+                          ;; takes the setup-ip path and could fail/hang/race
+                          ;; DHCP; coupling forwarding to it left ProxyVMs with
+                          ;; ip_forward=0 so they never routed for downstream
+                          ;; qubes.  Forwarding needs only qubesdb + sysctl.
+                          '(qubes-sysinit sysctl qubes-network-sysctl)
                           (qubes-network-program) "/var/log/qubes-network.log")))
 
 (define qubes-network-service-type
