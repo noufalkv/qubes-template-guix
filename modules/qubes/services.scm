@@ -389,6 +389,8 @@ the VM.  The argument is the ignored service value."
               "/dev/xvdd")
             (define kernel-modules-directory
               "/run/qubes-kernel-modules")
+            (define modprobe-autoload-helper
+              "/run/qubes-modprobe-helper")
 
             (define (warn message)
               (display message (current-error-port))
@@ -473,28 +475,60 @@ the VM.  The argument is the ignored service value."
                   ((< attempt attempts) (usleep 100000) (loop (+ attempt 1)))
                   (else #f))))
 
+            (define (install-modprobe-autoload-helper)
+              ;; Kernel-driven module autoloading (request_module, triggered
+              ;; for example when nftables opens its netlink socket) runs the
+              ;; helper named in /proc/sys/kernel/modprobe with an EMPTY
+              ;; environment.  The dom0 modules live under
+              ;; /run/qubes-kernel-modules, not the Guix kernel's module tree,
+              ;; so kmod cannot find them without LINUX_MODULE_DIRECTORY.
+              ;; Point the autoload helper at a wrapper that sets it, otherwise
+              ;; on-demand modules such as nf_tables never load and
+              ;; qubes-firewall fails with "Unable to initialize Netlink
+              ;; socket: Protocol not supported".  The wrapper execs the
+              ;; modprobe-named kmod symlink so kmod dispatches as modprobe.
+              (false-if-exception
+               (begin
+                 (call-with-output-file modprobe-autoload-helper
+                   (lambda (port)
+                     (display
+                      (string-append
+                       "#!/bin/sh\n"
+                       "export LINUX_MODULE_DIRECTORY="
+                       kernel-modules-directory "\n"
+                       "exec " modprobe " \"$@\"\n")
+                      port)))
+                 (chmod modprobe-autoload-helper #o755)
+                 (when (file-exists? "/proc/sys/kernel/modprobe")
+                   (call-with-output-file "/proc/sys/kernel/modprobe"
+                     (lambda (port)
+                       (display modprobe-autoload-helper port)))))))
+
             (define (kernel-modules-setup attempts)
               (mkdir-p kernel-modules-directory)
-              (cond
-                ((kernel-modules-available?) #t)
-                ((wait-for-path kernel-modules-device attempts)
-                 (unless (kernel-modules-mounted?)
-                   (unless (try-run* mount "-o" "ro"
-                                     kernel-modules-device
-                                     kernel-modules-directory)
-                     (warn (string-append
-                            "failed to mount Qubes dom0 kernel modules image: "
-                            kernel-modules-device))
-                     (exit 1)))
-                 (unless (kernel-modules-available?)
-                   (warn (string-append
-                          "Qubes dom0 kernel modules image is missing modules for "
-                          (kernel-release)))
-                   (exit 1)))
-                (else (warn (string-append
-                             "Qubes dom0 kernel modules device is not present: "
-                             kernel-modules-device))
-                      #f)))
+              (let ((ok (cond
+                          ((kernel-modules-available?) #t)
+                          ((wait-for-path kernel-modules-device attempts)
+                           (unless (kernel-modules-mounted?)
+                             (unless (try-run* mount "-o" "ro"
+                                               kernel-modules-device
+                                               kernel-modules-directory)
+                               (warn (string-append
+                                      "failed to mount Qubes dom0 kernel modules image: "
+                                      kernel-modules-device))
+                               (exit 1)))
+                           (unless (kernel-modules-available?)
+                             (warn (string-append
+                                    "Qubes dom0 kernel modules image is missing modules for "
+                                    (kernel-release)))
+                             (exit 1))
+                           #t)
+                          (else (warn (string-append
+                                       "Qubes dom0 kernel modules device is not present: "
+                                       kernel-modules-device))
+                                #f))))
+                (when ok (install-modprobe-autoload-helper))
+                ok))
 
             (define (runtime-setup)
               (setenv "PATH"
