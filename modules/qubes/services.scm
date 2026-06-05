@@ -8,6 +8,7 @@
   #:use-module (gnu)
   #:use-module (gnu packages admin)
   #:use-module (gnu packages linux)
+  #:use-module (gnu packages virtualization)
   #:use-module (gnu services)
   #:use-module (gnu services base)
   #:use-module (gnu services shepherd)
@@ -995,6 +996,44 @@ settings.  The argument is the ignored service value."
                 (description
                  "Apply Qubes network sysctl settings without early wildcard sysctl.")))
 
+(define (qubes-iptables-program)
+  "Return the program that applies the Qubes base firewall and anti-spoofing
+nftables rules.  Upstream Qubes applies these via the systemd units
+@code{qubes-antispoof.service} and @code{qubes-iptables.service} (both
+@code{RequiredBy=network-pre.target}); Guix has no systemd, so this Shepherd
+one-shot reproduces them, establishing the base @code{table ip qubes} (input
+policy drop, masquerade) and the anti-spoofing rules that the uplink and
+firewall services rely on.  Anti-spoofing failure is logged but non-fatal so a
+VM still boots; the base ruleset application is required."
+  (qubes-vm-service-program "qubes-iptables"
+                            (define nft
+                              "/run/current-system/profile/sbin/nft")
+                            (define antispoof-rules
+                              "/etc/qubes/qubes-antispoof.nft")
+                            (prepare-service-runtime)
+                            (when (file-exists? antispoof-rules)
+                              (unless (try-run* nft "-f" antispoof-rules)
+                                (warn "failed to apply Qubes anti-spoofing rules")))
+                            (run* "/usr/lib/qubes/init/qubes-iptables" "start")))
+
+(define (qubes-iptables-shepherd-service _)
+  "Return the one-shot Shepherd service that applies the Qubes base firewall
+and anti-spoofing rules.  The argument is the ignored service value."
+  (list (one-shot-service 'qubes-iptables
+                          '(qubes-sysinit qubes-kernel-modules
+                                          qubes-network-sysctl)
+                          (qubes-iptables-program)
+                          "/var/log/qubes-iptables.log")))
+
+(define qubes-iptables-service-type
+  (service-type (name 'qubes-iptables)
+                (extensions (list (service-extension
+                                   shepherd-root-service-type
+                                   qubes-iptables-shepherd-service)))
+                (default-value #f)
+                (description
+                 "Apply the Qubes base firewall and anti-spoofing nftables rules.")))
+
 (define (qubes-db-program)
   "Return the program that prepares the service runtime and execs the QubesDB
 VM daemon."
@@ -1451,6 +1490,157 @@ backend role.  The argument is the ignored service value."
                 (default-value #f)
                 (description "Configure the Qubes network backend role for NetVMs.")))
 
+(define (xendriverdomain-program)
+  "Return the program that runs @command{xl devd}, the Xen driver-domain
+backend hotplug daemon.  When this VM is a NetVM, dom0 attaches each downstream
+qube's network frontend by creating a @code{vifX.0} backend device in this VM;
+@command{xl devd} watches XenStore for those backend devices and runs the Xen
+hotplug scripts (here @file{/etc/xen/scripts/vif-route-qubes}) that configure
+the downstream interface (interface group, routes, neighbour entries and
+nftables anti-spoofing set membership).  Upstream Qubes runs this from the
+@code{xendriverdomain.service} systemd unit (@code{ExecStart=/usr/sbin/xl
+devd}); Guix has no systemd, so this Shepherd service reproduces it.  Run in
+the foreground (@code{-F}) so the Shepherd forkexec constructor supervises the
+daemon directly.  @file{/var/log/xen} is created because libxl writes its
+hotplug log there (and the integration tests collect it)."
+  (qubes-vm-service-program "xendriverdomain"
+                            (define xl
+                              #$(file-append xen "/sbin/xl"))
+                            (define xen-script-dir
+                              #$(file-append xen "/etc/xen/scripts"))
+                            (define overlay-script-dir
+                              "/run/qubes-xen-scripts")
+                            (prepare-service-runtime)
+                            (mkdir-p "/var/log/xen")
+                            (mkdir-p "/var/run/xen")
+                            (mkdir-p "/var/lib/xen")
+                            (mkdir-p "/etc/xen")
+                            ;; xl devd serves DOWNSTREAM vif backends via the Xen
+                            ;; netback driver; ensure it is present rather than
+                            ;; relying on another service having loaded it.
+                            (or (file-exists? "/sys/module/xen_netback")
+                                (try-run* modprobe "xen-netback")
+                                (try-run* modprobe "netbk"))
+                            (unless (file-exists? "/etc/xen/xl.conf")
+                              (false-if-exception
+                               (call-with-output-file "/etc/xen/xl.conf"
+                                 (lambda (port) (display "" port)))))
+                            ;; libxl hard-codes its hotplug script directory to
+                            ;; xen's own @file{etc/xen/scripts} store path and
+                            ;; resolves the RELATIVE script name dom0 sets for a
+                            ;; vif backend (@code{<script path="vif-route-qubes"/>})
+                            ;; against it.  That directory does not contain
+                            ;; Qubes' @command{vif-route-qubes}, so the downstream
+                            ;; vif hotplug script never runs and the NetVM never
+                            ;; configures routing/anti-spoofing for its qubes.
+                            ;; Overlay a copy of xen's scripts plus
+                            ;; @command{vif-route-qubes} over that store path so
+                            ;; the relative name resolves; @command{xl devd}
+                            ;; inherits the bind mount.
+                            (false-if-exception
+                             (begin
+                               (when (file-exists? overlay-script-dir)
+                                 (try-run* "/run/current-system/profile/bin/umount"
+                                           xen-script-dir)
+                                 (try-run* "/run/current-system/profile/bin/rm"
+                                           "-rf" overlay-script-dir))
+                               (mkdir-p overlay-script-dir)
+                               (run* "/run/current-system/profile/bin/cp" "-a"
+                                     (string-append xen-script-dir "/.")
+                                     (string-append overlay-script-dir "/"))
+                               (for-each
+                                (lambda (name)
+                                  (let ((src (string-append
+                                              "/etc/xen/scripts/" name)))
+                                    (when (file-exists? src)
+                                      (false-if-exception
+                                       (symlink src (string-append
+                                                     overlay-script-dir "/" name))))))
+                                '("vif-route-qubes" "vif-qubes-nat.sh"))
+                               (run* mount "--bind" overlay-script-dir
+                                      xen-script-dir)))
+                            (display "starting xl devd -F for Xen driver-domain hotplug\n")
+                            (exec* xl "devd" "-F")))
+
+(define (xendriverdomain-shepherd-service _)
+  "Return the Shepherd service that runs @command{xl devd} (the Xen
+driver-domain backend hotplug daemon) for the NetVM role.  The argument is the
+ignored service value."
+  (list (shepherd-service (provision '(xendriverdomain))
+                          ;; Only depend on what xl devd genuinely needs: a
+                          ;; populated runtime, the dom0 kernel modules (for
+                          ;; xen-netback) and udev.  Do NOT depend on
+                          ;; qubes-network: that one-shot configures THIS VM's
+                          ;; uplink/forwarding/DNAT and on a provider NetVM with
+                          ;; no upstream it no-ops or can fail, which would leave
+                          ;; this forkexec gated "enabled but stopped" and the
+                          ;; downstream vif backends would never be serviced.
+                          ;; DO require qubes-iptables: it establishes the base
+                          ;; @code{table ip qubes} (with the @code{allowed} and
+                          ;; @code{downstream} anti-spoofing sets) that the vif
+                          ;; hotplug script (@command{vif-route-qubes}) populates
+                          ;; per downstream vif.  If xl devd processed a hotplug
+                          ;; event before that table existed, the dynamic set
+                          ;; elements would be added and then dropped when the
+                          ;; base ruleset is (re)loaded, leaving downstream
+                          ;; traffic blocked by anti-spoofing.
+                          (requirement '(qubes-sysinit qubes-kernel-modules udev
+                                                       qubes-iptables))
+                          (documentation
+                           "Run xl devd for Xen backend (vif) hotplug (NetVM role).")
+                          (start
+                           #~(make-forkexec-constructor
+                              (list #$(xendriverdomain-program))
+                              #:log-file "/var/log/xen/xldevd-shepherd.log"))
+                          (stop #~(make-kill-destructor)))))
+
+(define xendriverdomain-service-type
+  (service-type (name 'xendriverdomain)
+                (extensions (list (service-extension
+                                   shepherd-root-service-type
+                                   xendriverdomain-shepherd-service)))
+                (default-value #f)
+                (description
+                 "Run xl devd so a NetVM processes Xen backend (vif) hotplug.")))
+
+(define (qubes-firewall-program)
+  "Return the program that runs the Qubes firewall updater daemon used by
+ProxyVMs/sys-firewall.  Upstream Qubes starts @command{qubes-firewall} from a
+systemd unit gated on @file{/var/run/qubes-service/qubes-firewall}; Guix has no
+systemd, so this Shepherd-driven program reproduces that behaviour and exits
+cleanly when dom0 has not enabled the firewall service flag for this VM (for
+example a plain AppVM)."
+  (qubes-vm-service-program "qubes-firewall"
+                            (prepare-service-runtime)
+                            (wait-for-service-environment 600)
+                            (unless (service-enabled? "qubes-firewall")
+                              (display "qubes-firewall service flag not present; firewall inactive\n")
+                              (exit 0))
+                            (exec* "/usr/bin/qubes-firewall")))
+
+(define (qubes-firewall-shepherd-service _)
+  "Return the Shepherd service that runs the Qubes firewall updater daemon for
+the ProxyVM/sys-firewall role.  The argument is the ignored service value."
+  (list (shepherd-service (provision '(qubes-firewall))
+                          (requirement '(qubes-sysinit qubes-kernel-modules
+                                                       qubes-db qubes-iptables))
+                          (documentation
+                           "Run the Qubes firewall updater (ProxyVM role).")
+                          (start
+                           #~(make-forkexec-constructor
+                              (list #$(qubes-firewall-program))
+                              #:log-file "/var/log/qubes-firewall.log"))
+                          (stop #~(make-kill-destructor)))))
+
+(define qubes-firewall-service-type
+  (service-type (name 'qubes-firewall)
+                (extensions (list (service-extension
+                                   shepherd-root-service-type
+                                   qubes-firewall-shepherd-service)))
+                (default-value #f)
+                (description
+                 "Run the Qubes firewall updater for ProxyVMs/sys-firewall.")))
+
 (define (qubes-feature-advertisement-program)
   "Return the program that advertises to dom0, via QubesDB feature requests
 and a qubes.FeaturesRequest qrexec call, the Qubes services this template
@@ -1802,8 +1992,11 @@ the ignored service value."
         (service qubes-sysinit-service-type)
         (service qubes-meminfo-writer-service-type)
         (service qubes-network-sysctl-service-type)
+        (service qubes-iptables-service-type)
         (service qubes-network-uplink-service-type)
+        (service qubes-firewall-service-type)
         (service qubes-network-service-type)
+        (service xendriverdomain-service-type)
         (service qubes-updates-proxy-forwarder-service-type)
         (service qubes-mount-dirs-service-type)
         (service qubes-bind-dirs-service-type)
