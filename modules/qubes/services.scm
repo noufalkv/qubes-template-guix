@@ -649,8 +649,12 @@ the VM.  The argument is the ignored service value."
 
 (define (qubes-udev-configurations-union subdirectory packages)
   "Return a @code{computed-file} that unions the udev SUBDIRECTORY (e.g.
-@file{rules.d} or @file{hwdb.d}) found under the standard @file{/lib/udev}
-and @file{/libexec/udev} locations of every package in PACKAGES."
+@file{rules.d} or @file{hwdb.d}) found under the standard @file{/lib/udev},
+@file{/libexec/udev} and @file{/etc/udev} locations of every package in
+PACKAGES.  @file{/etc/udev} is included because qubes-core-agent-linux installs
+its runtime rules there (e.g. @file{etc/udev/rules.d/99-qubes-network.rules},
+the vif-hotplug rule that reconfigures a VM's interface on dynamic netvm
+attach); omitting it left that rule out of the active udev set entirely."
   (define build
     (with-imported-modules '((guix build union) (guix build utils))
                            #~(begin
@@ -660,18 +664,37 @@ and @file{/libexec/udev} locations of every package in PACKAGES."
 
                                (define standard-locations
                                  '(#$(string-append "/lib/udev/" subdirectory)
-                                   #$(string-append "/libexec/udev/" subdirectory)))
+                                   #$(string-append "/libexec/udev/" subdirectory)
+                                   #$(string-append "/etc/udev/" subdirectory)))
 
-                               (define (configuration-sub-directory directory)
-                                 (find directory-exists?
-                                       (map (lambda (suffix)
-                                              (string-append directory suffix))
-                                            standard-locations)))
+                               (define (configuration-sub-directories directory)
+                                 ;; A single package may ship the udev
+                                 ;; subdirectory under MORE THAN ONE location
+                                 ;; (qubes-vm-core ships rules in BOTH
+                                 ;; lib/udev/rules.d and etc/udev/rules.d), so
+                                 ;; collect ALL that exist, not just the first.
+                                 (filter directory-exists?
+                                         (map (lambda (suffix)
+                                                (string-append directory suffix))
+                                              standard-locations)))
 
                                (union-build #$output
-                                            (filter-map
-                                             configuration-sub-directory
-                                             '#$packages)))))
+                                            (append-map
+                                             configuration-sub-directories
+                                             '#$packages)
+                                            ;; Last-wins precedence: with the
+                                            ;; package order below (eudev first,
+                                            ;; then Qubes packages) and the
+                                            ;; per-package location order
+                                            ;; (lib, libexec, etc), this makes a
+                                            ;; Qubes rule override an eudev rule
+                                            ;; of the same basename, and a
+                                            ;; package's etc/udev override its
+                                            ;; own lib/udev.  Without this the
+                                            ;; default first-wins would let
+                                            ;; eudev shadow a Qubes override.
+                                            #:resolve-collision
+                                            (lambda (files) (last files))))))
 
   (computed-file (string-append "qubes-udev-" subdirectory) build))
 
@@ -715,9 +738,23 @@ database fragments from every package in PACKAGES."
                                                               #$output))))))
     `(("udev" ,(file-union "qubes-udev"
                            `(("udev.conf" ,qubes-udev-conf)
-                             ("rules.d" ,(qubes-udev-rules-union (cons* udev
-                                                                  qubes-kvm-udev-rule
-                                                                  rules)))
+                             ;; qubes-vm-core's udev rules
+                             ;; (etc/udev/rules.d/99-qubes-network.rules — the
+                             ;; vif-hotplug rule that reconfigures an interface
+                             ;; on dynamic netvm attach — and
+                             ;; lib/udev/rules.d/50-qubes-mem-hotplug.rules) are
+                             ;; MANDATORY for a functioning Qubes VM, not
+                             ;; optional user rules, so feed the package
+                             ;; unconditionally rather than relying on the
+                             ;; extensible `rules' field (which the system
+                             ;; instantiates empty).  Listed after `udev' so
+                             ;; last-wins collision resolution lets Qubes rules
+                             ;; override eudev defaults of the same basename.
+                             ("rules.d" ,(qubes-udev-rules-union
+                                          (append (list udev
+                                                        qubes-kvm-udev-rule
+                                                        qubes-vm-core)
+                                                  rules)))
                              ("hwdb.bin" ,hwdb-bin)))))))
 
 (define (qubes-udev-coldplug-program config)
