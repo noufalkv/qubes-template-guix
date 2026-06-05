@@ -20,6 +20,7 @@
   #:use-module (gnu packages elf)
   #:use-module (gnu packages freedesktop)
   #:use-module (gnu packages gawk)
+  #:use-module (gnu packages gcc)
   #:use-module (gnu packages glib)
   #:use-module (gnu packages gnome)
   #:use-module (gnu packages haskell-xyz)
@@ -355,7 +356,16 @@ vchan and qrexec components, without Xen hypervisor tools, QEMU, or firmware.")
           (let* ((out-bin (string-append #$output "/bin"))
                  (out-scripts (string-append #$output "/etc/xen/scripts"))
                  (xen-scripts (string-append #$xen "/etc/xen/scripts"))
-                 (rpath (string-append #$xen-vchan-libs "/lib")))
+                 ;; The XenStore tool binaries link libxenstore/libxentoolcore
+                 ;; (from xen-vchan-libs) AND libgcc_s.so.1 (from gcc:lib).
+                 ;; --set-rpath REPLACES the binary's RPATH, so BOTH directories
+                 ;; must be listed: omitting gcc:lib makes the dynamic loader
+                 ;; fail with "libgcc_s.so.1: cannot open shared object file",
+                 ;; which silently breaks every xenstore-read in
+                 ;; vif-route-qubes (empty $ip => no anti-spoofing => NetVM
+                 ;; downstream traffic dropped).
+                 (rpath (string-append #$xen-vchan-libs "/lib" ":"
+                                       #$gcc:lib "/lib")))
             (mkdir-p out-bin)
             (mkdir-p out-scripts)
             (for-each (lambda (tool)
