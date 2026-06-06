@@ -2025,12 +2025,49 @@ the ignored service value."
 (define %qubes-kernel-sysctl-settings
   '(("kernel.threads-max" . "51200")))
 
+(define %qubes-substitute-cache-url
+  ;; GitHub Pages host serving the channel's signed substitute cache (built by
+  ;; .github/workflows/substitute-cache.yml).  Update the user/repo if forked.
+  "https://noufalkv.github.io/qubes-template-guix")
+
+(define %qubes-substitute-cache-enabled?
+  ;; Set #t now that the dev cache signing key is committed
+  ;; (config/substitute-cache/signing-key.pub) with its private half in the
+  ;; GUIX_SIGNING_KEY_SEC Actions secret.  While #f the daemon stays on official
+  ;; substitutes only; enabling before a real key is authorized would point the
+  ;; daemon at a substitute host with no usable key -- a dead source that only
+  ;; slows updates.
+  #t)
+
+(define %qubes-substitute-cache-key-file
+  ;; PUBLIC signing key the daemon authorizes for the cache.  A relative
+  ;; local-file is resolved by Guix against the channel root, so it works under
+  ;; "guix build -L", "guix pull", and the offline channel fallback alike.
+  (local-file "../../config/substitute-cache/signing-key.pub"))
+
 (define %qubes-base-services
   ;; Keep the daemon usable in ordinary networked AppVMs.  The Qubes updates
   ;; proxy forwarder is gated by the updates-proxy-setup service flag; forcing
   ;; guix-daemon through 127.0.0.1:8082 here breaks substitute downloads when
   ;; that flag is absent.
-  %base-services)
+  ;;
+  ;; When the cache is enabled, layer the channel's GitHub Pages substitute
+  ;; cache onto the daemon AFTER the official servers, so Qubes channel store
+  ;; paths (which official CI does not build) download from the cache instead of
+  ;; rebuilding locally, while everything else still comes from
+  ;; ci.guix/bordeaux.  Guix stays unpinned, so security updates are unaffected.
+  (if %qubes-substitute-cache-enabled?
+      (modify-services %base-services
+        (guix-service-type
+         config => (guix-configuration
+                    (inherit config)
+                    (substitute-urls
+                     (append (guix-configuration-substitute-urls config)
+                             (list %qubes-substitute-cache-url)))
+                    (authorized-keys
+                     (cons %qubes-substitute-cache-key-file
+                           (guix-configuration-authorized-keys config))))))
+      %base-services))
 
 (define %qubes-sysctl-service
   ;; Use the built-in sysctl-service-type from (gnu services sysctl): it

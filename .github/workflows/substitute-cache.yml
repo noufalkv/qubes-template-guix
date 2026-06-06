@@ -1,0 +1,101 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Publish a static Guix substitute cache for the Qubes channel to GitHub Pages.
+#
+# The Qubes channel has no substitute server, so a template's
+# "guix pull && guix system reconfigure" otherwise rebuilds every Qubes
+# derivation locally whenever the upstream Guix toolchain moves.  Guix itself
+# stays UNPINNED for security; this job just publishes prebuilt, signed nars for
+# the channel-specific store paths so the in-template update downloads them.
+#
+# It tracks the SAME unpinned branch head users track (scheduled + on push), so
+# the cache stays aligned with current Guix without freezing security updates.
+#
+# Trust model: nars are signed by a stable Ed25519 key whose PRIVATE half lives
+# in the GUIX_SIGNING_KEY_SEC repository secret and whose PUBLIC half is
+# committed at config/substitute-cache/signing-key.pub and authorized by the
+# template (see that file's header).  GitHub Pages is an untrusted transport;
+# the daemon verifies every narinfo signature regardless of host.
+
+name: substitute-cache
+
+on:
+  push:
+    branches: [quality-refactor]
+    paths:
+      - 'modules/**'
+      - 'config/qubes-os-*.scm'
+      - 'config/channels.scm'
+      - 'scripts/build-substitute-cache.sh'
+      - '.github/workflows/substitute-cache.yml'
+  schedule:
+    # Rebuild against current upstream Guix head a few times a week so the cache
+    # tracks the unpinned channel users actually pull.
+    - cron: '17 4 * * 1,4'
+  workflow_dispatch:
+
+concurrency:
+  group: substitute-cache
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    container:
+      image: guix/guix:latest
+      options: --privileged
+    steps:
+      - name: Check out channel
+        uses: actions/checkout@v4
+
+      - name: Start guix-daemon and authorize official substitutes
+        run: |
+          guix-daemon --build-users-group=guixbuild --disable-chroot &
+          sleep 5
+          guix archive --authorize < /var/guix/profiles/per-user/root/current-guix/share/guix/ci.guix.gnu.org.pub || true
+          guix archive --authorize < /var/guix/profiles/per-user/root/current-guix/share/guix/bordeaux.guix.gnu.org.pub || true
+
+      - name: Refresh Guix (tracks current head, stays unpinned)
+        run: guix pull -C config/channels.scm --allow-downgrades
+
+      - name: Restore signing key
+        env:
+          GUIX_SIGNING_KEY_SEC: ${{ secrets.GUIX_SIGNING_KEY_SEC }}
+        run: |
+          if [ -z "$GUIX_SIGNING_KEY_SEC" ]; then
+            echo "::error::GUIX_SIGNING_KEY_SEC secret is not set. Generate a key with"
+            echo "::error::'guix archive --generate-key', store the .sec as this secret,"
+            echo "::error::and commit the .pub to config/substitute-cache/signing-key.pub."
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/keys"
+          printf '%s' "$GUIX_SIGNING_KEY_SEC" > "$RUNNER_TEMP/keys/signing-key.sec"
+          cp config/substitute-cache/signing-key.pub "$RUNNER_TEMP/keys/signing-key.pub"
+          chmod 600 "$RUNNER_TEMP/keys/signing-key.sec"
+
+      - name: Build static substitute cache
+        run: |
+          export PATH="$HOME/.config/guix/current/bin:$PATH"
+          ./scripts/build-substitute-cache.sh \
+            --output "$RUNNER_TEMP/site" \
+            --public-key "$RUNNER_TEMP/keys/signing-key.pub" \
+            --private-key "$RUNNER_TEMP/keys/signing-key.sec" \
+            --variant both \
+            --compression zstd:19
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ runner.temp }}/site
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
