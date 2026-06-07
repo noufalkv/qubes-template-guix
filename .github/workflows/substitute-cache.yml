@@ -86,13 +86,18 @@ jobs:
         run: |
           set -eu
           guix_root=/var/guix/profiles/per-user/root/current-guix
-          sudo cp "$guix_root/lib/systemd/system/gnu-store.mount" /etc/systemd/system/ || true
-          sudo install -m644 "$guix_root/lib/systemd/system/guix-daemon.service" \
-            /etc/systemd/system/ || true
-          sudo systemctl daemon-reload
-          sudo systemctl enable --now gnu-store.mount guix-daemon || \
-            sudo "$guix_root/bin/guix-daemon" --build-users-group=guixbuild &
-          sleep 5
+          # Launch the daemon directly (no systemd): the release unit file does
+          # not fit the ephemeral runner, and a plain background daemon is the
+          # reliable CI pattern.  Wait for its socket before proceeding.
+          sudo "$guix_root/bin/guix-daemon" --build-users-group=guixbuild \
+            --substitute-urls='https://ci.guix.gnu.org https://bordeaux.guix.gnu.org' \
+            >/tmp/guix-daemon.log 2>&1 &
+          for i in $(seq 1 30); do
+            [ -S /var/guix/daemon-socket/socket ] && break
+            sleep 1
+          done
+          [ -S /var/guix/daemon-socket/socket ] || {
+            echo "::error::guix-daemon socket never appeared"; cat /tmp/guix-daemon.log; exit 1; }
           for F in "$guix_root"/share/guix/*.pub; do
             sudo "$guix_root/bin/guix" archive --authorize < "$F" || true
           done
