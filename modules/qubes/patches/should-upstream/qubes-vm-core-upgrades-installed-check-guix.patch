@@ -2,11 +2,23 @@ Report Guix System update state in upgrades-installed-check.
 
 upgrades-installed-check walks a chain of per-distribution branches to decide
 whether updates are available.  Add a Guix System branch (detected by
-/run/current-system) before the Archlinux branch.  Guix has no cheap
-metadata-only "are updates available" probe comparable to dnf check-update or
-apt-get -s upgrade; the Qubes vmupdate backend reports system/profile changes
-while reconfiguring, so this helper only needs to clear the post-update
-notification state afterwards.
+/run/current-system) before the Archlinux branch.
+
+Guix has no metadata-index probe comparable to dnf check-update or
+apt-get -s upgrade, but "updates available" for a Guix System has a precise,
+cheap meaning: at least one channel in /etc/guix/channels.scm has advanced past
+the commit the running system was built from.  Compare, per channel, the commit
+recorded by `guix describe` against the branch head reported by
+`git ls-remote` (which goes through the same http_proxy/https_proxy the updates
+proxy sets, so it works in a TemplateVM with no other network).  If any channel
+is behind its branch head, updates are available.  When channels.scm pins a
+channel to an explicit commit, `git ls-remote` of that branch is still compared
+against the recorded commit, which is correct: a pinned system reports no update
+until the pin is bumped.
+
+Falls back to "true" (no updates) only when the comparison cannot be performed
+(no channels.scm, git/guix missing, or every ls-remote fails), so a transient
+network failure never produces a false "updates available".
 
 Upstream: QubesOS/qubes-core-agent-linux,
 package-managers/upgrades-installed-check.
@@ -17,17 +29,59 @@ diff --git a/package-managers/upgrades-installed-check b/package-managers/upgrad
 index ceb3be2..1323d01 100755
 --- a/package-managers/upgrades-installed-check
 +++ b/package-managers/upgrades-installed-check
-@@ -46,6 +46,13 @@ elif [ -e /etc/debian_version ]; then
+@@ -46,6 +46,55 @@ elif [ -e /etc/debian_version ]; then
      # shellcheck disable=SC2266
      echo "$apt_get_upgrade_output" | awk "/^Inst/{ print $2 }" | [ "$(wc -L)" -eq 0 ] && echo "true" || echo "false"
      echo "$apt_get_upgrade_output" >&2
 +elif [ -e /run/current-system ]; then
 +    ## Guix System
-+    # No cheap metadata-only update check exists; the Qubes vmupdate
-+    # backend reports system/profile changes while reconfiguring, so only
-+    # clear the post-update notification state here.
-+    echo true
-+    exit_code=0
++    # "Updates available" means a channel in /etc/guix/channels.scm has
++    # advanced past the commit the running system was built from.  Compare,
++    # per channel, `guix describe` (installed) against `git ls-remote`
++    # (remote branch head).  ls-remote honours http_proxy/https_proxy, so it
++    # works in a TemplateVM whose only network is the Qubes updates proxy.
++    set -o pipefail
++    guix_bin="$(command -v guix || echo /run/current-system/profile/bin/guix)"
++    git_bin="$(command -v git || echo /run/current-system/profile/bin/git)"
++    if [ ! -x "$guix_bin" ] || [ ! -x "$git_bin" ]; then
++        # Cannot probe; assume up to date rather than nag spuriously.
++        echo "true"
++        exit_code=0
++    else
++        # Emit "name<TAB>url<TAB>branch<TAB>commit" per channel.
++        describe="$("$guix_bin" describe -f recutils 2>/dev/null | awk '
++            /^name:/    { name=$2 }
++            /^url:/     { url=$2 }
++            /^branch:/  { branch=$2 }
++            /^commit:/  { print name "\t" url "\t" branch "\t" $2 }
++        ')"
++        updates="false"
++        checked_any="false"
++        while IFS="$(printf "\t")" read -r _name url branch commit; do
++            [ -n "$url" ] || continue
++            [ -n "$branch" ] || branch="HEAD"
++            remote="$("$git_bin" ls-remote "$url" "refs/heads/$branch" 2>/dev/null | cut -f1)"
++            [ -n "$remote" ] || remote="$("$git_bin" ls-remote "$url" "$branch" 2>/dev/null | cut -f1)"
++            if [ -n "$remote" ]; then
++                checked_any="true"
++                if [ "$remote" != "$commit" ]; then
++                    updates="true"
++                fi
++            fi
++        done <<EOF
++$describe
++EOF
++        if [ "$checked_any" != "true" ]; then
++            # No channel could be probed (e.g. transient proxy failure);
++            # do not raise a false notification.
++            echo "true"
++        elif [ "$updates" = "true" ]; then
++            echo "false"
++        else
++            echo "true"
++        fi
++        exit_code=0
++    fi
  elif [ -e /etc/arch-release ]; then
      ## Archlinux
      checkupdates >/dev/null 2>&1
