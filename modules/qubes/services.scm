@@ -1751,6 +1751,71 @@ The argument is the ignored service value."
                 (default-value #f)
                 (description "Run the Qubes updates proxy forwarder socket service.")))
 
+(define (qubes-guix-daemon-proxy-program)
+  "Return the program that points guix-daemon at the Qubes updates proxy when,
+and only when, this VM relies on it.  guix-daemon performs ALL substitute
+downloads and fixed-output source fetches itself, so without a proxy in the
+daemon's own environment a TemplateVM (which has no network except the updates
+proxy) gets 0%% substitutes and even the source-build fallback cannot fetch its
+origins.  The proxy must be conditional: an AppVM/StandaloneVM/DispVM with
+direct networking, or a VM that is itself the updates proxy, must keep
+guix-daemon UNPROXIED.  This mirrors the forwarder's gate exactly so each role
+gets the right behaviour:
+
+  - updates-proxy-setup flag set, not self-proxy  -> the forwarder publishes
+    127.0.0.1:8082; wait for it, then 'herd set-http-proxy guix-daemon
+    http://127.0.0.1:8082' (which restarts the daemon so http_proxy/https_proxy
+    apply to substitutes AND builtin:download source fetches);
+  - otherwise -> clear any proxy so the daemon uses direct networking."
+  (qubes-vm-service-program "qubes-guix-daemon-proxy"
+    (runtime-setup)
+    (wait-for-service-environment 600)
+    (define herd "/run/current-system/profile/bin/herd")
+    (define (clear-proxy)
+      (try-run* herd "set-http-proxy" "guix-daemon"))
+    (define (port-open? host port)
+      (false-if-exception
+       (let ((s (socket AF_INET SOCK_STREAM 0)))
+         (connect s AF_INET (inet-pton AF_INET host) port)
+         (close-port s)
+         #t)))
+    (define (wait-proxy-port attempts)
+      (let loop ((n attempts))
+        (cond ((port-open? "127.0.0.1" 8082) #t)
+              ((<= n 0) #f)
+              (else (sleep 1) (loop (- n 1))))))
+    (cond
+      ((not (service-enabled? "updates-proxy-setup"))
+       (display "updates-proxy-setup flag absent; leaving guix-daemon on direct network\n")
+       (clear-proxy))
+      ((service-enabled? "qubes-updates-proxy")
+       (display "this VM is the updates proxy; leaving guix-daemon on direct network\n")
+       (clear-proxy))
+      ((wait-proxy-port 120)
+       (display "pointing guix-daemon at the updates proxy on 127.0.0.1:8082\n")
+       (run* herd "set-http-proxy" "guix-daemon" "http://127.0.0.1:8082"))
+      (else
+       (display "updates proxy port 8082 never came up; leaving guix-daemon unproxied\n")
+       (clear-proxy)))))
+
+(define (qubes-guix-daemon-proxy-shepherd-service _)
+  "Return the one-shot Shepherd service that points guix-daemon at the updates
+proxy when this VM relies on it.  The argument is the ignored service value."
+  (list (one-shot-service 'qubes-guix-daemon-proxy
+                          '(qubes-sysinit guix-daemon qubes-updates-proxy-forwarder)
+                          (qubes-guix-daemon-proxy-program)
+                          "/var/log/qubes-guix-daemon-proxy.log"
+                          #:best-effort? #t)))
+
+(define qubes-guix-daemon-proxy-service-type
+  (service-type (name 'qubes-guix-daemon-proxy)
+                (extensions (list (service-extension
+                                   shepherd-root-service-type
+                                   qubes-guix-daemon-proxy-shepherd-service)))
+                (default-value #f)
+                (description
+                 "Point guix-daemon at the Qubes updates proxy when the VM relies on it.")))
+
 (define (qubes-mount-dirs-program)
   "Return the program that mounts the Qubes persistent directories (/rw,
 /home, /usr/local): it waits for the private-volume device, materializes and
@@ -1991,6 +2056,7 @@ the ignored service value."
         (service qubes-network-service-type)
         (service xendriverdomain-service-type)
         (service qubes-updates-proxy-forwarder-service-type)
+        (service qubes-guix-daemon-proxy-service-type)
         (service qubes-mount-dirs-service-type)
         (service qubes-bind-dirs-service-type)
         (service qubes-misc-post-service-type)
