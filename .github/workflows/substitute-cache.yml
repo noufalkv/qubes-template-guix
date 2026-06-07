@@ -11,11 +11,14 @@
 # It tracks the SAME unpinned branch head users track (scheduled + on push), so
 # the cache stays aligned with current Guix without freezing security updates.
 #
-# Trust model: nars are signed by a stable Ed25519 key whose PRIVATE half lives
-# in the GUIX_SIGNING_KEY_SEC repository secret and whose PUBLIC half is
-# committed at config/substitute-cache/signing-key.pub and authorized by the
-# template (see that file's header).  GitHub Pages is an untrusted transport;
-# the daemon verifies every narinfo signature regardless of host.
+# Trust model: nars are signed by an Ed25519 key whose PRIVATE half lives in the
+# GUIX_SIGNING_KEY_SEC repository secret and whose PUBLIC half is committed at
+# config/substitute-cache/signing-key.pub and authorized by the template.  GitHub
+# Pages is an untrusted transport; the daemon verifies every narinfo signature.
+#
+# Guix is bootstrapped ONLY from the official GNU release binary on ftp.gnu.org,
+# with its detached OpenPGP signature verified -- no third-party images or
+# actions.  After bootstrap we "guix pull" the unpinned channels to current head.
 
 name: substitute-cache
 
@@ -43,37 +46,69 @@ permissions:
   pages: write
   id-token: write
 
+env:
+  GUIX_VERSION: '1.5.0'
+
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
-    container:
-      image: guix/guix:latest
-      options: --privileged
     steps:
       - name: Check out channel
         uses: actions/checkout@v4
 
+      - name: Bootstrap Guix from the official GNU release (signature-verified)
+        run: |
+          set -eu
+          base="https://ftp.gnu.org/gnu/guix"
+          tarball="guix-binary-${GUIX_VERSION}.x86_64-linux.tar.xz"
+          wget -nv "$base/$tarball" "$base/$tarball.sig"
+          # Verify against the Guix maintainer key that signed this release
+          # (Efraim Flashner); fingerprint confirmed from the .sig issuer.
+          key=A28BF40C3E551372662D14F741AAE7DCCA3D8351
+          gpg --keyserver hkps://keyserver.ubuntu.com --recv-keys "$key" \
+            || gpg --keyserver hkps://keys.openpgp.org --recv-keys "$key"
+          gpg --verify "$tarball.sig" "$tarball"
+          # Install exactly as etc/guix-install.sh does, non-interactively.
+          sudo tar --warning=no-timestamp -xf "$tarball" -C /
+          sudo mkdir -p /etc/guix
+          sudo groupadd --system guixbuild || true
+          for i in $(seq -w 1 10); do
+            sudo useradd -g guixbuild -G guixbuild -d /var/empty -s "$(which nologin)" \
+              -c "Guix build user $i" --system "guixbuilder${i}" || true
+          done
+          guix_root=/var/guix/profiles/per-user/root/current-guix
+          echo "$guix_root/bin" >> "$GITHUB_PATH"
+
       - name: Start guix-daemon and authorize official substitutes
         run: |
-          guix-daemon --build-users-group=guixbuild --disable-chroot &
+          set -eu
+          guix_root=/var/guix/profiles/per-user/root/current-guix
+          sudo cp "$guix_root/lib/systemd/system/gnu-store.mount" /etc/systemd/system/ || true
+          sudo install -m644 "$guix_root/lib/systemd/system/guix-daemon.service" \
+            /etc/systemd/system/ || true
+          sudo systemctl daemon-reload
+          sudo systemctl enable --now gnu-store.mount guix-daemon || \
+            sudo "$guix_root/bin/guix-daemon" --build-users-group=guixbuild &
           sleep 5
-          guix archive --authorize < /var/guix/profiles/per-user/root/current-guix/share/guix/ci.guix.gnu.org.pub || true
-          guix archive --authorize < /var/guix/profiles/per-user/root/current-guix/share/guix/bordeaux.guix.gnu.org.pub || true
+          for F in "$guix_root"/share/guix/*.pub; do
+            sudo "$guix_root/bin/guix" archive --authorize < "$F" || true
+          done
 
-      - name: Refresh Guix (tracks current head, stays unpinned)
-        run: guix pull -C config/channels.scm --allow-downgrades
+      - name: Refresh Guix and the Qubes channel (tracks current head, unpinned)
+        run: guix pull --fallback -C config/channels.scm --allow-downgrades
 
       - name: Restore signing key
         env:
           GUIX_SIGNING_KEY_SEC: ${{ secrets.GUIX_SIGNING_KEY_SEC }}
         run: |
-          if [ -z "$GUIX_SIGNING_KEY_SEC" ]; then
-            echo "::error::GUIX_SIGNING_KEY_SEC secret is not set. Generate a key with"
-            echo "::error::'guix archive --generate-key', store the .sec as this secret,"
-            echo "::error::and commit the .pub to config/substitute-cache/signing-key.pub."
+          set -eu
+          if [ -z "${GUIX_SIGNING_KEY_SEC:-}" ]; then
+            echo "::error::GUIX_SIGNING_KEY_SEC secret is not set. Generate a key,"
+            echo "::error::store the private half as this secret, and commit the"
+            echo "::error::public half to config/substitute-cache/signing-key.pub."
             exit 1
           fi
           mkdir -p "$RUNNER_TEMP/keys"
