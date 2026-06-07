@@ -913,6 +913,12 @@ information reporter used by Qubes memory ballooning.")
                       (string-append "DESTDIR=" #$output)
                       "BINDIR=/bin"
                       "LIBDIR=/lib"
+                      ;; Install the vif-hotplug rule under lib/udev/rules.d
+                      ;; rather than the upstream default etc/udev/rules.d: it
+                      ;; is a vendor rule, lib/udev is the modern location for
+                      ;; vendor rules, and it lets the Guix udev union pick it
+                      ;; up from the same lib/udev path it already scans.
+                      "UDEVRULESDIR=/lib/udev/rules.d"
                       "SYSCONFDIR=/etc")
               ;; install-corevm intentionally skips packaging-specific payloads
               ;; that RPM/Debian specs install separately.  The post-install

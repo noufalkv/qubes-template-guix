@@ -650,12 +650,11 @@ the VM.  The argument is the ignored service value."
 
 (define (qubes-udev-configurations-union subdirectory packages)
   "Return a @code{computed-file} that unions the udev SUBDIRECTORY (e.g.
-@file{rules.d} or @file{hwdb.d}) found under the standard @file{/lib/udev},
-@file{/libexec/udev} and @file{/etc/udev} locations of every package in
-PACKAGES.  @file{/etc/udev} is included because qubes-core-agent-linux installs
-its runtime rules there (e.g. @file{etc/udev/rules.d/99-qubes-network.rules},
-the vif-hotplug rule that reconfigures a VM's interface on dynamic netvm
-attach); omitting it left that rule out of the active udev set entirely."
+@file{rules.d} or @file{hwdb.d}) found under the standard @file{/lib/udev} and
+@file{/libexec/udev} locations of every package in PACKAGES.  qubes-core-agent
+installs its vif-hotplug rule under @file{lib/udev/rules.d} (see the
+@code{UDEVRULESDIR} override in @code{qubes-vm-core}), so scanning the vendor
+@file{lib/udev} location is enough to pick it up."
   (define build
     (with-imported-modules '((guix build union) (guix build utils))
                            #~(begin
@@ -665,15 +664,13 @@ attach); omitting it left that rule out of the active udev set entirely."
 
                                (define standard-locations
                                  '(#$(string-append "/lib/udev/" subdirectory)
-                                   #$(string-append "/libexec/udev/" subdirectory)
-                                   #$(string-append "/etc/udev/" subdirectory)))
+                                   #$(string-append "/libexec/udev/" subdirectory)))
 
                                (define (configuration-sub-directories directory)
                                  ;; A single package may ship the udev
-                                 ;; subdirectory under MORE THAN ONE location
-                                 ;; (qubes-vm-core ships rules in BOTH
-                                 ;; lib/udev/rules.d and etc/udev/rules.d), so
-                                 ;; collect ALL that exist, not just the first.
+                                 ;; subdirectory under more than one location,
+                                 ;; so collect ALL that exist, not just the
+                                 ;; first.
                                  (filter directory-exists?
                                          (map (lambda (suffix)
                                                 (string-append directory suffix))
@@ -685,14 +682,10 @@ attach); omitting it left that rule out of the active udev set entirely."
                                              '#$packages)
                                             ;; Last-wins precedence: with the
                                             ;; package order below (eudev first,
-                                            ;; then Qubes packages) and the
-                                            ;; per-package location order
-                                            ;; (lib, libexec, etc), this makes a
+                                            ;; then Qubes packages) this makes a
                                             ;; Qubes rule override an eudev rule
-                                            ;; of the same basename, and a
-                                            ;; package's etc/udev override its
-                                            ;; own lib/udev.  Without this the
-                                            ;; default first-wins would let
+                                            ;; of the same basename.  Without it
+                                            ;; the default first-wins would let
                                             ;; eudev shadow a Qubes override.
                                             #:resolve-collision
                                             (lambda (files) (last files))))))
