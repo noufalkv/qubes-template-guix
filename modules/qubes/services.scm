@@ -1816,6 +1816,52 @@ proxy when this VM relies on it.  The argument is the ignored service value."
                 (description
                  "Point guix-daemon at the Qubes updates proxy when the VM relies on it.")))
 
+(define (qubes-update-check-program)
+  "Return the program that probes whether the Guix system is behind its
+channels and notifies dom0 via qubes.NotifyUpdates.  Upstream ships this as the
+qubes-update-check.timer/.service systemd units running
+@file{upgrades-status-notify}; a Shepherd template has no systemd, so a
+@code{shepherd-timer} runs this wrapper instead.  The probe (git ls-remote of
+each channel, in @file{upgrades-installed-check}) needs network, which in a
+TemplateVM only exists through the updates proxy, so export the loopback proxy
+when the forwarder published it before invoking the notifier."
+  (qubes-vm-service-program "qubes-update-check"
+    (runtime-setup)
+    (cond
+      ((not (service-enabled? "qubes-update-check"))
+       (display "qubes-update-check flag absent; skipping update probe\n"))
+      (else
+       ;; Route the channel probe through the updates proxy when this VM uses
+       ;; it (TemplateVM); a direct-network VM leaves these unset and reaches
+       ;; the channels directly.
+       (when (and (service-enabled? "updates-proxy-setup")
+                  (not (service-enabled? "qubes-updates-proxy")))
+         (setenv "http_proxy" "http://127.0.0.1:8082")
+         (setenv "https_proxy" "http://127.0.0.1:8082"))
+       (try-run* "/usr/lib/qubes/upgrades-status-notify" "started-by-init")))))
+
+(define (qubes-update-check-shepherd-service _)
+  "Return the Shepherd timer that periodically probes for Guix updates and
+notifies dom0, the systemd-less analog of qubes-update-check.timer.  The
+argument is the ignored service value."
+  (list (shepherd-timer
+         '(qubes-update-check)
+         ;; Upstream timer fires ~5 min after boot then every 2 days; a plain
+         ;; cron schedule of twice daily keeps dom0's "updates available"
+         ;; indicator fresh without a heavy probe cadence.
+         "0 */12 * * *"
+         #~(list #$(qubes-update-check-program))
+         #:requirement '(qubes-qrexec-agent))))
+
+(define qubes-update-check-service-type
+  (service-type (name 'qubes-update-check)
+                (extensions (list (service-extension
+                                   shepherd-root-service-type
+                                   qubes-update-check-shepherd-service)))
+                (default-value #f)
+                (description
+                 "Periodically probe for Guix updates and notify dom0 (NotifyUpdates).")))
+
 (define (qubes-mount-dirs-program)
   "Return the program that mounts the Qubes persistent directories (/rw,
 /home, /usr/local): it waits for the private-volume device, materializes and
@@ -2057,6 +2103,7 @@ the ignored service value."
         (service xendriverdomain-service-type)
         (service qubes-updates-proxy-forwarder-service-type)
         (service qubes-guix-daemon-proxy-service-type)
+        (service qubes-update-check-service-type)
         (service qubes-mount-dirs-service-type)
         (service qubes-bind-dirs-service-type)
         (service qubes-misc-post-service-type)
