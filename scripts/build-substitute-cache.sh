@@ -88,14 +88,26 @@ build_system() {
 
 build_pull_closure() {
     # Build the channel-composed Guix that "guix pull" instantiates for this
-    # channel set, and return its store path.  Adding a custom channel changes
+    # channel set, and return its store paths.  Adding a custom channel changes
     # the Guix derivation hash, so ci.guix has no substitute for it and an
     # in-template "guix pull" would otherwise rebuild Guix from source on every
-    # update.  Publishing this closure is what makes the update download instead.
+    # update.  Realize the profile AND its full build-time closure (so the
+    # compiled-modules derivation guix pull needs is published too, not just the
+    # runtime profile), then emit every resulting store path.
     printf 'building channel-composed guix (guix pull closure)...\n' >&2
     "$guix_bin" pull -C "$repo_root/config/guix-channels.scm" \
-        -p "$work_dir/pull-profile" 2>/dev/null
-    readlink -f "$work_dir/pull-profile" 2>/dev/null
+        -p "$work_dir/pull-profile" >&2 2>/dev/null || true
+    local prof
+    prof="$(readlink -f "$work_dir/pull-profile" 2>/dev/null)"
+    [ -n "$prof" ] || return 0
+    # The runtime closure of the profile, plus the build closure of its deriver
+    # (which contains the guix-<commit>-modules output guix pull realizes).
+    "$guix_bin" gc -R "$prof" 2>/dev/null
+    local drv
+    for drv in $("$guix_bin" gc --derivers "$prof" 2>/dev/null); do
+        [ -f "$drv" ] || continue
+        "$guix_bin" gc -R "$drv" 2>/dev/null | grep -v '\.drv$'
+    done
 }
 
 systems=""
@@ -105,8 +117,8 @@ case "$variant" in
 esac
 
 # Also include the channel-composed Guix closure so "guix pull" downloads it.
-pull_closure="$(build_pull_closure)"
-[ -n "$pull_closure" ] && systems="$systems $pull_closure"
+pull_paths="$(build_pull_closure)"
+[ -n "$pull_paths" ] && systems="$systems $(printf '%s' "$pull_paths" | tr '\n' ' ')"
 
 # Collect the union closure of the built systems, then keep only the store paths
 # that official Guix CI does NOT already serve.  Those upstream-substitutable
