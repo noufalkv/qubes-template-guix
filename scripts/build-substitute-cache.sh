@@ -86,11 +86,27 @@ build_system() {
         "$repo_root/config/qubes-os-$v.scm" 2>/dev/null | tail -1
 }
 
+build_pull_closure() {
+    # Build the channel-composed Guix that "guix pull" instantiates for this
+    # channel set, and return its store path.  Adding a custom channel changes
+    # the Guix derivation hash, so ci.guix has no substitute for it and an
+    # in-template "guix pull" would otherwise rebuild Guix from source on every
+    # update.  Publishing this closure is what makes the update download instead.
+    printf 'building channel-composed guix (guix pull closure)...\n' >&2
+    "$guix_bin" pull -C "$repo_root/config/guix-channels.scm" \
+        -p "$work_dir/pull-profile" 2>/dev/null
+    readlink -f "$work_dir/pull-profile" 2>/dev/null
+}
+
 systems=""
 case "$variant" in
     both) systems="$(build_system normal) $(build_system minimal)" ;;
     *) systems="$(build_system "$variant")" ;;
 esac
+
+# Also include the channel-composed Guix closure so "guix pull" downloads it.
+pull_closure="$(build_pull_closure)"
+[ -n "$pull_closure" ] && systems="$systems $pull_closure"
 
 # Collect the union closure of the built systems, then keep only the store paths
 # that official Guix CI does NOT already serve.  Those upstream-substitutable
