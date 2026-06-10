@@ -1766,13 +1766,44 @@ gets the right behaviour:
     127.0.0.1:8082; wait for it, then 'herd set-http-proxy guix-daemon
     http://127.0.0.1:8082' (which restarts the daemon so http_proxy/https_proxy
     apply to substitutes AND builtin:download source fetches);
-  - otherwise -> clear any proxy so the daemon uses direct networking."
+  - otherwise -> do nothing: the proxy set by 'set-http-proxy' is runtime-only
+    daemon state, never persisted across reboots, so a freshly booted daemon is
+    already unproxied; \"clearing\" it would only trigger a gratuitous daemon
+    restart (the upstream action restarts unconditionally, proxy or not).
+
+Deadlock warning (this bit us, reported by @marmarek): 'set-http-proxy' is a
+Shepherd action that restarts guix-daemon from inside shepherd
+(perform-service-action .. 'restart).  Shepherd 0.10 runs a one-shot's start
+procedure with a RAW blocking waitpid on this very program (see
+run-one-shot-gexp), so if this program calls herd synchronously, shepherd is
+waiting on us while we wait on shepherd -- a circular wait that hung herd,
+'herd status guix-daemon', and every guix command on openQA.  Two defenses,
+either of which suffices:
+
+  1. the service does not list guix-daemon in its Shepherd requirements, so
+     the restart never involves this service in the dependency graph;
+  2. the program DETACHES first (fork + setsid; the foreground process exits
+     0 immediately), so the one-shot start completes before herd is invoked
+     and the herd call runs from an ordinary orphaned process, exactly like
+     running it from a shell -- the only context upstream supports.
+
+Ordering with guix-daemon is preserved by polling its socket rather than by a
+requirement edge."
   (qubes-vm-service-program "qubes-guix-daemon-proxy"
     (runtime-setup)
+    ;; Detach BEFORE any waiting or herd interaction: shepherd's one-shot
+    ;; start blocks in waitpid on this process, and the herd call below needs
+    ;; shepherd to be responsive (it restarts guix-daemon inside shepherd).
+    ;; The foreground process exits immediately so the service start returns;
+    ;; the detached child (session leader, reparented to PID 1) inherits the
+    ;; log-file stdout/stderr and does the real work.
+    (let ((pid (primitive-fork)))
+      (unless (zero? pid)
+        (primitive-exit 0)))
+    (setsid)
     (wait-for-service-environment 600)
     (define herd "/run/current-system/profile/bin/herd")
-    (define (clear-proxy)
-      (try-run* herd "set-http-proxy" "guix-daemon"))
+    (define guix-daemon-socket "/var/guix/daemon-socket/socket")
     (define (port-open? host port)
       (false-if-exception
        (let ((s (socket AF_INET SOCK_STREAM 0)))
@@ -1784,25 +1815,42 @@ gets the right behaviour:
         (cond ((port-open? "127.0.0.1" 8082) #t)
               ((<= n 0) #f)
               (else (sleep 1) (loop (- n 1))))))
+    (define (wait-guix-daemon attempts)
+      ;; Replaces the former 'guix-daemon' Shepherd requirement (removed to
+      ;; break the restart deadlock described above): the daemon binds its
+      ;; socket once it is up, so polling for it preserves start ordering
+      ;; without making this service a dependent that the restart would
+      ;; first try to stop.
+      (let loop ((n attempts))
+        (cond ((file-exists? guix-daemon-socket) #t)
+              ((<= n 0) #f)
+              (else (sleep 1) (loop (- n 1))))))
     (cond
       ((not (service-enabled? "updates-proxy-setup"))
-       (display "updates-proxy-setup flag absent; leaving guix-daemon on direct network\n")
-       (clear-proxy))
+       (display "updates-proxy-setup flag absent; leaving guix-daemon on direct network\n"))
       ((service-enabled? "qubes-updates-proxy")
-       (display "this VM is the updates proxy; leaving guix-daemon on direct network\n")
-       (clear-proxy))
-      ((wait-proxy-port 120)
-       (display "pointing guix-daemon at the updates proxy on 127.0.0.1:8082\n")
-       (run* herd "set-http-proxy" "guix-daemon" "http://127.0.0.1:8082"))
+       (display "this VM is the updates proxy; leaving guix-daemon on direct network\n"))
+      ((not (wait-proxy-port 120))
+       (display "updates proxy port 8082 never came up; leaving guix-daemon unproxied\n"))
+      ((not (wait-guix-daemon 120))
+       (display "guix-daemon socket never appeared; cannot set proxy\n")
+       (exit 1))
       (else
-       (display "updates proxy port 8082 never came up; leaving guix-daemon unproxied\n")
-       (clear-proxy)))))
+       (display "pointing guix-daemon at the updates proxy on 127.0.0.1:8082\n")
+       (run* herd "set-http-proxy" "guix-daemon" "http://127.0.0.1:8082")))))
 
 (define (qubes-guix-daemon-proxy-shepherd-service _)
   "Return the one-shot Shepherd service that points guix-daemon at the updates
-proxy when this VM relies on it.  The argument is the ignored service value."
+proxy when this VM relies on it.  The argument is the ignored service value.
+
+Two deliberate choices guard against the herd-from-start deadlock documented
+on qubes-guix-daemon-proxy-program: the program detaches before calling herd
+(so this one-shot's start returns immediately and shepherd is responsive when
+the 'set-http-proxy' action restarts guix-daemon), and guix-daemon is NOT
+listed in the requirements (so the restart never touches this service in the
+dependency graph; daemon readiness is awaited by polling its socket instead)."
   (list (one-shot-service 'qubes-guix-daemon-proxy
-                          '(qubes-sysinit guix-daemon qubes-updates-proxy-forwarder)
+                          '(qubes-sysinit qubes-updates-proxy-forwarder)
                           (qubes-guix-daemon-proxy-program)
                           "/var/log/qubes-guix-daemon-proxy.log"
                           #:best-effort? #t)))
