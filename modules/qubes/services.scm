@@ -418,14 +418,49 @@ the VM.  The argument is the ignored service value."
                     (loop (- end 1))
                     (substring text 0 end))))
 
+            (define (call-with-suppressed-stderr thunk)
+              ;; Run THUNK with the process's stderr (fd 2) redirected to
+              ;; /dev/null, then restore it.  open-pipe* forks and the child
+              ;; inherits fd 2, so this silences a subprocess's stderr without
+              ;; touching our own logging before/after.  Used for qubesdb-read
+              ;; probes of OPTIONAL keys, which print "Failed to read <key>" to
+              ;; stderr on a missing key -- expected, and suppressed upstream
+              ;; with the `qubesdb-read ... || :' idiom (e.g. vif-route-qubes).
+              (let ((saved (dup 2))
+                    (null (open-fdes "/dev/null" O_WRONLY)))
+                (dup2 null 2)
+                (close-fdes null)
+                (dynamic-wind
+                  (const #t)
+                  thunk
+                  (lambda ()
+                    (dup2 saved 2)
+                    (close-fdes saved)))))
+
             (define (command-output program . args)
               (let* ((port (apply open-pipe* OPEN_READ program args))
                      (text (get-string-all port))
                      (status (close-pipe port)))
                 (and (zero? status) (string-trim-newlines text))))
 
+            (define (command-output/quiet program . args)
+              ;; As command-output but with the child's stderr discarded, for
+              ;; probing keys/paths whose absence is expected and non-fatal.
+              (call-with-suppressed-stderr
+               (lambda () (apply command-output program args))))
+
             (define (qubesdb-read path)
-              (command-output qubesdb-read* path))
+              ;; qubesdb keys are frequently optional (role-dependent: a
+              ;; TemplateVM has no /qubes-mac, a VM without IPv6 has no
+              ;; /qubes-netvm-gateway6, etc.).  Probing an absent key makes the
+              ;; qubesdb-read CLI print "Failed to read <key>" to stderr; we
+              ;; already treat a non-zero exit as "absent" (command-output
+              ;; returns #f), so that diagnostic is pure noise that otherwise
+              ;; floods the service log (e.g. ~52x "Failed to read /qubes-mac"
+              ;; from the uplink wait loop on a no-uplink VM).  Suppress it,
+              ;; matching upstream Qubes which reads optional keys as
+              ;; `qubesdb-read KEY || :'.
+              (command-output/quiet qubesdb-read* path))
 
             (define (qubesdb-write path value)
               (try-run* qubesdb-write* path value))
