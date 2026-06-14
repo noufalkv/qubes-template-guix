@@ -1926,7 +1926,12 @@ argument is the ignored service value."
          ;; cron schedule of twice daily keeps dom0's "updates available"
          ;; indicator fresh without a heavy probe cadence.
          "0 */12 * * *"
-         #~(list #$(qubes-update-check-program))
+         ;; shepherd-timer's COMMAND is a gexp that must EVALUATE TO a list of
+         ;; strings; it is spliced as (command '(#$@command)).  Passing
+         ;; #~(list ...) put the literal symbol 'list' into argv, so the timer
+         ;; failed with "fork+exec-command ... wrong type ... list-of-strings?"
+         ;; (reported by @marmarek).  The program path alone is the command.
+         #~(#$(qubes-update-check-program))
          #:requirement '(qubes-qrexec-agent))))
 
 (define qubes-update-check-service-type
