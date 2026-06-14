@@ -3,7 +3,7 @@ no python-dbus, no systemctl).
 
 qubes-setup-dnat-to-ns runs on every NetVM/ProxyVM (qubes-core integration tests
 invoke it from configure_netvm).  On a native Guix template using the Shepherd it
-fails in three ways, each of which makes the whole script exit non-zero so that
+fails in four ways, each of which makes the whole script exit non-zero so that
 configure_netvm fails and networking tests error in setUp:
 
 1. `import dbus` raises ModuleNotFoundError when python-dbus is not installed,
@@ -13,7 +13,17 @@ configure_netvm fails and networking tests error in setUp:
 2. get_dns_resolved() unconditionally calls dbus.SystemBus(); short-circuit to
    the resolv.conf fallback when dbus is unavailable.
 
-3. The firewall reload uses "systemctl --no-block try-reload-or-restart
+3. dbus.SystemBus() itself raises DBusException when python-dbus IS installed
+   but no system bus is running (no /run/dbus/system_bus_socket) -- the common
+   case on a systemd-less Shepherd VM that nonetheless ships python-dbus.  The
+   original code only fell back on NoReply, re-raising FileNotFound /
+   ServiceUnknown / NameHasNoOwner and crashing before the dnat-dns chain is
+   installed, which silently breaks DNS for every downstream qube (their
+   queries to the NetVM's nameserver alias get neither answered nor
+   redirected).  Treat the bus-unavailable errors the same as NoReply and fall
+   back to /etc/resolv.conf.
+
+4. The firewall reload uses "systemctl --no-block try-reload-or-restart
    qubes-firewall.service"; systemctl is absent, raising FileNotFoundError.
    Fall back to SIGHUP'ing the running qubes-firewall daemon, which it already
    handles as a rules reload (see qubesagent/firewall.py main()).
@@ -43,7 +53,7 @@ index caf95e4..b962585 100644
  import qubesdb
  from ipaddress import IPv4Address
  import os
-@@ -48,6 +54,9 @@ def get_dns_resolv_conf():
+@@ -48,10 +54,24 @@ def get_dns_resolv_conf():
      return nameservers
  
  def get_dns_resolved():
@@ -53,7 +63,23 @@ index caf95e4..b962585 100644
      try:
          bus = dbus.SystemBus()
      except dbus.exceptions.DBusException as s:
-@@ -142,11 +151,18 @@ def install_firewall_rules(dns):
+-        if s.get_dbus_name() == 'org.freedesktop.DBus.Error.NoReply':
++        # python-dbus is installed but the system bus is not reachable: no bus
++        # socket (FileNotFound) on a systemd-less Shepherd VM, or the bus is up
++        # but systemd-resolved is absent (ServiceUnknown / NameHasNoOwner).  In
++        # every "bus unavailable" case fall back to /etc/resolv.conf instead of
++        # crashing, which would otherwise skip installing the dnat-dns chain and
++        # break DNS for all downstream qubes.
++        if s.get_dbus_name() in (
++            'org.freedesktop.DBus.Error.NoReply',
++            'org.freedesktop.DBus.Error.FileNotFound',
++            'org.freedesktop.DBus.Error.ServiceUnknown',
++            'org.freedesktop.DBus.Error.NameHasNoOwner',
++        ):
+             return get_dns_resolv_conf()
+         raise
+     try:
+@@ -142,11 +163,18 @@ def install_firewall_rules(dns):
          sys.exit(100)
  
      if os.path.exists('/run/qubes-service/qubes-firewall'):
