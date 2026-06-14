@@ -450,16 +450,25 @@ the VM.  The argument is the ignored service value."
                (lambda () (apply command-output program args))))
 
             (define (qubesdb-read path)
-              ;; qubesdb keys are frequently optional (role-dependent: a
-              ;; TemplateVM has no /qubes-mac, a VM without IPv6 has no
-              ;; /qubes-netvm-gateway6, etc.).  Probing an absent key makes the
-              ;; qubesdb-read CLI print "Failed to read <key>" to stderr; we
-              ;; already treat a non-zero exit as "absent" (command-output
-              ;; returns #f), so that diagnostic is pure noise that otherwise
-              ;; floods the service log (e.g. ~52x "Failed to read /qubes-mac"
-              ;; from the uplink wait loop on a no-uplink VM).  Suppress it,
-              ;; matching upstream Qubes which reads optional keys as
-              ;; `qubesdb-read KEY || :'.
+              ;; Default reader: KEEPS the qubesdb-read CLI's stderr.  Use this
+              ;; for keys that should normally exist, so a genuine failure
+              ;; (qubesdb daemon down, socket gone) still surfaces "Failed to
+              ;; read <key>" in the service log instead of vanishing silently.
+              (command-output qubesdb-read* path))
+
+            (define (qubesdb-read/optional path)
+              ;; Reader for keys whose absence is EXPECTED and role-dependent
+              ;; (a TemplateVM has no /qubes-mac, a VM without IPv6 has no
+              ;; /qubes-netvm-gateway6, a poll for a not-yet-ready key, ...).
+              ;; command-output already maps a non-zero exit to #f, so the
+              ;; CLI's "Failed to read <key>" stderr is pure noise that would
+              ;; otherwise flood the log (e.g. ~52x "Failed to read /qubes-mac"
+              ;; from the uplink wait loop on a no-uplink VM).  Discard just
+              ;; that child's stderr, matching upstream Qubes which reads
+              ;; optional keys as `qubesdb-read KEY || :' (e.g. vif-route-qubes).
+              ;; Intentionally NOT the default, so suppression is opt-in per
+              ;; call site and a daemon-down error on a required read stays
+              ;; visible.
               (command-output/quiet qubesdb-read* path))
 
             (define (qubesdb-write path value)
@@ -1101,7 +1110,7 @@ as the hostname and timezone."
                             ;; a successful read before running it.
                             (let wait ((attempt 0))
                               (cond
-                                ((qubesdb-read "/name")
+                                ((qubesdb-read/optional "/name")
                                  #t)
                                 ((< attempt #$%qubes-wait-attempts-short)
                                  (usleep 100000) (wait (+ attempt 1)))
@@ -1267,7 +1276,7 @@ seconds for the interface to appear."
                                             '()))))
 
                             (define (qubes-managed-iface)
-                              (let ((mac (qubesdb-read "/qubes-mac")))
+                              (let ((mac (qubesdb-read/optional "/qubes-mac")))
                                 (and mac
                                      (begin
                                        (unless (file-exists? "/sys/module/xen_netfront")
@@ -1470,7 +1479,7 @@ its own upstream uplink; it exits cleanly only when the provider flag is absent.
     ;; reason to skip forwarding setup: a provider NetVM with no upstream still
     ;; needs ip_forward=1, otherwise downstream traffic is silently not routed.
     (let* ((provider? (service-enabled? "qubes-network"))
-           (gateway6 (or (qubesdb-read "/qubes-netvm-gateway6") "")))
+           (gateway6 (or (qubesdb-read/optional "/qubes-netvm-gateway6") "")))
       (cond
         ((not provider?)
          (display "qubes-network service flag not present; network backend inactive\n")
@@ -1983,7 +1992,7 @@ repairs the writable /etc/fstab /rw entry, and runs @file{mount-dirs.sh}."
         (append-fstab-entry)))
 
     (define (wait-for-rw-device)
-      (when (string=? (or (qubesdb-read "/qubes-vm-persistence") "") "rw-only")
+      (when (string=? (or (qubesdb-read/optional "/qubes-vm-persistence") "") "rw-only")
         (let loop ((attempt 0))
           (cond
             ((file-exists? "/dev/xvdb") #t)
