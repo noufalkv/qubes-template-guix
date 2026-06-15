@@ -400,6 +400,15 @@ the VM.  The argument is the ignored service value."
             (define (try-run* program . args)
               (false-if-exception (zero? (apply system* program args))))
 
+            (define (try-run-quiet* program . args)
+              ;; As try-run* but with the child's stderr discarded, for
+              ;; best-effort probes whose failure is expected and handled by
+              ;; the caller (e.g. modprobe of a legacy module name that does
+              ;; not exist on current kernels, which would otherwise log a
+              ;; spurious "modprobe: FATAL: Module <name> not found").
+              (call-with-suppressed-stderr
+               (lambda () (apply try-run* program args))))
+
             (define (run* program . args)
               (unless (apply try-run* program args)
                 (warn (string-append "command failed: " program))
@@ -1462,8 +1471,12 @@ its own upstream uplink; it exits cleanly only when the provider flag is absent.
 
     (define (load-network-backend)
       (unless (or (network-backend-loaded?)
-                  (try-run* modprobe "netbk")
+                  ;; xen-netback is the current module name; netbk is the
+                  ;; legacy alias absent on modern kernels, so probe it quietly
+                  ;; to avoid a spurious "modprobe: FATAL: Module netbk not
+                  ;; found" in the log when xen-netback is what actually loads.
                   (try-run* modprobe "xen-netback")
+                  (try-run-quiet* modprobe "netbk")
                    (network-backend-loaded?))
         (warn "could not load Xen network backend module")
         (exit 1)))
@@ -1557,7 +1570,7 @@ hotplug log there (and the integration tests collect it)."
                             ;; relying on another service having loaded it.
                             (or (file-exists? "/sys/module/xen_netback")
                                 (try-run* modprobe "xen-netback")
-                                (try-run* modprobe "netbk"))
+                                (try-run-quiet* modprobe "netbk"))
                             (unless (file-exists? "/etc/xen/xl.conf")
                               (false-if-exception
                                (call-with-output-file "/etc/xen/xl.conf"
