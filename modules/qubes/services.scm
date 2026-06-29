@@ -39,8 +39,19 @@
 ;;   short = ~5s  (50 * 100ms): artifacts the hypervisor exposes almost at once.
 ;;   long  = ~30s (300 * 100ms): block devices/interfaces that can lag on a busy
 ;;                               host.
+;;   environment = ~60s (600 * 100ms): the qrexec-populated service-environment
+;;                               file and the qrexec-agent socket, which wait on
+;;                               dom0 round-trips before they appear.
 (define %qubes-wait-attempts-short 50)
 (define %qubes-wait-attempts-long 300)
+(define %qubes-wait-attempts-environment 600)
+
+;; Bound for the updates-proxy startup pollers, which sleep 1s per attempt (not
+;; 100ms) while they wait for the proxy port and guix-daemon socket to come up.
+;;   ~120s (120 * 1s): the central updates proxy can be slow to start on a busy
+;;                      host, so allow a generous budget before falling back to
+;;                      an unproxied guix-daemon.
+(define %qubes-proxy-wait-attempts 120)
 
 (define (qubes-vm-compat-activation _)
   "Return a gexp run at system activation that materializes the fixed Qubes
@@ -397,6 +408,16 @@ the VM.  The argument is the ignored service value."
               (display message (current-error-port))
               (newline (current-error-port)))
 
+            (define (warn-on-exception context thunk)
+              ;; Run THUNK for its side effect; on failure, log CONTEXT and
+              ;; carry on (best-effort).  Unlike a bare false-if-exception this
+              ;; never swallows a device/permission setup failure silently, so
+              ;; an operator can see why a Xen node or its mode is missing.
+              (catch #t
+                     thunk
+                     (lambda (key . args)
+                       (warn (string-append "warning: " context " failed")))))
+
             (define (try-run* program . args)
               (false-if-exception (zero? (apply system* program args))))
 
@@ -657,12 +678,20 @@ the VM.  The argument is the ignored service value."
                           ("gntalloc" "xen/gntalloc" "gntalloc")))
               (when (and (not (file-exists? "/dev/xen/xenbus"))
                          (file-exists? "/proc/xen/xenbus"))
-                (false-if-exception (symlink "/proc/xen/xenbus" "/dev/xen/xenbus")))
+                (warn-on-exception
+                 "linking /dev/xen/xenbus -> /proc/xen/xenbus"
+                 (lambda ()
+                   (symlink "/proc/xen/xenbus" "/dev/xen/xenbus"))))
               (let ((gid (group-gid "qubes")))
                 (for-each (lambda (entry)
                             (let ((path (string-append "/dev/xen/" entry)))
-                              (when gid (false-if-exception (chown path -1 gid)))
-                              (false-if-exception (chmod path #o660))))
+                              (when gid
+                                (warn-on-exception
+                                 (string-append "chgrp qubes on " path)
+                                 (lambda () (chown path -1 gid))))
+                              (warn-on-exception
+                               (string-append "chmod 0660 on " path)
+                               (lambda () (chmod path #o660)))))
                           (or (false-if-exception
                                (scandir "/dev/xen"
                                         (lambda (entry)
@@ -1482,7 +1511,7 @@ its own upstream uplink; it exits cleanly only when the provider flag is absent.
         (exit 1)))
 
     (prepare-service-runtime)
-    (wait-for-service-environment 600)
+    (wait-for-service-environment #$%qubes-wait-attempts-environment)
     ;; A Qubes NetVM provides network to its DOWNSTREAM qubes; that role is
     ;; signalled by the qubes-network service flag.  It must enable IPv4
     ;; forwarding and load the Xen netback backend WHETHER OR NOT it has its own
@@ -1662,7 +1691,7 @@ cleanly when dom0 has not enabled the firewall service flag for this VM (for
 example a plain AppVM)."
   (qubes-vm-service-program "qubes-firewall"
                             (prepare-service-runtime)
-                            (wait-for-service-environment 600)
+                            (wait-for-service-environment #$%qubes-wait-attempts-environment)
                             (unless (service-enabled? "qubes-firewall")
                               (display "qubes-firewall service flag not present; firewall inactive\n")
                               (exit 0))
@@ -1724,7 +1753,8 @@ when installed), after waiting for the qrexec-agent socket."
                             ;; qrexec-agent's shepherd service may report started
                             ;; before its client socket exists; wait for it so
                             ;; the commit does not race and fail.
-                            (wait-for-path "/var/run/qubes/qrexec-agent" 600)
+                            (wait-for-path "/var/run/qubes/qrexec-agent"
+                                           #$%qubes-wait-attempts-environment)
                             (unless (try-run* qrexec-client-vm* "dom0"
                                               "qubes.FeaturesRequest")
                               (warn "failed to commit Qubes feature requests")
@@ -1756,7 +1786,7 @@ instead of guest DNS.  It exits cleanly when the flag is absent or this VM is
 itself the proxy."
   (qubes-vm-service-program "qubes-updates-proxy-forwarder"
     (runtime-setup)
-    (wait-for-service-environment 600)
+    (wait-for-service-environment #$%qubes-wait-attempts-environment)
     (cond
       ((not (service-enabled? "updates-proxy-setup"))
        (display "updates-proxy-setup service flag not present; forwarder inactive\n")
@@ -1844,7 +1874,7 @@ dependency graph; daemon readiness is awaited by polling the daemon socket
 below instead."
   (qubes-vm-service-program "qubes-guix-daemon-proxy"
     (runtime-setup)
-    (wait-for-service-environment 600)
+    (wait-for-service-environment #$%qubes-wait-attempts-environment)
     (define herd "/run/current-system/profile/bin/herd")
     (define guix-daemon-socket "/var/guix/daemon-socket/socket")
     (define (port-open? host port)
@@ -1873,9 +1903,9 @@ below instead."
        (display "updates-proxy-setup flag absent; leaving guix-daemon on direct network\n"))
       ((service-enabled? "qubes-updates-proxy")
        (display "this VM is the updates proxy; leaving guix-daemon on direct network\n"))
-      ((not (wait-proxy-port 120))
+      ((not (wait-proxy-port #$%qubes-proxy-wait-attempts))
        (display "updates proxy port 8082 never came up; leaving guix-daemon unproxied\n"))
-      ((not (wait-guix-daemon 120))
+      ((not (wait-guix-daemon #$%qubes-proxy-wait-attempts))
        (display "guix-daemon socket never appeared; cannot set proxy\n")
        (exit 1))
       (else
