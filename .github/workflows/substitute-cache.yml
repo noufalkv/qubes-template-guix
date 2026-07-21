@@ -29,6 +29,8 @@ on:
       - 'modules/**'
       - 'config/qubes-os-*.scm'
       - 'config/channels.scm'
+      - 'config/guix-channels.scm'
+      - 'config/substitute-cache/signing-key.pub'
       - 'scripts/build-substitute-cache.sh'
       - '.github/workflows/substitute-cache.yml'
   schedule:
@@ -61,7 +63,7 @@ jobs:
 
       - name: Bootstrap Guix from the official GNU release (signature-verified)
         run: |
-          set -eu
+          set -euo pipefail
           base="https://ftp.gnu.org/gnu/guix"
           tarball="guix-binary-${GUIX_VERSION}.x86_64-linux.tar.xz"
           wget -nv "$base/$tarball" "$base/$tarball.sig"
@@ -74,17 +76,22 @@ jobs:
           # Install exactly as etc/guix-install.sh does, non-interactively.
           sudo tar --warning=no-timestamp -xf "$tarball" -C /
           sudo mkdir -p /etc/guix
-          sudo groupadd --system guixbuild || true
+          if ! getent group guixbuild >/dev/null; then
+            sudo groupadd --system guixbuild
+          fi
           for i in $(seq -w 1 10); do
-            sudo useradd -g guixbuild -G guixbuild -d /var/empty -s "$(which nologin)" \
-              -c "Guix build user $i" --system "guixbuilder${i}" || true
+            if ! id -u "guixbuilder${i}" >/dev/null 2>&1; then
+              sudo useradd -g guixbuild -G guixbuild -d /var/empty \
+                -s "$(command -v nologin)" -c "Guix build user $i" \
+                --system "guixbuilder${i}"
+            fi
           done
           guix_root=/var/guix/profiles/per-user/root/current-guix
           echo "$guix_root/bin" >> "$GITHUB_PATH"
 
       - name: Start guix-daemon and authorize official substitutes
         run: |
-          set -eu
+          set -euo pipefail
           guix_root=/var/guix/profiles/per-user/root/current-guix
           # Launch the daemon directly (no systemd): the release unit file does
           # not fit the ephemeral runner, and a plain background daemon is the
@@ -99,17 +106,19 @@ jobs:
           [ -S /var/guix/daemon-socket/socket ] || {
             echo "::error::guix-daemon socket never appeared"; cat /tmp/guix-daemon.log; exit 1; }
           for F in "$guix_root"/share/guix/*.pub; do
-            sudo "$guix_root/bin/guix" archive --authorize < "$F" || true
+            sudo "$guix_root/bin/guix" archive --authorize < "$F"
           done
 
       - name: Refresh Guix and the Qubes channel (tracks current head, unpinned)
-        run: guix pull --fallback -C config/channels.scm --allow-downgrades
+        run: |
+          set -euo pipefail
+          guix pull --fallback -C config/channels.scm --allow-downgrades
 
       - name: Restore signing key
         env:
           GUIX_SIGNING_KEY_SEC: ${{ secrets.GUIX_SIGNING_KEY_SEC }}
         run: |
-          set -eu
+          set -euo pipefail
           if [ -z "${GUIX_SIGNING_KEY_SEC:-}" ]; then
             echo "::error::GUIX_SIGNING_KEY_SEC secret is not set. Generate a key,"
             echo "::error::store the private half as this secret, and commit the"
@@ -123,6 +132,7 @@ jobs:
 
       - name: Build static substitute cache
         run: |
+          set -euo pipefail
           export PATH="$HOME/.config/guix/current/bin:$PATH"
           ./scripts/build-substitute-cache.sh \
             --output "$RUNNER_TEMP/site" \
