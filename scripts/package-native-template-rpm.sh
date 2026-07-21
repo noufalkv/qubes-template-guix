@@ -48,13 +48,14 @@ EOF
 validate_version_field() {
     local value="$1"
     local label="$2"
+    local LC_ALL=C
 
-    [ -n "$value" ] || die "$label must not be empty"
-    case "$value" in
-        *'|'*|*-*|*/*|*' '*|*$'\t'*|*$'\n'*)
-            die "$label contains an unsupported RPM character: $value"
-            ;;
-    esac
+    # These values are interpolated into both an RPM spec and the expected
+    # output filename.  Match the ASCII label grammar consumed by
+    # qvm-template; a denylist can miss spec macros (%{...}), quotes, carriage
+    # returns, non-ASCII characters, or future RPM syntax.
+    [[ "$value" =~ ^[A-Za-z0-9._+~]+$ ]] ||
+        die "$label is not a safe RPM version field: $value"
 }
 
 cleanup() {
@@ -192,8 +193,8 @@ exit 1
 rm -rf "%{buildroot}"
 
 %files
-%defattr(0644,root,root,0755)
-%attr(0755,root,root) %dir %{dest_dir}
+%defattr(0660,root,qubes,0770)
+%attr(2770,root,qubes) %dir %{dest_dir}
 
 %ghost %{dest_dir}/root.img
 %ghost %{dest_dir}/private.img
@@ -202,11 +203,11 @@ rm -rf "%{buildroot}"
 %{dest_dir}/root.img.part.*
 %{dest_dir}/clean-volatile.img.tar
 
-%attr(0755,root,root) %dir %{dest_dir}/apps
-%attr(0755,root,root) %dir %{dest_dir}/apps.templates
-%attr(0755,root,root) %dir %{dest_dir}/apps.tempicons
-%attr(0644,root,root) %{dest_dir}/*whitelisted-appmenus.list
-%attr(0644,root,root) %{dest_dir}/template.conf
+%attr(0775,root,qubes) %dir %{dest_dir}/apps
+%attr(0775,root,qubes) %dir %{dest_dir}/apps.templates
+%attr(0775,root,qubes) %dir %{dest_dir}/apps.tempicons
+%attr(0664,root,qubes) %{dest_dir}/*whitelisted-appmenus.list
+%attr(0664,root,qubes) %{dest_dir}/template.conf
 EOF
 }
 

@@ -141,6 +141,55 @@ verify_template_directories() {
         die "missing clean-volatile.img.tar"
 }
 
+verify_rpm_file_metadata() {
+    local header_dir="/var/lib/qubes/vm-templates/$template_name"
+    local metadata="$work_dir/rpm-file-metadata.tsv"
+    local file_path mode owner group
+
+    rpm --dbpath "$rpmdb" -qp \
+        --qf '[%{FILENAMES}\t%{FILEMODES:perms}\t%{FILEUSERNAME}\t%{FILEGROUPNAME}\n]' \
+        "$rpm_file" > "$metadata"
+
+    assert_metadata() {
+        local expected_path="$1"
+        local expected_mode="$2"
+        local row
+
+        row="$(awk -F '\t' -v expected="$expected_path" \
+            '$1 == expected { print; exit }' "$metadata")"
+        [ -n "$row" ] || die "missing RPM metadata entry: $expected_path"
+        IFS=$'\t' read -r file_path mode owner group <<< "$row"
+        [ "$mode" = "$expected_mode" ] ||
+            die "unexpected RPM mode for $expected_path: $mode"
+        [ "$owner:$group" = root:qubes ] ||
+            die "unexpected RPM owner for $expected_path: $owner:$group"
+    }
+
+    assert_metadata "$header_dir" drwxrws---
+    for file_path in apps apps.templates apps.tempicons; do
+        assert_metadata "$header_dir/$file_path" drwxrwxr-x
+    done
+    for file_path in \
+        whitelisted-appmenus.list \
+        vm-whitelisted-appmenus.list \
+        netvm-whitelisted-appmenus.list \
+        template.conf; do
+        assert_metadata "$header_dir/$file_path" -rw-rw-r--
+    done
+    assert_metadata "$header_dir/clean-volatile.img.tar" -rw-rw----
+
+    while IFS=$'\t' read -r file_path mode owner group; do
+        case "$file_path" in
+            "$header_dir"/root.img.part.*)
+                [ "$mode" = -rw-rw---- ] ||
+                    die "unexpected RPM mode for $file_path: $mode"
+                [ "$owner:$group" = root:qubes ] ||
+                    die "unexpected RPM owner for $file_path: $owner:$group"
+                ;;
+        esac
+    done < "$metadata"
+}
+
 verify_ghost_images() {
     local ghost_image
 
@@ -171,6 +220,7 @@ main() {
     extract_rpm_payload
     verify_template_metadata
     verify_template_directories
+    verify_rpm_file_metadata
     verify_ghost_images
     verify_split_root_image
     printf 'template RPM payload check passed: %s\n' "$rpm_file"

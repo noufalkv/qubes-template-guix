@@ -42,8 +42,12 @@ resolve_appmenus_file() {
 
     variant="$("$repo_root/scripts/template-variant.sh" "$1" variant)"
     case "$variant" in
-        normal) appmenus_file="$repo_root/builder-v2-template/appmenus.list" ;;
-        minimal) appmenus_file="$repo_root/builder-v2-template/appmenus-minimal.list" ;;
+        normal)
+            appmenus_file="$repo_root/builder-v2-template/appmenus_guix/whitelisted-appmenus.list"
+            ;;
+        minimal)
+            appmenus_file="$repo_root/builder-v2-template/appmenus_guix_minimal/whitelisted-appmenus.list"
+            ;;
     esac
 
     [ -r "$appmenus_file" ] || die "missing appmenu list: $appmenus_file"
