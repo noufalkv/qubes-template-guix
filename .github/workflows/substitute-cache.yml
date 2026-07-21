@@ -114,6 +114,13 @@ jobs:
           set -euo pipefail
           guix pull --fallback -C config/channels.scm --allow-downgrades
 
+      - name: Evaluate both system variants with the refreshed Guix
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.config/guix/current/bin:$PATH"
+          guix system build --dry-run -L modules config/qubes-os-normal.scm
+          guix system build --dry-run -L modules config/qubes-os-minimal.scm
+
       - name: Restore signing key
         env:
           GUIX_SIGNING_KEY_SEC: ${{ secrets.GUIX_SIGNING_KEY_SEC }}
