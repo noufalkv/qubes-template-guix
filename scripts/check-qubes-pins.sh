@@ -12,12 +12,16 @@ packages_file="$repo_root/modules/qubes/packages.scm"
 mode="check"
 assume_yes=0
 
-# Temporary directories to remove on exit.
+# Temporary paths to remove on exit.
 tmp_dirs=()
+tmp_files=()
 cleanup() {
-    local d
+    local d f
     for d in "${tmp_dirs[@]:-}"; do
         [ -n "$d" ] && rm -rf -- "$d"
+    done
+    for f in "${tmp_files[@]:-}"; do
+        [ -n "$f" ] && rm -f -- "$f"
     done
     return 0
 }
@@ -159,7 +163,9 @@ GUILE
 #   name<TAB>tag<TAB>commit<TAB>sha256
 # Used only by --write; the read-only path keeps read_pinned_sources intact.
 read_pinned_sources_full() {
-    guile -q -s /dev/stdin "$packages_file" <<'GUILE'
+    local source_file="${1:-$packages_file}"
+
+    guile -q -s /dev/stdin "$source_file" <<'GUILE'
 (use-modules (ice-9 match))
 
 (define file (cadr (command-line)))
@@ -242,7 +248,10 @@ GUILE
 # Compute the git-fetch base32 sha256 for (component, commit): clone, check
 # out the commit, drop .git, and run `guix hash -rx`.  Fails cleanly if guix
 # is unavailable so a wrong hash is never emitted.
-compute_component_sha256() {
+# Use a dedicated subshell so its EXIT trap cleans the clone on every return
+# path without replacing the script-wide cleanup trap.  The final guix command
+# remains the subshell's stdout and status, including when hashing fails.
+compute_component_sha256() (
     local component="$1" commit="$2"
     command -v guix >/dev/null 2>&1 || {
         printf 'error: guix not found in PATH; cannot recompute the nar hash for %s.\n' \
@@ -254,7 +263,7 @@ compute_component_sha256() {
     local url="https://github.com/QubesOS/$component.git"
     local dir
     dir="$(mktemp -d "${TMPDIR:-/tmp}/qubes-pin.XXXXXX")"
-    tmp_dirs+=("$dir")
+    trap 'rm -rf -- "$dir"' EXIT
     local checkout="$dir/src"
 
     if git clone --quiet --depth 1 "$url" "$checkout" 2>/dev/null \
@@ -277,15 +286,18 @@ compute_component_sha256() {
 
     rm -rf -- "$checkout/.git"
     guix hash -rx "$checkout"
-}
+)
 
 verify_diff_range() {
+    local before="$1"
+    local after="$2"
     local lo hi
     local line plus start cnt end out_of_range=0
+    local diff_output diff_status
 
-    lo=$(grep -n -m 1 '^(define %qubes-source-components' "$packages_file" | cut -d: -f1)
+    lo=$(grep -n -m 1 '^(define %qubes-source-components' "$after" | cut -d: -f1)
     if [ -z "$lo" ]; then
-        printf 'error: could not find (define %%qubes-source-components in %s\n' "$packages_file" >&2
+        printf 'error: could not find (define %%qubes-source-components in %s\n' "$after" >&2
         exit 1
     fi
 
@@ -300,11 +312,11 @@ verify_diff_range() {
                         escaped = 0
                     } else if (ch == "\\") {
                         escaped = 1
-                    } else if (ch == """) {
+                    } else if (ch == "\"") {
                         in_string = 0
                     }
                 } else {
-                    if (ch == """) {
+                    if (ch == "\"") {
                         in_string = 1
                     } else if (ch == "(") {
                         balance++
@@ -318,10 +330,22 @@ verify_diff_range() {
                 }
             }
         }
-    ' "$packages_file")
+    ' "$after")
     if [ -z "$hi" ]; then
-        printf 'error: could not determine closing line for (define %%qubes-source-components in %s\n' "$packages_file" >&2
+        printf 'error: could not determine closing line for (define %%qubes-source-components in %s\n' "$after" >&2
         exit 1
+    fi
+
+    if diff_output="$(git --no-pager diff --no-index -U0 -- \
+            "$before" "$after")"; then
+        :
+    else
+        diff_status=$?
+        if [ "$diff_status" -ne 1 ]; then
+            printf 'error: git diff failed while verifying pin update (status %s)\n' \
+                "$diff_status" >&2
+            return 1
+        fi
     fi
 
     while IFS= read -r line; do
@@ -347,7 +371,7 @@ verify_diff_range() {
                 fi
                 ;;
         esac
-    done < <(git -C "$repo_root" diff -U0 -- "$packages_file")
+    done <<< "$diff_output"
     [ "$out_of_range" -eq 0 ]
 }
 
@@ -398,8 +422,24 @@ write_pinned_sources() {
     local stale=0
     local -a rep_old rep_new
     local nrep=0
+    local workdir work backup i
 
-    pinned_sources="$(read_pinned_sources_full)"
+    # Take one snapshot before any network or hashing work.  Parse, validate,
+    # and derive the candidate exclusively from it so concurrent edits cannot
+    # produce mismatched "original" and candidate trees.
+    workdir="$(mktemp -d "${TMPDIR:-/tmp}/qubes-pin-write.XXXXXX")"
+    tmp_dirs+=("$workdir")
+    work="$workdir/packages.scm.new"
+    backup="$workdir/packages.scm.orig"
+    cp --preserve=mode -- "$packages_file" "$backup"
+    cp -- "$backup" "$work"
+
+    # Exercise the pin-table boundary parser before cloning repositories and
+    # computing hashes so a local verifier bug cannot waste the expensive work.
+    verify_diff_range "$backup" "$backup" ||
+        die "could not validate the Qubes source pin table"
+
+    pinned_sources="$(read_pinned_sources_full "$backup")"
     while IFS=$'\t' read -r component version commit oldsha; do
         [ -n "$component" ] || continue
         series="${version%.*}."
@@ -434,24 +474,36 @@ write_pinned_sources() {
     done <<< "$pinned_sources"
 
     if [ "$stale" -eq 0 ]; then
+        if ! cmp -s -- "$backup" "$packages_file"; then
+            die "refused pin update: modules/qubes/packages.scm changed during refresh"
+        fi
         printf 'all pins current; no changes.\n'
         return 0
     fi
-
-    local workdir work backup i
-    workdir="$(mktemp -d "${TMPDIR:-/tmp}/qubes-pin-write.XXXXXX")"
-    tmp_dirs+=("$workdir")
-    work="$workdir/packages.scm.new"
-    backup="$workdir/packages.scm.orig"
-    cp -- "$packages_file" "$work"
-    cp -- "$packages_file" "$backup"
 
     for ((i = 0; i < nrep; i++)); do
         apply_literal_replacement "$work" "${rep_old[i]}" "${rep_new[i]}"
     done
 
+    if ! verify_diff_range "$backup" "$work"; then
+        printf 'error: refused pin update outside %%qubes-source-components\n' >&2
+        exit 1
+    fi
+
+    if ! cmp -s -- "$backup" "$packages_file"; then
+        die "refused pin update: modules/qubes/packages.scm changed during refresh"
+    fi
+
     printf '\nProposed change to modules/qubes/packages.scm:\n\n'
-    git --no-pager diff --no-index -- "$packages_file" "$work" || true
+    local proposed_diff_status
+    if git --no-pager diff --no-index -- "$backup" "$work"; then
+        :
+    else
+        proposed_diff_status=$?
+        if [ "$proposed_diff_status" -ne 1 ]; then
+            die "could not generate proposed pin update diff (git diff exited $proposed_diff_status)"
+        fi
+    fi
     printf '\n'
 
     if [ "$assume_yes" -ne 1 ]; then
@@ -467,13 +519,25 @@ write_pinned_sources() {
         esac
     fi
 
-    cp -- "$work" "$packages_file"
-
-    if ! verify_diff_range; then
-        cp -- "$backup" "$packages_file"
-        printf 'error: refused write; restored original packages.scm\n' >&2
-        exit 1
+    # Do not overwrite an edit made while hashes were computed or while the
+    # proposed diff was awaiting confirmation.  Stage beside the destination
+    # so the final rename cannot leave a truncated pin table if interrupted.
+    if ! cmp -s -- "$backup" "$packages_file"; then
+        die "refused pin update: modules/qubes/packages.scm changed during refresh"
     fi
+
+    local destination_tmp
+    destination_tmp="$(mktemp "${packages_file}.tmp.XXXXXX")"
+    tmp_files+=("$destination_tmp")
+    cp -- "$work" "$destination_tmp"
+    chmod --reference="$backup" "$destination_tmp"
+
+    # Keep the check adjacent to the atomic rename to minimize the remaining
+    # compare/replace window for writers that do not share a lock with us.
+    if ! cmp -s -- "$backup" "$packages_file"; then
+        die "refused pin update: modules/qubes/packages.scm changed during refresh"
+    fi
+    mv -T -- "$destination_tmp" "$packages_file"
 
     printf 'updated modules/qubes/packages.scm\n'
 }
