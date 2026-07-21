@@ -1114,7 +1114,8 @@ and anti-spoofing rules.  The argument is the ignored service value."
 VM daemon."
   (qubes-vm-service-program "qubes-db"
                             (prepare-service-runtime)
-                            (exec* "/run/current-system/profile/bin/qubesdb-daemon" "0")))
+                            (exec* "/run/current-system/profile/bin/qubesdb-daemon"
+                                   "--rw-socket-perms=660" "0")))
 
 (define (qubes-db-shepherd-service _)
   "Return the Shepherd service that runs the QubesDB VM daemon.  The argument
@@ -1123,6 +1124,11 @@ is the ignored service value."
                           (requirement '(root-file-system qubes-kernel-modules))
                           (documentation "Run the QubesDB VM daemon.")
                           (start #~(make-forkexec-constructor (list #$(qubes-db-program))
+                                    ;; Match upstream's Group=qubes service;
+                                    ;; root keeps the privileges needed for
+                                    ;; Xen setup while the daemon creates its
+                                    ;; restricted write socket as root:qubes.
+                                    #:group "qubes"
                                     #:log-file "/var/log/qubes-db.log"))
                           (stop #~(make-kill-destructor)))))
 
@@ -1366,19 +1372,11 @@ from the vif-hotplug udev rule."
   (qubes-vm-service-program "qubes-network-uplink-reconfigure"
     (define timeout* "/run/current-system/profile/bin/timeout")
     (define network-sysctl-settings '#$%qubes-network-sysctl-settings)
-    (define (sysctl-path family interface name)
-      (string-append "/proc/sys/net/" family "/conf/" interface "/" name))
-    (define (write-sysctl path value)
-      (when (file-exists? path)
-        (false-if-exception
-         (call-with-output-file path
-           (lambda (port) (display value port))))))
-    (define (apply-sysctls-to-iface settings interface)
-      (for-each (lambda (setting)
-                  (write-sysctl (sysctl-path (car setting) interface
-                                             (cadr setting))
-                                (cddr setting)))
-                settings))
+
+    ;; Keep hotplug reconfiguration on the same fail-loud write path as boot:
+    ;; an existing but unwritable sysctl must not be silently left unhardened.
+    #$@(qubes-network-sysctl-helper-forms)
+
     ;; Run setup-ip bounded by a hard timeout so a not-yet-ready cold attach
     ;; cannot block the Shepherd action fiber; retry briefly because QubesDB /
     ;; device state may still be settling at the first udev event.
@@ -1700,16 +1698,53 @@ example a plain AppVM)."
 (define (qubes-firewall-shepherd-service _)
   "Return the Shepherd service that runs the Qubes firewall updater daemon for
 the ProxyVM/sys-firewall role.  The argument is the ignored service value."
-  (list (shepherd-service (provision '(qubes-firewall))
-                          (requirement '(qubes-sysinit qubes-kernel-modules
-                                                       qubes-db qubes-iptables))
-                          (documentation
-                           "Run the Qubes firewall updater (ProxyVM role).")
-                          (start
-                           #~(make-forkexec-constructor
-                              (list #$(qubes-firewall-program))
-                              #:log-file "/var/log/qubes-firewall.log"))
-                          (stop #~(make-kill-destructor)))))
+  (let ((provision '(qubes-firewall))
+        (requirements '(qubes-sysinit qubes-kernel-modules
+                                       qubes-db qubes-iptables))
+        (documentation
+         "Run the Qubes firewall updater (ProxyVM role)."))
+    (list
+     (shepherd-service
+      (provision provision)
+      (requirement requirements)
+      (documentation documentation)
+      (respawn? #t)
+      (respawn-delay 5)
+      ;; Guix's high-level Shepherd record defaults to restarting a service
+      ;; after every process exit.  Upstream uses Restart=on-failure, however:
+      ;; in an AppVM, the condition wrapper deliberately exits zero when the
+      ;; qubes-firewall flag is absent and must remain stopped.  Use a
+      ;; free-form service only to express that missing high-level policy;
+      ;; abnormal exits retain Shepherd's logging, replacement, respawn-limit,
+      ;; and delayed-respawn handling.
+      (free-form
+       #~(service '#$provision
+                  #:requirement '#$requirements
+                  #:documentation #$documentation
+                  #:respawn? #t
+                  #:respawn-delay 5
+                  #:termination-handler
+                  (lambda (service process status)
+                    ;; These are systemd's default clean exit statuses for a
+                    ;; non-oneshot service.  Shepherd-initiated stops are
+                    ;; filtered before this handler, but classify equivalent
+                    ;; external signal exits consistently as well.
+                    (if (or (zero? status)
+                            (memv (status:term-sig status)
+                                  (list SIGHUP SIGINT SIGTERM SIGPIPE)))
+                        ;; Preserve Shepherd's pending service-upgrade
+                        ;; bookkeeping even though a clean exit is not
+                        ;; restarted.
+                        (let ((replacement (service-replacement service)))
+                          (when replacement
+                            (register-services (list replacement))))
+                        (default-service-termination-handler
+                          service process status)))
+                  #:start
+                  (make-forkexec-constructor
+                   (list #$(qubes-firewall-program))
+                   #:log-file "/var/log/qubes-firewall.log")
+                  #:stop (make-kill-destructor)))))))
 
 (define qubes-firewall-service-type
   (service-type (name 'qubes-firewall)

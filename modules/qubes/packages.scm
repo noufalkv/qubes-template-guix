@@ -123,8 +123,9 @@
   "Return a list of definition forms implementing the shared per-interface
 network sysctl primitives.  The forms are spliced once into both the
 build-side generated /usr/lib/qubes/qubes-network-interface-sysctl helper and
-the boot/uplink Shepherd service programs in (qubes services), via gexp
-ungexp-splicing (#$@), so the write/apply logic is defined a single time.
+the boot-time sysctl, uplink startup, and hotplug reconfiguration programs in
+(qubes services), via gexp ungexp-splicing (#$@), so the write/apply logic is
+defined a single time.
 Each consuming surface must provide a `warn' procedure (the service prelude
 and the generated helper both do) and import (ice-9 ftw) for `scandir'."
   '((define (sysctl-path family interface name)
@@ -174,20 +175,20 @@ and the generated helper both do) and import (ice-9 ftw) for `scandir'."
   '(("qubes-core-vchan-xen" "v4.2.8"
      "a1337c282ffefcfc13a570683c57bc04813038db"
      "0nb5ky69w0v6xy7dkriagyi8fa2zpq2dnibr90pkf7asi0cib77j")
-    ("qubes-linux-utils" "v4.3.17" "ee1e61f487f57d6b5d3ff96dbd8d6b50bd474656"
-     "19q2i9gz4v585gw9mpmn1pw1zmykr3awg30rzm4vbfnv5i0czh56")
-    ("qubes-core-qubesdb" "v4.3.2" "7d294b2ab922708b552fb2715f6a0333fbc52fcd"
-     "1kal2lf4frjk083qd0ql5m8znbzn77pndxhclkl0pbc7v5ycrfyd")
+    ("qubes-linux-utils" "v4.3.18" "2151d1009f3a91557622d5c5e310456226c588c5"
+     "009sc14rp4vqa1fbv381qy6qahhqgrifq0x21jikp5wq0b6z7z09")
+    ("qubes-core-qubesdb" "v4.3.3" "aeb3c8d8486673636964bc3beb4819d981dd3920"
+     "0p1x87x5i47bqwg5gikfkk9rl4kzpnxjc92h3pvq2bzpwnvq9ar8")
     ("qubes-core-qrexec" "v4.3.12" "cc801b8f630a65dfb2855b829bfc070f6e82f26a"
      "1lbz435sjs3d7pc9ymnwxqi14sc83xdnny5pzwp8c580rraysvd4")
-    ("qubes-core-agent-linux" "v4.3.44"
-     "1bf7d428c04b921f78eab898b9987c94d1ffb695"
-     "0098fk5r9zvvk63g614w5gqzgaa0l6mhk8p06kw8kki57bzy0x5c")
+    ("qubes-core-agent-linux" "v4.3.46"
+     "35a5720b480026778884397e0eb81f607d3d7365"
+     "1g1naqzjx8sr6vyw34l76l1j96m64vsa297kzqs5bp0hfrlyisfy")
     ("qubes-gui-common" "v4.3.1" "66b879e36d6cd2a01271fc8d4c2c0f3be85d0029"
      "1ilr2wximl82y05f9dha69pjwhks2c73cfh08yxpnbdg5yspcc24")
-    ("qubes-gui-agent-linux" "v4.3.17"
-     "b801955eaf4cc7bea59401bc428293dbfd866e48"
-     "1fybqb195kp8blk73f119lindwfvk48p7980fi6nvwhafibdlmnc")))
+    ("qubes-gui-agent-linux" "v4.3.18"
+     "19acf86b0caf63356bc7f386d4a88da0dd95152f"
+     "1mkpa2wdfvwzxizkl2vdlhgbs85d4b4fyglcqkwrjn44i4sh95fv")))
 
 (define (qubes-source-field component index)
   "Return field INDEX of COMPONENT's entry in %qubes-source-components."
@@ -573,29 +574,17 @@ information reporter used by Qubes memory ballooning.")
                       (string-append "DESTDIR=" #$output)
                       "LIBDIR=/lib"
                       "BINDIR=/bin")
-              ;; The upstream client installs hard-linked applets that infer
-              ;; the command from argv[0].  In a Guix profile argv[0] is often
-              ;; a store/profile path rather than /usr/bin/qubesdb-read, which
-              ;; makes the applet print usage and exit 0.  Install explicit
-              ;; wrappers so both Qubes scripts and native services get stable
-              ;; read/write/list behavior.
-              (let ((qubesdb-cmd (string-append #$output "/bin/qubesdb-cmd")))
-                (for-each (lambda (entry)
-                            (let ((path (string-append #$output "/bin/" (car entry)))
-                                  (command (cadr entry)))
-                              (when (file-exists? path) (delete-file path))
-                              (call-with-output-file path
-                                (lambda (port)
-                                  (format port "#!~a~%exec ~a -c ~a \"$@\"~%"
-                                          #$(file-append bash-minimal "/bin/sh")
-                                          qubesdb-cmd command)))
-                              (chmod path #o755)))
-                          '(("qubesdb-read" "read")
-                            ("qubesdb-write" "write")
-                            ("qubesdb-rm" "rm")
-                            ("qubesdb-multiread" "multiread")
-                            ("qubesdb-list" "list")
-                            ("qubesdb-watch" "watch"))))
+              ;; Since QubesDB 4.3.3, qubesdb-cmd dispatches on the text after
+              ;; the final hyphen in the full argv[0], so the upstream
+              ;; symlinked applets work through Guix store and profile paths.
+              ;; Guard that contract: the historical bug selected an earlier
+              ;; store-path hyphen, printed generic usage, and exited zero
+              ;; before trying to open QubesDB, whereas a recognized command
+              ;; reaches qdb_open and fails nonzero in the socket-less build
+              ;; container.
+              (when (zero? (system* (string-append #$output "/bin/qubesdb-read")
+                                    "/guix-build-command-probe"))
+                (error "installed qubesdb-read did not recognize argv[0]"))
               (let* ((extensions (find-files "python/build" "^qubesdb.*\\.so$"))
                      (first-extension (and (pair? extensions) (car extensions)))
                      (python-tag (and first-extension
@@ -621,6 +610,7 @@ information reporter used by Qubes memory ballooning.")
                       (string-append "DESTDIR=" #$output)
                       "INCLUDEDIR=/include"))))))
     (native-inputs (list pkg-config python-wrapper python-setuptools))
+    ;; qubesdb-read-bool is a Bash script installed alongside the C applets.
     (inputs (list bash-minimal qubes-libvchan-xen))
     (home-page "https://www.qubes-os.org/")
     (synopsis "QubesDB VM daemon and client tools")
