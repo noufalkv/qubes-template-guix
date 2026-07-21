@@ -249,6 +249,8 @@ verify_expected_commands() {
     local command_name
 
     for command_name in "${expected_commands[@]}"; do
+        # Expanded by the chrooted shell; $1 is its positional argument.
+        # shellcheck disable=SC2016
         as_root chroot "$mount_dir" /bin/sh -c 'PATH=/var/guix/profiles/system/profile/bin:/var/guix/profiles/system/profile/sbin command -v "$1"' sh "$command_name" >/dev/null ||
             die "missing expected guest command: $command_name"
     done
@@ -259,6 +261,8 @@ verify_expected_desktops() {
 
     for desktop_file in "${expected_desktops[@]}"; do
         desktop_path="$profile/share/applications/$desktop_file"
+        # Expanded by the chrooted shell; $1 is its positional argument.
+        # shellcheck disable=SC2016
         as_root chroot "$mount_dir" /bin/sh -c 'test -f "/var/guix/profiles/system/profile/share/applications/$1"' sh "$desktop_file" ||
             die "missing expected desktop file: $desktop_file"
         icon_name="$(desktop_entry_value "$desktop_path" Icon)"

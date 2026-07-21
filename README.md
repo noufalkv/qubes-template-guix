@@ -28,7 +28,7 @@ This is a reviewable prototype, not a published Qubes community template.
 | `modules/qubes/vm.scm` | Umbrella module re-exporting the three modules above. |
 | `config/guix-channels.scm` | Installed as `/etc/guix/channels.scm` so `guix pull` can update the Qubes channel. |
 | `config/channels.scm` | Unpinned Guix channel (tracks `master`) used only while generating template images. |
-| `builder-v2-template/` | Builder v2 content-script shape and variant appmenu allowlists. |
+| `builder-v2-template/` | Builder v2 content-script tree and Builder-resolved variant appmenu directories. |
 | `scripts/build-native-rootfs.sh` | Build or install a Guix root filesystem. |
 | `scripts/build-template-rpm.sh` | Build a root image, inspect it, activate it, and package a qvm-template RPM. |
 | `scripts/package-native-template-rpm.sh` | Package an existing root image as a Qubes Template Manager RPM. |
@@ -43,10 +43,12 @@ This is a reviewable prototype, not a published Qubes community template.
 guix pull -p <temporary-profile> --allow-downgrades -C config/channels.scm
 ```
 
-The refreshed Guix command is used only for template generation.  The Guix
-channel is unpinned (tracks `master`), so each build uses a current Guix.  The
-generated template does not install the pinned channel as root or user `guix
-pull` state.  In the running template the idiomatic update flow is:
+The refreshed Guix command and its temporary profile are used only for template
+generation.  The Guix channel is unpinned (tracks `master`), so each build uses
+a current Guix.  The generated template installs `/etc/guix/channels.scm` for
+normal in-template updates, but does not install the builder's temporary
+`guix pull` profile as root or user state.  In the running template the
+idiomatic update flow is:
 
 ```sh
 guix pull
@@ -130,8 +132,14 @@ ghosts.  Packages advertise `qrexec=1`, `gui=1`, and `virt-mode=pvh`.
 
 Appmenu allowlists come from:
 
-- `builder-v2-template/appmenus.list`;
-- `builder-v2-template/appmenus-minimal.list`.
+- `builder-v2-template/appmenus_guix/whitelisted-appmenus.list` for `guix`;
+- `builder-v2-template/appmenus_guix_minimal/whitelisted-appmenus.list` for
+  `guix-minimal`.
+
+Each Builder-resolved directory also exposes relative
+`vm-whitelisted-appmenus.list` and `netvm-whitelisted-appmenus.list` aliases to
+the canonical list.  The RPM packaging path materializes all three as regular
+files.
 
 They should reference desktop files provided by packages.  The only generated
 desktop file is `xterm.desktop`, because Guix does not provide one.
@@ -157,24 +165,44 @@ fallback (`guix system -L … reconfigure`).  Build-time evaluation uses the sam
 modules with `guix system -L modules`.
 
 After adding a package with a desktop entry, add that desktop-file ID to the
-matching appmenu allowlist under `builder-v2-template/`.  Use package-provided
-desktop files and icons; add a custom desktop file only when the package has
-none, as with `xterm`.
+canonical `whitelisted-appmenus.list` in the matching appmenu directory listed
+above.  Use package-provided desktop files and icons; add a custom desktop file
+only when the package has none, as with `xterm`.
 
-## Local Artifact Contract
+## Local Checks
 
-Run:
+Run the complete local functional suite with:
 
 ```sh
 make check
 ```
 
-This builds and extracts normal/minimal qvm-template RPM layouts through the
-Builder adapter and native packager, validates Qubes Template Manager metadata,
-and verifies the reassembled split root images against their source images.
+`make check` combines two independently useful targets:
 
-This is local artifact evidence.  It is not Qubes acceptance and does not
-replace openQA or live TemplateVM/AppVM behavior.
+- `make source-check` runs shell syntax checks; Python unit tests for the
+  bounded qvm-template repository helper; the offline Builder v2 content lookup
+  contract; shared network-sysctl source checks; RPM metadata rejection tests;
+  transaction and concurrency tests for Qubes pin refreshes; and
+  substitute-cache failure-preservation tests.
+- `make artifact-check` builds and extracts normal/minimal qvm-template RPM
+  layouts through the local Builder adapter and native packager, validates
+  Qubes Template Manager metadata, and compares reassembled split root images
+  byte-for-byte with their sources.
+
+Static linting is separate so environments without the optional tools can
+still run the complete functional suite:
+
+```sh
+make lint
+```
+
+That target runs ShellCheck over the shell sources and Ruff over the Python
+helper and tests.
+
+These are local source, contract, and artifact checks.  The Builder v2 content
+contract uses an in-tree fixture of upstream's resource lookup; it does not
+execute upstream Builder v2.  None of these checks is Qubes acceptance or a
+replacement for openQA or live TemplateVM/AppVM behavior.
 
 Source freshness for pinned Qubes components is checked separately:
 
@@ -189,8 +217,8 @@ That command records source-pin freshness.  It is not runtime evidence.
 Runtime and integration validation for this template is delegated to Qubes
 OS's existing openQA test infrastructure; it is run there rather than from this
 repository.  This repository provides the Guix channel, the template build
-path, and local artifact validation (`make check`) only; it does not ship a
-bespoke dom0/openQA test harness.
+path, and local source/contract/artifact validation (`make check`) only; it does
+not ship a bespoke dom0/openQA test harness.
 
 Local tooling that needs no dom0:
 
@@ -206,12 +234,18 @@ evidence are still open.
 
 ## Builder V2 Review Shape
 
-The local Builder-facing targets are:
+The local Builder-facing adapter targets are:
 
 ```sh
 make prepare build-rootimg
 make prepare build-rpm
 ```
+
+These targets invoke this repository's adapter directly; they do not run the
+upstream Builder v2 plugin.  Similarly,
+`tests/builder-v2-content-contract-check.sh` checks the content tree against an
+offline copy of upstream's resource-resolution order, including normal/minimal
+appmenu and `template.conf` lookup, but is not an upstream Builder execution.
 
 `builder-v2-template/` exposes the standard content-script layout.  Upstream
 Builder v2 still needs accepted `dist: guix` support or an accepted component
@@ -225,9 +259,13 @@ upstream branches rather than vendored here.
 
 **Updating Qubes components** (for each R4.3 component bump):
 
-1. Run `./scripts/check-qubes-pins.sh` to compare pinned commits against current upstream tags.
-2. Update the component tag, commit, and recursive Guix hash in `%qubes-source-components` in `modules/qubes/packages.scm`.
-3. Run `make check`, then rebuild and test both variants before publishing.
+1. Run `./scripts/check-qubes-pins.sh --write` and review the proposed update.
+   The writer resolves the newest tag in each pinned release series, recomputes
+   its recursive Guix hash, and refuses concurrent edits.
+2. Run `./scripts/check-qubes-pins.sh` again to verify every tag, commit, and
+   recursive hash against live upstream state.
+3. Run `make check` and `make lint`, then rebuild and test both variants before
+   publishing.
 
 **Refreshing the build-time Guix**:
 

@@ -321,6 +321,8 @@ PY
 }
 
 verify_home_initialization() {
+    # Expanded inside the chroot, not by this host-side script.
+    # shellcheck disable=SC2016
     as_root chroot "$mount_dir" /bin/sh -lc '
     set -eu
     rm -rf /rw/home
@@ -334,6 +336,8 @@ verify_home_initialization() {
     fi
 '
 
+    # Expanded inside the chroot, not by this host-side script.
+    # shellcheck disable=SC2016
     as_root chroot --userspec=user:users "$mount_dir" /bin/sh -lc '
     set -eu
     export HOME=/rw/home/user

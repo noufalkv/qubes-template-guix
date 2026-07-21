@@ -13,8 +13,9 @@ AppVM behavior.  Local maintenance commands are not runtime evidence.
   Qubes VM package and service definitions.
 - The per-interface network sysctl hardening is defined once in
   `qubes-network-sysctl-helper-forms` (`modules/qubes/packages.scm`) and shared by all
-  three appliers (boot all-interfaces, managed uplink, and the generated
-  `qubes-network-interface-sysctl` hotplug helper), replacing three earlier copies.
+  four appliers (boot all-interfaces, managed-uplink startup, managed-uplink
+  hotplug reconfiguration, and the generated
+  `qubes-network-interface-sysctl` vif helper), replacing duplicated implementations.
   Those writers now fail loudly when an existing `/proc` sysctl path cannot be
   written (missing paths are still skipped), instead of silently swallowing the
   error.  A `verify-network-sysctl-table` build phase errors if
@@ -23,27 +24,33 @@ AppVM behavior.  Local maintenance commands are not runtime evidence.
   breaks the build with a re-sync message instead of shipping stale hardening.
 - The two `init/functions` home-skeleton adaptations are combined into one
   fail-loud `adapt-guix-skel-in-home-init` phase with separate anchors.
-- `config/qubes-os-normal.scm` and `config/qubes-os-minimal.scm` are the configurations;
-  per variant and installed as
-  `/etc/config.scm`.  Generated images also install the channel module under
-  `/etc/qubes-guix-channel`.
-- `config/channels.scm` pins Guix commit
-  `9873d2c433b7dc8e2d510fc437c5b13c98d0a4ff` from Guix's official Codeberg channel URL
-  for template generation.
+- `config/qubes-os-normal.scm` and `config/qubes-os-minimal.scm` are the
+  per-variant configurations and are installed as `/etc/config.scm`.  Generated
+  images also install the channel module under `/etc/qubes-guix-channel`.
+- `config/channels.scm` follows the authenticated `master` branch at Guix's
+  official Codeberg channel URL with no commit pin, so template generation
+  refreshes to the current branch head.
 - `scripts/build-native-rootfs.sh` runs build-scoped authenticated
   `guix pull -p <temporary-profile> --allow-downgrades -C
   config/channels.scm`, then builds with the refreshed Guix command.
 - Checkout/file-channel rewrites, unauthenticated channel paths,
   branch-only fallback, custom channel-file override, custom checkout toggle,
   and custom pull-profile toggle are removed.
-- The installed template removes `/etc/guix/channels.scm`, root
-  `current-guix`, user `current-guix`, and per-user `current-guix-*` links.
-- `make check-qubes-pins` passed on May 29, 2026 against current R4.3 tags
-  after refreshing `qubes-core-agent-linux` to `v4.3.44` and
-  `qubes-gui-agent-linux` to `v4.3.17`.
-- Normal appmenus are sourced from `builder-v2-template/appmenus.list`.
+- The installed template retains `/etc/guix/channels.scm`, sourced from
+  `config/guix-channels.scm`, so users can update Guix and this Qubes channel.
+  The builder's temporary pull profile is not copied into the image; root/user
+  `current-guix` and per-user `current-guix-*` links created during image
+  initialization are removed.
+- `make check-qubes-pins` passed on July 22, 2026 after refreshing
+  `qubes-linux-utils` to `v4.3.18`, `qubes-core-qubesdb` to `v4.3.3`,
+  `qubes-core-agent-linux` to `v4.3.46`, and `qubes-gui-agent-linux` to
+  `v4.3.18`.
+- Normal appmenus are sourced from
+  `builder-v2-template/appmenus_guix/whitelisted-appmenus.list`.
 - Minimal appmenus are sourced from
-  `builder-v2-template/appmenus-minimal.list`.
+  `builder-v2-template/appmenus_guix_minimal/whitelisted-appmenus.list`.
+  Each directory provides relative VM and NetVM aliases to its canonical list,
+  matching Builder v2's directory lookup while avoiding duplicate allowlists.
 - Template RPM generation is independent of any test harness; integration
   testing is delegated to Qubes OS's existing openQA suite (external to this
   repo).
@@ -60,8 +67,9 @@ AppVM behavior.  Local maintenance commands are not runtime evidence.
   standalone `guile` is listed: the `guix` package propagates its own guile,
   and adding a second one made the system profile contain two conflicting
   `guile` entries.
-- The in-template `guix pull` through the Qubes updates proxy is validated
-  externally via Qubes' existing openQA and integration infrastructure.
+- The in-template `guix pull` through the Qubes updates proxy must be validated
+  externally via Qubes' existing openQA and integration infrastructure; that
+  final integration gate remains pending.
 - G-OPEN-2 (updates-proxy): local half done (`http_proxy`/`https_proxy`
   exported to the updates-proxy forwarder when the `updates-proxy-setup` flag is
   set; the export sits behind the flag guard in
@@ -71,36 +79,67 @@ AppVM behavior.  Local maintenance commands are not runtime evidence.
   `guix pull` → `guix system reconfigure`) + L4 openQA evidence that
   `bordeaux.guix.gnu.org`/`ci.guix.gnu.org` is reachable through the proxy.
 
-The current Guix pin contains the upstream libgit2 proxy redirect fix,
-`libgit2-proxy-reconnection.patch`, for `guix/guix#87`.  The pinned commit
-matched the remote `master` ref on May 29, 2026.  Older SSL/proxy failures
-against the removed checkout rewrite should be treated as historical unless
-reproduced with the current authenticated channel path.
+`config/channels.scm` no longer names a fixed Guix commit.  Release evidence
+must therefore record the resolved Guix revision used for each build and verify
+that it contains required fixes such as `libgit2-proxy-reconnection.patch` for
+`guix/guix#87`.  The revision recorded on May 29, 2026 contained that fix and
+matched the remote `master` ref at the time.  Older SSL/proxy failures against
+the removed checkout rewrite should be treated as historical unless reproduced
+with the current authenticated channel path.
 
-## Local Artifact Coverage
+## Local Check Coverage
 
-`make check` passed locally on May 29, 2026 after the builder/appmenu, channel,
-openQA decoupling, import cleanup, and script-entry cleanup.  That command
-runs:
+`make check` is the aggregate functional target.  It runs `make source-check`
+followed by `make artifact-check`.
 
-- `tests/builder-rpm-contract-check.sh`;
-- `tests/rpm-layout-check.sh`.
+`make source-check` covers:
 
-Those checks build normal and minimal RPM artifacts through the Builder adapter
-and native packager, validate Qubes Template Manager metadata/layout, extract
-payloads through `tests/template-rpm-payload-check.sh`, and verify the
-reassembled split root images byte-for-byte against their source images.
+- Bash syntax for shell sources;
+- Python unit tests for bounded request parsing, repository metadata/download
+  handling, and output validation in `qvm-template-repo-query-guix.py`;
+- the Builder v2 content lookup and appmenu-directory contract;
+- use of the shared fail-loud network sysctl helpers by the hotplug path;
+- rejection of unsafe RPM version/release metadata;
+- atomic, mode-preserving Qubes pin refreshes, including concurrent-edit and
+  hash-failure cleanup paths; and
+- bounded local-publisher identity checks plus preservation of an existing
+  substitute-cache publication across early and late failures and atomic
+  replacement on success.
 
-This is artifact evidence only.  It does not replace openQA, qvm-template
-lifecycle checks, or live VM behavior.
+`make artifact-check` runs `tests/builder-rpm-contract-check.sh` and
+`tests/rpm-layout-check.sh`.  Those checks build normal and minimal RPM
+artifacts through the local Builder adapter and native packager, validate Qubes
+Template Manager metadata/layout, extract payloads through
+`tests/template-rpm-payload-check.sh`, and verify the reassembled split root
+images byte-for-byte against their source images.
 
-`make check-qubes-pins` also passed locally against the current upstream Qubes
-R4.3 tag state.  That records source pins; it is not runtime evidence.
+`make lint` is separate from `make check`: it runs ShellCheck over the shell
+sources and Ruff over the Python helper and tests.
+
+The Builder v2 content-contract test uses an offline fixture of the resource
+lookup order from a recorded upstream Builder v2 revision.  It validates this
+repository's content-tree shape and copy semantics; it neither downloads nor
+executes upstream Builder v2.  The Builder adapter artifact test likewise
+invokes the local adapter, not the upstream plugin.  These local source,
+contract, and artifact checks do not replace an actual Builder v2 run, openQA,
+qvm-template lifecycle checks, or live VM behavior.
+
+On July 22, 2026, `make check` and `make lint` passed from the frozen review
+tree.  The Guix rpm-md helper also queried both the enabled official
+R4.3 stable repository and the disabled testing repository selected explicitly
+with `--repoid`; both returned valid template rows with a clean exit.  This is
+live metadata/protocol evidence, not a qrexec download, RPM-signature, install,
+or runtime test.
+
+`make check-qubes-pins` is intentionally separate from `make check` because it
+queries live upstream tags.  The July 22, 2026 pass records source-pin
+freshness at that point in time; it must be rerun for each release candidate
+and is not runtime evidence.
 
 ## Generated Artifact Coverage
 
 On May 29, 2026, on an x86_64 Guix build host, both variants were generated and
-checked end to end from the current source state:
+checked end to end from the source state recorded at that time:
 
 - `guix system build` of the full system profile succeeded for both the normal
   and minimal variants (this builds the profile union, which is where package
@@ -132,18 +171,19 @@ May 29, 2026:
 - Each variant's `config.scm` uses `qubes-operating-system`,
   builds (`guix system build`), produces a root image, passes inspection and
   writable-root activation, and is packaged into a qvm-template RPM
-  (`qubes-template-guix-4.3.0-*`, `qubes-template-guix-minimal-4.3.0-*`); the
-  final RPMs were rebuilt from these final images and pass
+  (`qubes-template-guix-4.3.0-*`, `qubes-template-guix-minimal-4.3.0-*`); those
+  RPMs were rebuilt from those images and pass
   `tests/rpm-layout-check.sh`.
 - Each built image carries `/etc/guix/channels.scm` (single source in
   `config/guix-channels.scm`; the `guix-configuration` channels duplication was
   removed), the flat rendered `/etc/config.scm`, and the channel modules under
   `/etc/qubes-guix-channel/modules/qubes/`.
-- The operating-system uses the stock `grub-bootloader` built with
-  `--no-bootloader` (no boot code is installed); a custom no-op bootloader was
-  found to make `guix system init` copy an empty store closure, so it was
-  dropped.
-- Runtime execution was exercised in a chroot of the final normal image:
+- The operating-system used stock `grub-bootloader` with `--no-bootloader` at
+  that historical revision.  The current source instead inherits that record
+  as `qubes-external-bootloader`, retaining generated `grub.cfg` while making
+  only the installer a no-op so in-template reconfiguration cannot attempt
+  `grub-install`.
+- Runtime execution was exercised in a chroot of the May 29 normal image:
   `pipewire`, `wireplumber`, and `python3` run; the Qubes audio module's shared
   libraries resolve in-image; the `qubes-pipewire-start` launcher is executable;
   and `xterm.desktop`, `nano`, `zenity`, the qrexec autostart entry, and the
@@ -152,19 +192,20 @@ May 29, 2026:
   label); a full standalone QEMU boot is not representative because the template
   is booted by the dom0-supplied kernel and Qubes volume attachment.
 
-The final normal image was also booted to userspace under QEMU (host CPU,
+That May 29 normal image was also booted to userspace under QEMU (host CPU,
 virtio root by `guix-root` label, the image's own system loaded via
 `gnu.load`).  The serial log shows the Guix boot program run, `/etc` populated
 from the system's etc closure, privileged programs set up, `/etc/machine-id`
 created, then **GNU Shepherd 1.0.9 running as PID 1**, loading its
 configuration and starting services: `root`, `root-file-system`, `host-name`
 (value `"guix-qubes"`), and `pam`, followed by `eudev` starting.  This is live
-boot-to-userspace evidence for the final artifact; full GUI/audio/qrexec
+boot-to-userspace evidence for that historical artifact; full GUI/audio/qrexec
 behavior still requires a real Qubes dom0 (and AudioVM) and remains a
 publication gate.
 
-This is generated-artifact evidence from a working tree.  Release evidence must
-still be reproduced from the exact final public branch or tag.
+This is historical generated-artifact evidence from earlier working trees.
+Release evidence must still be reproduced from the exact final public branch or
+tag.
 
 Source hygiene commands also passed locally on May 29, 2026:
 
@@ -176,14 +217,15 @@ artifact checks or runtime gates.
 
 ## Official openQA Integration Testing
 
-### Fresh run, May 31, 2026 (both variants, branch `quality-refactor` @ `fa2b4a5`)
+### Historical run, May 31, 2026 (both variants, branch `quality-refactor` @ `fa2b4a5`)
 
-Authoritative L4 re-run for BOTH variants from the current branch, via the
-OFFICIAL `openqa-clone-job` flow (NOT `isos post`; the host has no products
-configured).  Test source `QubesOS/openqa-tests-qubesos` UNMODIFIED, casedir
-pinned `4a652e3`.  Full evidence: `.omo/evidence/task-14-openqa/`.
+The authoritative L4 run for both variants from the historical branch state at
+`fa2b4a5` used the official `openqa-clone-job` flow (not `isos post`; the host
+has no products configured).  Test source `QubesOS/openqa-tests-qubesos` was
+unmodified, with casedir pinned at `4a652e3`.  Full evidence:
+`.omo/evidence/task-14-openqa/`.
 
-RPMs under test (built fresh on the dev host from this branch, release
+RPMs under test (built on the dev host from that commit, release
 `202605310444`; `make template-rpm-{normal,minimal}` ran build -> inspect ->
 writable-root activation -> package, both exiting 0):
 
@@ -326,8 +368,8 @@ Open caveats:
 The following gates are not closed for publication:
 
 - clean public branch or release tag evidence;
-- fresh `make check` and `make check-qubes-pins` from the final public branch or
-  release tag;
+- fresh `make check`, `make lint`, and `make check-qubes-pins` from the final
+  public branch or release tag;
 - fresh normal/minimal root image build, inspection, activation, and RPM
   packaging from that exact source state;
 - qvm-template lifecycle reruns for both variants from the final RPMs;

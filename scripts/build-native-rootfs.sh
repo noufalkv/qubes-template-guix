@@ -56,7 +56,7 @@ refresh_builder_guix() {
     local current_guix current_guix_dir pull_profile
 
     [ -r "$channels_file" ] ||
-        die "missing pinned Guix channels file: $channels_file"
+        die "missing build Guix channels file: $channels_file"
 
     ensure_pull_work_dir
     pull_profile="$pull_work_dir/current"
