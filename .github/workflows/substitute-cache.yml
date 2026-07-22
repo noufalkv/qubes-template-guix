@@ -112,7 +112,18 @@ jobs:
       - name: Refresh Guix and the Qubes channel (tracks current head, unpinned)
         run: |
           set -euo pipefail
-          guix pull --fallback -C config/channels.scm --allow-downgrades
+          attempt=1
+          max_attempts=4
+          while ! guix pull --fallback -C config/channels.scm --allow-downgrades; do
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "::error::guix pull failed after $attempt attempts"
+              exit 1
+            fi
+            delay=$((attempt * 15))
+            echo "::warning::guix pull attempt $attempt/$max_attempts failed; retrying in ${delay}s"
+            sleep "$delay"
+            attempt=$((attempt + 1))
+          done
 
       - name: Evaluate both system variants with the refreshed Guix
         run: |
