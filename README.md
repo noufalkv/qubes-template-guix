@@ -183,7 +183,7 @@ make check
   bounded qvm-template repository helper; the offline Builder v2 content lookup
   contract; shared network-sysctl source checks; RPM metadata rejection tests;
   transaction and concurrency tests for Qubes pin refreshes; and
-  substitute-cache failure-preservation tests.
+  substitute-cache delayed-bake, deadline, and failure-preservation tests.
 - `make artifact-check` builds and extracts normal/minimal qvm-template RPM
   layouts through the local Builder adapter and native packager, validates
   Qubes Template Manager metadata, and compares reassembled split root images

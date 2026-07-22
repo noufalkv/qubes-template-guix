@@ -20,6 +20,7 @@
 #   build-substitute-cache.sh --output DIR --public-key FILE --private-key FILE
 #                             [--variant normal|minimal|both]
 #                             [--compression METHOD:LEVEL]
+#                             [--bake-timeout SECONDS]
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -31,6 +32,7 @@ public_key=""
 private_key=""
 variant="both"
 compression="zstd:19"
+bake_timeout="900"
 guix_bin="${GUIX:-guix}"
 publish_port="${GUIX_PUBLISH_PORT:-}"
 publish_pid=""
@@ -51,6 +53,8 @@ Options:
   --private-key FILE     guix publish signing private key (required).
   --variant NAME         normal | minimal | both. Default: both.
   --compression M:L      guix publish compression. Default: zstd:19.
+  --bake-timeout SECONDS Maximum time to wait for each narinfo bake.
+                         Default: 900 (15 minutes).
   -h, --help             Show this help.
 EOF
 }
@@ -62,6 +66,7 @@ while [ "$#" -gt 0 ]; do
         --private-key) require_arg "$1" "${2:-}"; private_key="$2"; shift 2 ;;
         --variant) require_arg "$1" "${2:-}"; variant="$2"; shift 2 ;;
         --compression) require_arg "$1" "${2:-}"; compression="$2"; shift 2 ;;
+        --bake-timeout) require_arg "$1" "${2:-}"; bake_timeout="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) die "unknown argument: $1" ;;
     esac
@@ -72,6 +77,14 @@ output_display="$output"
 [ -r "$public_key" ] || die "--public-key not readable: $public_key"
 [ -r "$private_key" ] || die "--private-key not readable: $private_key"
 case "$variant" in normal|minimal|both) ;; *) die "invalid --variant: $variant" ;; esac
+case "$bake_timeout" in
+    ''|*[!0-9]*) die "invalid --bake-timeout: $bake_timeout" ;;
+esac
+[ "${#bake_timeout}" -le 5 ] || die "invalid --bake-timeout: $bake_timeout"
+bake_timeout_number=$((10#$bake_timeout))
+[ "$bake_timeout_number" -ge 1 ] && [ "$bake_timeout_number" -le 86400 ] ||
+    die "invalid --bake-timeout: $bake_timeout"
+bake_timeout="$bake_timeout_number"
 need "$guix_bin"
 need curl
 python_bin="${PYTHON:-python3}"
@@ -247,7 +260,7 @@ while IFS= read -r path; do
     [ -n "$path" ] || continue
     hash="$(basename "$path" | cut -d- -f1)"
     code="$(
-        curl --silent --show-error --location \
+        curl --disable --globoff --silent --show-error --location \
             --connect-timeout 5 --max-time 15 \
             --retry 2 --retry-delay 1 \
             --output /dev/null --write-out '%{http_code}' \
@@ -287,26 +300,27 @@ publisher_running() {
 }
 
 publisher_died() {
+    local context="$1"
     local publish_status=0
 
     wait "$publish_pid" || publish_status="$?"
     publish_pid=""
     sed 's/^/guix publish: /' "$work_dir/guix-publish.log" >&2
-    die "guix publish exited before becoming ready (status $publish_status)"
+    die "guix publish exited $context (status $publish_status)"
 }
 
 publisher_ready=0
 attempt=1
 publisher_attempts=30
 while [ "$attempt" -le "$publisher_attempts" ]; do
-    publisher_running || publisher_died
-    if curl --fail --silent --location \
+    publisher_running || publisher_died "before becoming ready"
+    if curl --disable --globoff --fail --silent --location \
         --connect-timeout 2 --max-time 5 --output /dev/null \
         "$base/nix-cache-info"; then
         # Give a just-started process time to report a bind failure before
         # accepting a response that could have come from a colliding service.
         sleep 0.2
-        publisher_running || publisher_died
+        publisher_running || publisher_died "before becoming ready"
         publisher_ready=1
         break
     fi
@@ -319,7 +333,7 @@ done
 }
 
 nix_cache_info="$staged_output/nix-cache-info"
-curl --fail --silent --show-error --location \
+curl --disable --globoff --fail --silent --show-error --location \
     --connect-timeout 5 --max-time 10 --retry 2 --retry-delay 1 \
     --output "$nix_cache_info.part" "$base/nix-cache-info"
 [ -s "$nix_cache_info.part" ] || die "downloaded nix-cache-info is empty"
@@ -335,23 +349,80 @@ while IFS= read -r path; do
     hash="$(basename "$path" | cut -d- -f1)"
     narinfo=""
     narinfo_download="$work_dir/$hash.narinfo"
+    narinfo_headers="$work_dir/$hash.narinfo.headers"
     attempt=1
-    narinfo_attempts=20
-    while [ "$attempt" -le "$narinfo_attempts" ]; do
-        rm -f "$narinfo_download"
-        if curl --fail --silent --show-error --location \
-            --connect-timeout 5 --max-time 30 \
-            --output "$narinfo_download" "$base/$hash.narinfo" \
-            && grep -q '^StorePath:' "$narinfo_download"; then
-            narinfo="$(< "$narinfo_download")"
-            break
+    bake_started="$SECONDS"
+    bake_deadline=$((bake_started + bake_timeout))
+    last_result="not requested"
+    while [ "$SECONDS" -lt "$bake_deadline" ]; do
+        publisher_running ||
+            publisher_died "while baking narinfo for $path"
+        rm -f "$narinfo_download" "$narinfo_headers"
+        remaining=$((bake_deadline - SECONDS))
+        [ "$remaining" -gt 0 ] || break
+        request_timeout="$remaining"
+        [ "$request_timeout" -le 30 ] || request_timeout=30
+        curl_status=0
+        if http_code="$(
+            curl --disable --globoff --silent --show-error \
+                --connect-timeout 2 --max-time "$request_timeout" \
+                --dump-header "$narinfo_headers" \
+                --output "$narinfo_download" --write-out '%{http_code}' \
+                "$base/$hash.narinfo"
+        )"; then
+            last_result="HTTP $http_code"
+            case "$http_code" in
+                200)
+                    grep -q '^StorePath:' "$narinfo_download" || {
+                        sed 's/^/guix publish: /' \
+                            "$work_dir/guix-publish.log" >&2
+                        die "guix publish returned malformed narinfo for $path"
+                    }
+                    narinfo="$(< "$narinfo_download")"
+                    break
+                    ;;
+                404)
+                    if ! tr -d '\r' < "$narinfo_headers" |
+                            grep -qi '^x-baking:[[:space:]]*1$'; then
+                        sed 's/^/guix publish: /' \
+                            "$work_dir/guix-publish.log" >&2
+                        die "guix publish returned HTTP 404 without" \
+                            "X-Baking: 1 for $path"
+                    fi
+                    ;;
+                *)
+                    sed 's/^/guix publish: /' \
+                        "$work_dir/guix-publish.log" >&2
+                    die "guix publish returned HTTP $http_code for $path"
+                    ;;
+            esac
+        else
+            curl_status="$?"
+            last_result="curl status $curl_status"
         fi
+        publisher_running ||
+            publisher_died "while baking narinfo for $path"
         narinfo=""
-        sleep 1
+        if [ "$attempt" -eq 1 ]; then
+            printf 'waiting up to %ss for guix publish to bake %s...\n' \
+                "$bake_timeout" "$path" >&2
+        fi
+        remaining=$((bake_deadline - SECONDS))
+        [ "$remaining" -gt 0 ] || break
+        sleep_for="$remaining"
+        [ "$sleep_for" -le 2 ] || sleep_for=2
+        sleep "$sleep_for"
         attempt=$((attempt + 1))
     done
-    [ -n "$narinfo" ] ||
-        die "could not bake narinfo for $path after $narinfo_attempts attempts"
+    if [ -z "$narinfo" ]; then
+        publisher_running ||
+            publisher_died "while baking narinfo for $path"
+        bake_elapsed=$((SECONDS - bake_started))
+        sed 's/^/guix publish: /' "$work_dir/guix-publish.log" >&2
+        die "could not bake narinfo for $path within ${bake_elapsed}s" \
+            "(timeout ${bake_timeout}s; $attempt attempts;" \
+            "last result $last_result)"
+    fi
 
     store_path="$(printf '%s' "$narinfo" | sed -n 's/^StorePath: //p')"
     [ "$store_path" = "$path" ] ||
@@ -376,7 +447,7 @@ while IFS= read -r path; do
 
     nar_file="$staged_output/$nar_url"
     mkdir -p "$(dirname "$nar_file")"
-    curl --fail --silent --show-error --location \
+    curl --disable --globoff --fail --silent --show-error --location \
         --connect-timeout 5 --max-time 120 --retry 2 --retry-delay 1 \
         --output "$nar_file.part" "$base/$nar_url"
     [ -s "$nar_file.part" ] || die "downloaded nar is empty for $path"

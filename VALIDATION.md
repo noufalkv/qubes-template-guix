@@ -102,9 +102,10 @@ followed by `make artifact-check`.
 - rejection of unsafe RPM version/release metadata;
 - atomic, mode-preserving Qubes pin refreshes, including concurrent-edit and
   hash-failure cleanup paths; and
-- bounded local-publisher identity checks plus preservation of an existing
-  substitute-cache publication across early and late failures and atomic
-  replacement on success.
+- bounded local-publisher identity and asynchronous-bake checks, including
+  delayed success, timeout, malformed-not-found, and publisher-death paths;
+  preservation of an existing substitute-cache publication across failures;
+  and atomic replacement on success.
 
 `make artifact-check` runs `tests/builder-rpm-contract-check.sh` and
 `tests/rpm-layout-check.sh`.  Those checks build normal and minimal RPM
