@@ -458,6 +458,26 @@ env \
     exit 1
 }
 
+upstream_probe="$(
+    grep -F 'https://ci.guix.gnu.org/' "$fake_curl_log" | head -n 1
+)"
+[ -n "$upstream_probe" ] || {
+    printf 'successful publication did not query the upstream cache\n' >&2
+    exit 1
+}
+for expected in \
+        '--connect-timeout 10' \
+        '--max-time 30' \
+        '--retry 5' \
+        '--retry-all-errors' \
+        '--retry-delay 2' \
+        '--retry-max-time 180'; do
+    grep -Fq -- "$expected" <<< "$upstream_probe" || {
+        printf 'upstream probe lost retry policy option: %s\n' "$expected" >&2
+        exit 1
+    }
+done
+
 [ ! -e "$output/sentinel" ] || {
     printf 'atomic cache exchange retained the previous payload\n' >&2
     exit 1

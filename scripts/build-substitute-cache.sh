@@ -259,10 +259,14 @@ upstream="https://ci.guix.gnu.org"
 while IFS= read -r path; do
     [ -n "$path" ] || continue
     hash="$(basename "$path" | cut -d- -f1)"
+    # This read-only probe runs once per closure path.  Tolerate bounded
+    # transient CI/TLS stalls, but never classify an indeterminate response as
+    # a missing substitute.
     code="$(
         curl --disable --globoff --silent --show-error --location \
-            --connect-timeout 5 --max-time 15 \
-            --retry 2 --retry-delay 1 \
+            --connect-timeout 10 --max-time 30 \
+            --retry 5 --retry-all-errors --retry-delay 2 \
+            --retry-max-time 180 \
             --output /dev/null --write-out '%{http_code}' \
             "$upstream/$hash.narinfo"
     )" || die "failed to query upstream narinfo for $path"
