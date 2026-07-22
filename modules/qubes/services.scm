@@ -2305,13 +2305,13 @@ the ignored service value."
   "https://noufalkv.github.io/qubes-template-guix")
 
 (define %qubes-substitute-cache-enabled?
-  ;; Set #t now that the dev cache signing key is committed
-  ;; (config/substitute-cache/signing-key.pub) with its private half in the
-  ;; GUIX_SIGNING_KEY_SEC Actions secret.  While #f the daemon stays on official
-  ;; substitutes only; enabling before a real key is authorized would point the
-  ;; daemon at a substitute host with no usable key -- a dead source that only
-  ;; slows updates.
-  #t)
+  ;; Disabled after the July 2, 2026 Guix substitute/pull advisory.  The
+  ;; existing development cache was produced by a workflow whose bootstrap
+  ;; daemon predates the fixed revision, so neither those objects nor that
+  ;; signing key are suitable inputs for a security rebuild.  Keep templates on
+  ;; official substitutes until the cache is rebuilt on a fixed, independently
+  ;; verified daemon with a rotated key.
+  #f)
 
 (define %qubes-substitute-cache-key-file
   ;; PUBLIC signing key the daemon authorizes for the cache.  A relative

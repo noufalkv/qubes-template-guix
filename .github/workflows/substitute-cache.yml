@@ -2,14 +2,19 @@
 #
 # Publish a static Guix substitute cache for the Qubes channel to GitHub Pages.
 #
+# SECURITY HOLD (2026-07-22): automatic execution is disabled and the only
+# remaining manual entry point fails before checkout, key access, or Guix
+# execution.  The previous Guix 1.5.0 bootstrap daemon predates the fixes in
+# https://guix.gnu.org/en/blog/2026/guix-substitute-pull-vulnerabilities/.
+# Re-enabling this workflow requires a source-only upgrade to a verified fixed
+# daemon before any substitute is consumed, plus rotation of the development
+# cache signing key and a clean rebuild of every published object.
+#
 # The Qubes channel has no substitute server, so a template's
 # "guix pull && guix system reconfigure" otherwise rebuilds every Qubes
 # derivation locally whenever the upstream Guix toolchain moves.  Guix itself
 # stays UNPINNED for security; this job just publishes prebuilt, signed nars for
 # the channel-specific store paths so the in-template update downloads them.
-#
-# It tracks the SAME unpinned branch head users track (scheduled + on push), so
-# the cache stays aligned with current Guix without freezing security updates.
 #
 # Trust model: nars are signed by an Ed25519 key whose PRIVATE half lives in the
 # GUIX_SIGNING_KEY_SEC repository secret and whose PUBLIC half is committed at
@@ -23,20 +28,6 @@
 name: substitute-cache
 
 on:
-  push:
-    branches: [quality-refactor]
-    paths:
-      - 'modules/**'
-      - 'config/qubes-os-*.scm'
-      - 'config/channels.scm'
-      - 'config/guix-channels.scm'
-      - 'config/substitute-cache/signing-key.pub'
-      - 'scripts/build-substitute-cache.sh'
-      - '.github/workflows/substitute-cache.yml'
-  schedule:
-    # Rebuild against current upstream Guix head a few times a week so the cache
-    # tracks the unpinned channel users actually pull.
-    - cron: '17 4 * * 1,4'
   workflow_dispatch:
 
 concurrency:
@@ -58,6 +49,11 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
+      - name: Refuse publication while the Guix security hold is active
+        run: |
+          echo "::error::Substitute-cache publication is disabled until the bootstrap daemon is upgraded safely and the signing key is rotated."
+          exit 1
+
       - name: Check out channel
         uses: actions/checkout@v4
 
