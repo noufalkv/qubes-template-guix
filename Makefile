@@ -12,6 +12,7 @@ SHELL_SOURCES := $(wildcard scripts/*.sh tests/*.sh builder-v2-template/*.sh)
 	build-rpm \
 	builder-v2-content-contract-check \
 	builder-rpm-contract-check \
+	channel-source-copy-check \
 	check \
 	check-qubes-pins \
 	inspect-native-rootfs \
@@ -36,6 +37,7 @@ source-check: \
 	shell-syntax-check \
 	python-unit-check \
 	builder-v2-content-contract-check \
+	channel-source-copy-check \
 	network-uplink-sysctl-source-check \
 	package-metadata-validation-check \
 	qubes-pin-writer-check \
@@ -47,7 +49,8 @@ shell-syntax-check:
 	bash -n $(SHELL_SOURCES)
 
 python-unit-check:
-	$(PYTHON) -m unittest discover -s tests -p 'test_*.py'
+	PYTHONDONTWRITEBYTECODE=1 \
+		$(PYTHON) -m unittest discover -s tests -p 'test_*.py'
 
 lint:
 	$(SHELLCHECK) -x $(SHELL_SOURCES)
@@ -55,6 +58,9 @@ lint:
 
 builder-v2-content-contract-check:
 	./tests/builder-v2-content-contract-check.sh
+
+channel-source-copy-check:
+	bash ./tests/channel-source-copy-check.sh
 
 network-uplink-sysctl-source-check:
 	./tests/network-uplink-sysctl-source-check.sh

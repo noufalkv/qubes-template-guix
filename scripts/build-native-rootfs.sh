@@ -22,6 +22,8 @@ export PATH
 
 # shellcheck source=scripts/lib.sh
 . "$repo_root/scripts/lib.sh"
+# shellcheck source=scripts/git-tracked-tree.sh
+. "$repo_root/scripts/git-tracked-tree.sh"
 
 usage() {
     cat <<'EOF'
@@ -91,17 +93,31 @@ write_guix_channels() {
 
 install_channel_sources() {
     local channel_dir="$mount_dir/etc/qubes-guix-channel"
+    local channel_sources_archive
+
+    ensure_pull_work_dir
+    channel_sources_archive="$pull_work_dir/channel-sources.tar"
+    archive_git_tracked_tree \
+        "$repo_root" modules "$channel_sources_archive"
 
     as_root rm -rf "$channel_dir"
     as_root mkdir -p "$channel_dir"
     as_root install -m 0644 "$repo_root/.guix-channel" "$channel_dir/.guix-channel"
     # The channel keeps its non-Scheme assets (patches/, files/) inside the
     # module tree (modules/qubes/{patches,files}), so copying modules/ ships
-    # them too.  This keeps every local-file reference inside the channel root
-    # so it resolves identically under "guix build -L", "guix pull", and an
+    # them too.  Only Git-tracked paths enter the snapshot, so build-generated
+    # __pycache__ files and other ignored/untracked working-tree contents cannot
+    # make the installed channel or RPM payload depend on prior local commands.
+    # This keeps every tracked local-file reference inside the channel root so
+    # it resolves identically under "guix build -L", "guix pull", and an
     # offline "guix system reconfigure" in the installed image.
-    as_root cp -a "$repo_root/modules" "$channel_dir/modules"
-    as_root chmod -R u+rwX,go+rX "$channel_dir/modules"
+    as_root tar --extract \
+        --file "$channel_sources_archive" \
+        --directory "$channel_dir" \
+        --no-same-owner \
+        --same-permissions
+    as_root find "$channel_dir/modules" -type d -exec chmod 0755 {} +
+    rm -f -- "$channel_sources_archive"
 }
 
 remove_runtime_guix_state() {
