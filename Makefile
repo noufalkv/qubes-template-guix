@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 SHELL := /usr/bin/env bash
+GUIX ?= guix
 PYTHON ?= python3
 RUFF ?= ruff
 SHELLCHECK ?= shellcheck
@@ -15,6 +16,7 @@ SHELL_SOURCES := $(wildcard scripts/*.sh tests/*.sh builder-v2-template/*.sh)
 	channel-source-copy-check \
 	check \
 	check-qubes-pins \
+	guix-check \
 	inspect-native-rootfs \
 	lint \
 	native-rootfs \
@@ -29,9 +31,16 @@ SHELL_SOURCES := $(wildcard scripts/*.sh tests/*.sh builder-v2-template/*.sh)
 	source-check \
 	substitute-cache-failure-check \
 	template-rpm-minimal \
-	template-rpm-normal
+	template-rpm-normal \
+	update-check-behavior-check \
+	update-check-contract-check
 
 check: source-check artifact-check
+
+# Release-capable hosts must exercise the Guix-backed behavior test rather
+# than accepting its non-Guix SKIP path.
+guix-check: REQUIRE_GUIX := 1
+guix-check: check
 
 source-check: \
 	shell-syntax-check \
@@ -41,7 +50,9 @@ source-check: \
 	network-uplink-sysctl-source-check \
 	package-metadata-validation-check \
 	qubes-pin-writer-check \
-	substitute-cache-failure-check
+	substitute-cache-failure-check \
+	update-check-behavior-check \
+	update-check-contract-check
 
 artifact-check: builder-rpm-contract-check rpm-layout-check
 
@@ -73,6 +84,13 @@ qubes-pin-writer-check:
 
 substitute-cache-failure-check:
 	./tests/substitute-cache-failure-check.sh
+
+update-check-behavior-check:
+	REQUIRE_GUIX="$(REQUIRE_GUIX)" GUIX="$(GUIX)" \
+		./tests/update-check-behavior-check.sh
+
+update-check-contract-check:
+	./tests/update-check-contract-check.sh
 
 builder-rpm-contract-check:
 	./tests/builder-rpm-contract-check.sh

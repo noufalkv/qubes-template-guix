@@ -7,6 +7,8 @@ work_dir="$(mktemp -d "$repo_root/work.channel-source-copy.XXXXXX")"
 fixture="$work_dir/repository"
 archive="$work_dir/channel-sources.tar"
 destination="$work_dir/extracted"
+immutable_archive="$work_dir/immutable-channel-sources.tar"
+immutable_destination="$work_dir/immutable-extracted"
 
 # shellcheck source=scripts/lib.sh
 . "$repo_root/scripts/lib.sh"
@@ -33,6 +35,13 @@ chmod 0755 "$fixture/$executable_rel"
 ln -s 'indexed-target' "$fixture/$symlink_rel"
 printf '%s\n' 'tracked unusual filename' > "$fixture/$newline_rel"
 git -c "safe.directory=$fixture" -C "$fixture" add .gitignore modules
+git -c "safe.directory=$fixture" -C "$fixture" \
+    -c user.name='Channel Snapshot Test' \
+    -c user.email='channel-snapshot@example.invalid' \
+    commit -q -m initial
+expected_commit="$(git -c "safe.directory=$fixture" -C "$fixture" rev-parse HEAD)"
+[ "$(clean_git_commit "$fixture" modules)" = "$expected_commit" ] ||
+    die "clean channel provenance did not resolve HEAD"
 
 # The snapshot must use current working-tree state rather than HEAD/index.
 printf '%s\n' 'unstaged regular working-tree bytes' > "$fixture/$regular_rel"
@@ -41,6 +50,10 @@ printf '%s\n' '#!/bin/sh' 'printf unstaged-executable' \
     > "$fixture/$executable_rel"
 chmod 0751 "$fixture/$executable_rel"
 ln -sfn '../regular file.scm' "$fixture/$symlink_rel"
+
+if (clean_git_commit "$fixture" modules >/dev/null 2>&1); then
+    die "dirty channel sources were assigned HEAD provenance"
+fi
 
 # These paths model both the observed Python-bytecode contamination and a
 # general untracked directory.  Neither a directory nor its children may be
@@ -56,6 +69,39 @@ printf '%s\n' 'untracked direct bytes' \
     > "$fixture/modules/qubes/untracked.scm"
 printf '%s\n' 'ignored by pattern' \
     > "$fixture/modules/qubes/files/cache.ignored"
+
+# Long builds must use the committed objects resolved before any later edit,
+# not re-read this now-dirty working tree.  The immutable archive therefore
+# contains the original commit bytes and none of the untracked/ignored paths.
+archive_git_commit_tree \
+    "$fixture" "$expected_commit" "$immutable_archive" modules
+mkdir -p "$immutable_destination"
+tar --extract \
+    --file "$immutable_archive" \
+    --directory "$immutable_destination" \
+    --no-same-owner
+for relative_path in "$regular_rel" "$executable_rel" "$newline_rel"; do
+    git -c "safe.directory=$fixture" -C "$fixture" \
+        show "$expected_commit:$relative_path" | \
+        cmp -s - "$immutable_destination/$relative_path" ||
+        die "immutable snapshot differs from commit for: $relative_path"
+done
+[ "$(stat -c '%a' "$immutable_destination/$regular_rel")" = 644 ] ||
+    die "immutable tracked regular file did not receive canonical mode 0644"
+[ "$(stat -c '%a' "$immutable_destination/$executable_rel")" = 755 ] ||
+    die "immutable tracked executable did not receive canonical mode 0755"
+[ "$(readlink -- "$immutable_destination/$symlink_rel")" = \
+    "$(git -c "safe.directory=$fixture" -C "$fixture" \
+        show "$expected_commit:$symlink_rel")" ] ||
+    die "immutable snapshot symlink differs from commit"
+[ ! -e "$immutable_destination/modules/qubes/files/__pycache__" ] ||
+    die "ignored __pycache__ entered immutable commit snapshot"
+[ ! -e "$immutable_destination/modules/qubes/files/untracked-directory" ] ||
+    die "untracked directory entered immutable commit snapshot"
+[ ! -e "$immutable_destination/modules/qubes/untracked.scm" ] ||
+    die "untracked file entered immutable commit snapshot"
+[ ! -e "$immutable_destination/modules/qubes/files/cache.ignored" ] ||
+    die "ignored file entered immutable commit snapshot"
 
 # Exercise the same ownership mismatch Git sees when a checkout owned by the
 # invoking user is inspected from an as_root/sudo context.  The helper's local

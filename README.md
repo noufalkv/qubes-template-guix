@@ -64,6 +64,12 @@ resolves with no `-L`.  The image also ships the channel modules under
 sudo guix system -L /etc/qubes-guix-channel/modules reconfigure /etc/config.scm
 ```
 
+The Qubes update check compares the active generation's recorded Guix and
+Qubes revisions with Guix's authenticated resolution of this channel file.  It
+runs five minutes after boot and every two days, preserves dom0's existing
+status on refresh failures, and rechecks immediately after a reconfiguration
+when the last successful result cannot prove the new generation is current.
+
 `config/channels.scm` uses Guix's official Codeberg channel URL on its `master`
 branch with no commit pin, so template builds track current Guix.  That is an
 upstream channel reference for the builder, not a checkout or file-channel
@@ -87,6 +93,11 @@ Minimal:
   --variant minimal \
   --output root-minimal.img
 ```
+
+Build inputs owned by this repository are evaluated from one immutable commit
+snapshot.  An explicit `--config` inside the repository must be tracked and
+committed; a config outside it is copied once before the build and is not
+attributed to the Qubes channel commit.
 
 `scripts/build-template-rpm.sh` runs image inspection and activation before
 packaging.  To inspect a root image directly:
@@ -162,7 +173,10 @@ These concrete configs are installed as
 /etc/config.scm` via the installed `/etc/guix/channels.scm`.  The image also
 carries the channel modules under `/etc/qubes-guix-channel/modules` as an offline
 fallback (`guix system -L … reconfigure`).  Build-time evaluation uses the same
-modules with `guix system -L modules`.
+modules through the build scripts.  Those scripts require repository-owned
+inputs to match `HEAD` and pass that exact commit as
+`QUBES_TEMPLATE_CHANNEL_COMMIT` when running `guix system -L modules`, so the
+installed update baseline names the source that was actually built.
 
 After adding a package with a desktop entry, add that desktop-file ID to the
 canonical `whitelisted-appmenus.list` in the matching appmenu directory listed
@@ -183,7 +197,12 @@ make check
   bounded qvm-template repository helper; the offline Builder v2 content lookup
   contract; shared network-sysctl source checks; RPM metadata rejection tests;
   transaction and concurrency tests for Qubes pin refreshes; and
-  substitute-cache delayed-bake, deadline, and failure-preservation tests.
+  substitute-cache delayed-bake, deadline, and failure-preservation tests.  On
+  a host with Guix it also exercises channel-resolution and update-check
+  behavior; static parity contracts run everywhere.
+- `make guix-check` is the required functional target on release and other
+  Guix-enabled hosts.  It runs the same suite but fails instead of
+  accepting a skipped update-check behavior test when `guix` is unavailable.
 - `make artifact-check` builds and extracts normal/minimal qvm-template RPM
   layouts through the local Builder adapter and native packager, validates
   Qubes Template Manager metadata, and compares reassembled split root images
@@ -264,8 +283,8 @@ upstream branches rather than vendored here.
    its recursive Guix hash, and refuses concurrent edits.
 2. Run `./scripts/check-qubes-pins.sh` again to verify every tag, commit, and
    recursive hash against live upstream state.
-3. Run `make check` and `make lint`, then rebuild and test both variants before
-   publishing.
+3. Run `make guix-check` and `make lint`, then rebuild and test both variants
+   before publishing.
 
 **Refreshing the build-time Guix**:
 

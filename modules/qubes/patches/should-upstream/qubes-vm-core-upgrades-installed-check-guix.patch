@@ -4,21 +4,20 @@ upgrades-installed-check walks a chain of per-distribution branches to decide
 whether updates are available.  Add a Guix System branch (detected by
 /run/current-system) before the Archlinux branch.
 
-Guix has no metadata-index probe comparable to dnf check-update or
-apt-get -s upgrade, but "updates available" for a Guix System has a precise,
-cheap meaning: at least one channel in /etc/guix/channels.scm has advanced past
-the commit the running system was built from.  Compare, per channel, the commit
-recorded by `guix describe` against the branch head reported by
-`git ls-remote` (which goes through the same http_proxy/https_proxy the updates
-proxy sets, so it works in a TemplateVM with no other network).  If any channel
-is behind its branch head, updates are available.  When channels.scm pins a
-channel to an explicit commit, `git ls-remote` of that branch is still compared
-against the recorded commit, which is correct: a pinned system reports no update
-until the pin is bumped.
+The Guix helper resolves /etc/guix/channels.scm through Guix's own restricted
+channel evaluator and authenticated channel checkout code.  It compares those
+resolved revisions with /etc/qubes-applied-guix-channels.scm, which is generated
+as part of the active system generation.  This checks the actual channel set,
+honors explicit commit pins, includes the Qubes channel, and keeps reporting an
+update until a successful system reconfiguration switches to a generation made
+from the new revisions.  A successful full check caches its authenticated
+result so the standard post-update skip-refresh hook can verify the applied
+generation without network access.
 
-Falls back to "true" (no updates) only when the comparison cannot be performed
-(no channels.scm, git/guix missing, or every ls-remote fails), so a transient
-network failure never produces a false "updates available".
+Like the existing apt/dnf branches, a refresh or authentication failure emits
+no true/false result and returns nonzero.  upgrades-status-notify therefore
+leaves dom0's previous state unchanged instead of incorrectly clearing the
+notification during a network failure.
 
 Upstream: QubesOS/qubes-core-agent-linux,
 package-managers/upgrades-installed-check.
@@ -26,61 +25,37 @@ Status: should-upstream (adds a new distro branch alongside the existing
 debian/arch/gentoo/alpine branches; other distributions are unaffected).
 
 diff --git a/package-managers/upgrades-installed-check b/package-managers/upgrades-installed-check
-index ceb3be2..1323d01 100755
+index ceb3be2..63f7c22 100755
 --- a/package-managers/upgrades-installed-check
 +++ b/package-managers/upgrades-installed-check
-@@ -46,6 +46,55 @@ elif [ -e /etc/debian_version ]; then
+@@ -46,6 +46,31 @@ elif [ -e /etc/debian_version ]; then
      # shellcheck disable=SC2266
      echo "$apt_get_upgrade_output" | awk "/^Inst/{ print $2 }" | [ "$(wc -L)" -eq 0 ] && echo "true" || echo "false"
      echo "$apt_get_upgrade_output" >&2
 +elif [ -e /run/current-system ]; then
 +    ## Guix System
-+    # "Updates available" means a channel in /etc/guix/channels.scm has
-+    # advanced past the commit the running system was built from.  Compare,
-+    # per channel, `guix describe` (installed) against `git ls-remote`
-+    # (remote branch head).  ls-remote honours http_proxy/https_proxy, so it
-+    # works in a TemplateVM whose only network is the Qubes updates proxy.
-+    set -o pipefail
 +    guix_bin="$(command -v guix || echo /run/current-system/profile/bin/guix)"
-+    git_bin="$(command -v git || echo /run/current-system/profile/bin/git)"
-+    if [ ! -x "$guix_bin" ] || [ ! -x "$git_bin" ]; then
-+        # Cannot probe; assume up to date rather than nag spuriously.
-+        echo "true"
-+        exit_code=0
++    checker=/usr/lib/qubes/guix-updates-installed-check.scm
++    state=/etc/qubes-applied-guix-channels.scm
++    channels=/etc/guix/channels.scm
++    cache=/var/lib/qubes/guix-update-check-latest.scm
++
++    if [ ! -x "$guix_bin" ]; then
++        echo "Guix update check: guix command is unavailable" >&2
++        exit_code=1
++    elif [ ! -r "$checker" ] || [ ! -r "$state" ] || [ ! -r "$channels" ]; then
++        echo "Guix update check: required checker input is unavailable" >&2
++        exit_code=1
++    elif $skip_refresh; then
++        "$guix_bin" repl -q -- "$checker" "$state" "$channels" "$cache" \
++            skip-refresh
++        exit_code="$?"
 +    else
-+        # Emit "name<TAB>url<TAB>branch<TAB>commit" per channel.
-+        describe="$("$guix_bin" describe -f recutils 2>/dev/null | awk '
-+            /^name:/    { name=$2 }
-+            /^url:/     { url=$2 }
-+            /^branch:/  { branch=$2 }
-+            /^commit:/  { print name "\t" url "\t" branch "\t" $2 }
-+        ')"
-+        updates="false"
-+        checked_any="false"
-+        while IFS="$(printf "\t")" read -r _name url branch commit; do
-+            [ -n "$url" ] || continue
-+            [ -n "$branch" ] || branch="HEAD"
-+            remote="$("$git_bin" ls-remote "$url" "refs/heads/$branch" 2>/dev/null | cut -f1)"
-+            [ -n "$remote" ] || remote="$("$git_bin" ls-remote "$url" "$branch" 2>/dev/null | cut -f1)"
-+            if [ -n "$remote" ]; then
-+                checked_any="true"
-+                if [ "$remote" != "$commit" ]; then
-+                    updates="true"
-+                fi
-+            fi
-+        done <<EOF
-+$describe
-+EOF
-+        if [ "$checked_any" != "true" ]; then
-+            # No channel could be probed (e.g. transient proxy failure);
-+            # do not raise a false notification.
-+            echo "true"
-+        elif [ "$updates" = "true" ]; then
-+            echo "false"
-+        else
-+            echo "true"
-+        fi
-+        exit_code=0
++        # `guix repl` supplies the same Guix modules as the running command.
++        # The helper uses authenticated channel resolution rather than parsing
++        # unauthenticated `git ls-remote` output.
++        "$guix_bin" repl -q -- "$checker" "$state" "$channels" "$cache"
++        exit_code="$?"
 +    fi
  elif [ -e /etc/arch-release ]; then
      ## Archlinux

@@ -211,6 +211,9 @@ verify_profile_payload() {
         lib/qubes/qubes-gui-agent-pre.sh
         lib/qubes/qfile-agent
         lib/qubes/qfile-unpacker
+        lib/qubes/guix-updates-installed-check.scm
+        lib/qubes/upgrades-installed-check
+        lib/qubes/upgrades-status-notify
         etc/qubes/post-install.d/10-qubes-core-agent-features.sh
         etc/qubes/post-install.d/10-qubes-core-agent-appmenus.sh
         etc/qubes/post-install.d/90-qubes-core-agent.sh
@@ -235,12 +238,32 @@ verify_profile_payload() {
 }
 
 verify_installed_channel_sources() {
+    local applied_qubes_commit
+    local applied_state="$mount_dir/etc/qubes-applied-guix-channels.scm"
+    local channel_commit
+    local channel_commit_file="$mount_dir/etc/qubes-guix-channel/modules/qubes/.qubes-channel-commit"
+
     [ -r "$mount_dir/etc/qubes-guix-channel/.guix-channel" ] ||
         die "missing installed Qubes Guix channel metadata"
     [ -r "$mount_dir/etc/qubes-guix-channel/modules/qubes/packages.scm" ] ||
         die "missing installed Qubes Guix channel module"
     [ -r "$mount_dir/etc/qubes-guix-channel/modules/qubes/files/qvm-template-repo-query-guix.py" ] ||
         die "missing installed Qubes Guix channel files asset"
+    [ -r "$mount_dir/etc/qubes-guix-channel/modules/qubes/files/guix-updates-installed-check.scm" ] ||
+        die "missing installed Guix update-check helper source"
+    grep -Eq '^[0-9a-f]{40}$' "$channel_commit_file" ||
+        die "missing or invalid installed Qubes channel revision"
+    [ -r "$applied_state" ] || die "missing applied Guix channel state"
+    grep -Eq '^\(\(guix "[0-9a-f]{40}"\) \(qubes "[0-9a-f]{40}"\)\)$' \
+        "$applied_state" || die "invalid applied Guix channel state"
+    channel_commit="$(< "$channel_commit_file")"
+    applied_qubes_commit="$(
+        sed -E 's/^.*\(qubes "([0-9a-f]{40})"\)\)$/\1/' "$applied_state"
+    )"
+    [ "$channel_commit" = "$applied_qubes_commit" ] ||
+        die "installed Qubes channel revision differs from applied system state"
+    [ -r "$mount_dir/etc/qubes-guix-channel/config/substitute-cache/signing-key.pub" ] ||
+        die "missing installed Qubes channel substitute signing key"
     [ -d "$mount_dir/etc/qubes-guix-channel/modules/qubes/patches" ] ||
         die "missing installed Qubes Guix channel patches"
 }

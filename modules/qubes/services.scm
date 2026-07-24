@@ -53,6 +53,19 @@
 ;;                      an unproxied guix-daemon.
 (define %qubes-proxy-wait-attempts 120)
 
+;; Match qubes-core-agent-linux's qubes-update-check.timer: first run five
+;; minutes after boot, then two days after each activation.
+(define %qubes-update-check-initial-delay-seconds 300)
+(define %qubes-update-check-interval-seconds (* 2 24 60 60))
+(define %qubes-update-check-lock-file
+  "/var/lib/qubes/guix-update-check.lock")
+(define %qubes-update-check-lock-wait-seconds 30)
+(define %qubes-update-check-trigger-directory
+  "/run/qubes-update-check-now")
+(define %qubes-update-check-trigger-poll-seconds 5)
+(define %qubes-update-check-flock
+  (file-append util-linux "/bin/flock"))
+
 (define (qubes-vm-compat-activation _)
   "Return a gexp run at system activation that materializes the fixed Qubes
 compatibility symlinks (the @file{/usr/...} and @file{/var/run/qubes*}
@@ -182,6 +195,9 @@ template.  The argument is the ignored service value."
       (mkdir-p "/run/qubes-service")
       (mkdir-p "/var/log/qubes")
       (mkdir-p "/var/lib/qubes")
+      (unless (file-exists? #$%qubes-update-check-lock-file)
+        (close-port (open-file #$%qubes-update-check-lock-file "a0")))
+      (chmod #$%qubes-update-check-lock-file #o600)
       (mkdir-p "/var/tmp")
       (mkdir-p "/rw")
       (mkdir-p "/usr/local")
@@ -1980,14 +1996,10 @@ The program does its work once and exits; respawn is disabled."
                  "Point guix-daemon at the Qubes updates proxy when the VM relies on it.")))
 
 (define (qubes-update-check-program)
-  "Return the program that probes whether the Guix system is behind its
-channels and notifies dom0 via qubes.NotifyUpdates.  Upstream ships this as the
-qubes-update-check.timer/.service systemd units running
-@file{upgrades-status-notify}; a Shepherd template has no systemd, so a
-@code{shepherd-timer} runs this wrapper instead.  The probe (git ls-remote of
-each channel, in @file{upgrades-installed-check}) needs network, which in a
-TemplateVM only exists through the updates proxy, so export the loopback proxy
-when the forwarder published it before invoking the notifier."
+  "Return the one-shot program that checks the applied Guix channel revisions
+and notifies dom0 via qubes.NotifyUpdates.  The authenticated channel probe in
+@file{upgrades-installed-check} needs network, which in a TemplateVM only
+exists through the updates proxy, so export the loopback proxy first."
   (qubes-vm-service-program "qubes-update-check"
     (runtime-setup)
     (cond
@@ -2001,31 +2013,176 @@ when the forwarder published it before invoking the notifier."
                   (not (service-enabled? "qubes-updates-proxy")))
          (setenv "http_proxy" "http://127.0.0.1:8082")
          (setenv "https_proxy" "http://127.0.0.1:8082"))
-       (try-run* "/usr/lib/qubes/upgrades-status-notify" "started-by-init")))))
+       ;; Keep the authenticated refresh, cache update, and qrexec notification
+       ;; in one critical section so concurrent checks cannot reorder dom0's
+       ;; final state.
+       (try-run* #$%qubes-update-check-flock
+                 "--exclusive"
+                 #$%qubes-update-check-lock-file
+                 "/usr/lib/qubes/upgrades-status-notify"
+                 "started-by-init")))))
+
+(define (qubes-update-check-scheduler-program)
+  "Return the long-running scheduler matching the upstream systemd timer's
+five-minute boot delay and two-day activation interval.  A live reconfigure
+can queue an immediate authenticated check when the previous result cannot
+safely determine the new generation's status."
+  (qubes-vm-service-program "qubes-update-check-scheduler"
+    (runtime-setup)
+    (define checker #$(qubes-update-check-program))
+    (define trigger #$%qubes-update-check-trigger-directory)
+    (define claimed-trigger
+      (string-append trigger ".claimed"))
+    (define (monotonic-seconds)
+      (quotient (get-internal-real-time)
+                internal-time-units-per-second))
+    (define (claim-trigger)
+      ;; Rename is the claim: a reconfigure that arrives during the check
+      ;; creates a new canonical trigger and is handled by the next loop.
+      ;; A claimed directory left by a killed scheduler is recovered on
+      ;; respawn.
+      (or (file-exists? claimed-trigger)
+          (and (file-exists? trigger)
+               (if (false-if-exception
+                    (begin
+                      (rename-file trigger claimed-trigger)
+                      #t))
+                   #t
+                   (begin
+                     (warn "cannot claim queued Qubes update check")
+                     #f)))))
+    (define (finish-trigger)
+      (when (file-exists? claimed-trigger)
+        (unless (false-if-exception
+                 (begin
+                   (rmdir claimed-trigger)
+                   #t))
+          (warn "cannot remove completed Qubes update-check trigger"))))
+    (define (wait-for-trigger-or-deadline deadline)
+      (let loop ()
+        (let ((remaining (- deadline (monotonic-seconds))))
+          (cond
+            ((claim-trigger) #t)
+            ((not (positive? remaining)) #f)
+            (else
+             (sleep (min remaining
+                         #$%qubes-update-check-trigger-poll-seconds))
+             (loop))))))
+    (define uptime
+      (false-if-exception
+       (call-with-input-file "/proc/uptime" read)))
+    (define initial-delay
+      (if (number? uptime)
+          (max 0
+               (- #$%qubes-update-check-initial-delay-seconds
+                  (inexact->exact (floor uptime))))
+          #$%qubes-update-check-initial-delay-seconds))
+    (let loop ((deadline (+ (monotonic-seconds) initial-delay)))
+      (let* ((triggered? (wait-for-trigger-or-deadline deadline))
+             (started (monotonic-seconds)))
+        ;; ExecStart is prefixed with '-' in the upstream systemd service, so a
+        ;; failed network probe must not terminate the scheduler.
+        (try-run* checker)
+        (when triggered?
+          (finish-trigger))
+        (loop (+ started #$%qubes-update-check-interval-seconds))))))
+
+(define (qubes-update-check-activation _)
+  "After a successful live system switch, refresh dom0's update status from
+the last authenticated channel check.  Boot uses the generic system profile
+as GUIX_NEW_SYSTEM; reconfiguration uses a concrete system-N-link generation."
+  #~(begin
+      (use-modules (srfi srfi-13))
+
+      (define (system-generation-link? file)
+        (and file
+             (let* ((name (basename file))
+                    (prefix "system-")
+                    (suffix "-link")
+                    (prefix-length (string-length prefix))
+                    (suffix-index (- (string-length name)
+                                     (string-length suffix))))
+               (and (string-prefix? prefix name)
+                    (string-suffix? suffix name)
+                    (> suffix-index prefix-length)
+                    (string-every char-numeric?
+                                  (substring name
+                                             prefix-length
+                                             suffix-index))))))
+
+      (define (same-file? left right)
+        (false-if-exception
+         (let ((left-stat (stat left))
+               (right-stat (stat right)))
+           (and (= (stat:dev left-stat) (stat:dev right-stat))
+                (= (stat:ino left-stat) (stat:ino right-stat))))))
+
+      (define (queue-authenticated-check)
+        ;; mkdir and the scheduler's rename are atomic.  An existing directory
+        ;; coalesces requests; once it is claimed, a concurrent reconfigure
+        ;; creates the next request without racing with consumer cleanup.
+        (or (file-exists? #$%qubes-update-check-trigger-directory)
+            (false-if-exception
+             (begin
+               (mkdir #$%qubes-update-check-trigger-directory #o700)
+               #t))
+            ;; Another activation may have won the mkdir race.
+            (file-exists? #$%qubes-update-check-trigger-directory)))
+
+      (let ((new-system (getenv "GUIX_NEW_SYSTEM")))
+        (when (and (system-generation-link? new-system)
+                   (file-exists?
+                    "/run/qubes-service/qubes-update-check")
+                   (same-file? new-system "/run/current-system")
+                   (same-file? "/usr/lib/qubes"
+                               "/run/current-system/profile/lib/qubes")
+                   (same-file?
+                    (string-append
+                     new-system "/etc/qubes-applied-guix-channels.scm")
+                    "/etc/qubes-applied-guix-channels.scm"))
+          ;; First use the last authenticated result without network access.
+          ;; If it cannot prove the new generation is current (cache missing,
+          ;; revisions changed, or the lock is busy), let the existing
+          ;; scheduler perform a full authenticated check.  The trigger
+          ;; coalesces repeated reconfigures and avoids a network wait during
+          ;; activation.
+          (unless (false-if-exception
+                   (zero? (system*
+                           #$%qubes-update-check-flock
+                           "--exclusive"
+                           "--timeout"
+                           #$(number->string
+                              %qubes-update-check-lock-wait-seconds)
+                           #$%qubes-update-check-lock-file
+                           "/run/current-system/profile/lib/qubes/upgrades-status-notify"
+                           "skip-refresh")))
+            (unless (queue-authenticated-check)
+              (display "Cannot queue Qubes update-status refresh\n"
+                       (current-error-port))))))))
 
 (define (qubes-update-check-shepherd-service _)
-  "Return the Shepherd timer that periodically probes for Guix updates and
-notifies dom0, the systemd-less analog of qubes-update-check.timer.  The
-argument is the ignored service value."
-  (list (shepherd-timer
-         '(qubes-update-check)
-         ;; Upstream timer fires ~5 min after boot then every 2 days; a plain
-         ;; cron schedule of twice daily keeps dom0's "updates available"
-         ;; indicator fresh without a heavy probe cadence.
-         "0 */12 * * *"
-         ;; shepherd-timer's COMMAND is a gexp that must EVALUATE TO a list of
-         ;; strings; it is spliced as (command '(#$@command)).  Passing
-         ;; #~(list ...) put the literal symbol 'list' into argv, so the timer
-         ;; failed with "fork+exec-command ... wrong type ... list-of-strings?"
-         ;; (reported by @marmarek).  The program path alone is the command.
-         #~(#$(qubes-update-check-program))
-         #:requirement '(qubes-qrexec-agent))))
+  "Return the systemd-less scheduler for the Qubes update check.  The argument
+is the ignored service value."
+  (list (shepherd-service
+         (provision '(qubes-update-check))
+         (requirement '(qubes-qrexec-agent))
+         (documentation
+          "Check for Guix updates and notify dom0 on the Qubes cadence.")
+         (respawn? #t)
+         (respawn-delay 5)
+         (start #~(make-forkexec-constructor
+                   (list #$(qubes-update-check-scheduler-program))
+                   #:log-file "/var/log/qubes-update-check.log"))
+         (stop #~(make-kill-destructor)))))
 
 (define qubes-update-check-service-type
   (service-type (name 'qubes-update-check)
-                (extensions (list (service-extension
-                                   shepherd-root-service-type
-                                   qubes-update-check-shepherd-service)))
+                (extensions
+                 (list (service-extension
+                        shepherd-root-service-type
+                        qubes-update-check-shepherd-service)
+                       (service-extension activation-service-type
+                                          qubes-update-check-activation)))
                 (default-value #f)
                 (description
                  "Periodically probe for Guix updates and notify dom0 (NotifyUpdates).")))

@@ -170,6 +170,12 @@ and the generated helper both do) and import (ice-9 ftw) for `scandir'."
   ;; lint/test-friendly; installed and store-path-substituted below.
   (local-file "files/qvm-template-repo-query-guix.py"))
 
+(define %guix-updates-installed-check
+  ;; Run through `guix repl` by upgrades-installed-check so the helper uses
+  ;; the Guix modules and authenticated channel implementation from the
+  ;; running system.
+  (local-file "files/guix-updates-installed-check.scm"))
+
 ;;; Qubes VM package definitions
 
 (define %qubes-source-components
@@ -1053,6 +1059,11 @@ information reporter used by Qubes memory ballooning.")
                             "force-user = 'root'\n")
 
                 (mkdir-p qubes-libdir)
+                (let ((update-checker
+                       (string-append qubes-libdir
+                                      "/guix-updates-installed-check.scm")))
+                  (copy-file #$%guix-updates-installed-check update-checker)
+                  (chmod update-checker #o444))
                 (write-guile-script (string-append qubes-libdir
                                      "/guix-updates-proxy-forwarder")
                                     '(begin

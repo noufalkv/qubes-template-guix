@@ -1,8 +1,115 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Helpers for snapshotting a working-tree subtree without admitting ignored or
-# untracked files.  The caller must source scripts/lib.sh first for die/need.
+# Helpers for snapshotting either committed Git objects or an explicitly
+# selected working-tree subtree.  The caller must source scripts/lib.sh first
+# for die/need.
+
+# clean_git_commit REPOSITORY PATH...
+#
+# Print the exact HEAD commit when every supplied path matches it and contains
+# no non-ignored untracked files.  Channel provenance must never name HEAD while
+# packaging different working-tree bytes.
+clean_git_commit() {
+    local repository="$1"
+    local commit
+    shift
+
+    [ "$#" -gt 0 ] || die "clean_git_commit requires at least one path"
+    need git
+    git -C "$repository" diff --quiet HEAD -- "$@" ||
+        die "Qubes channel source changes must be committed before building"
+    [ -z "$(git -C "$repository" ls-files --others --exclude-standard -- "$@")" ] ||
+        die "untracked Qubes channel sources must be committed before building"
+    commit="$(git -C "$repository" rev-parse --verify 'HEAD^{commit}')" ||
+        die "cannot resolve template channel commit"
+    [[ "$commit" =~ ^[0-9a-f]{40}$ ]] ||
+        die "cannot resolve exact template channel commit"
+    printf '%s\n' "$commit"
+}
+
+# archive_git_commit_tree REPOSITORY COMMIT OUTPUT PATH...
+#
+# Write PATH... exactly as stored by COMMIT to a new tar archive.  Unlike
+# archive_git_tracked_tree, this never reads file contents from the working
+# tree: callers can resolve a clean commit once and keep using this immutable
+# snapshot even if the checkout changes while a long build is running.
+archive_git_commit_tree() (
+    set -euo pipefail
+
+    local repository="$1"
+    local commit="$2"
+    local output="$3"
+    local archive_tmp
+    local git_root
+    local output_dir
+    local output_name
+    local output_path
+    local path
+    local resolved_commit
+    local snapshot_work_dir=""
+    local -a pathspecs=()
+    shift 3
+
+    [ "$#" -gt 0 ] || die "archive_git_commit_tree requires at least one path"
+    need git
+
+    repository="$(cd -- "$repository" && pwd -P)" ||
+        die "cannot resolve repository: $repository"
+    [[ "$commit" =~ ^[0-9a-f]{40}$ ]] ||
+        die "invalid Git commit for immutable archive: $commit"
+
+    # An explicit safe.directory applies only to this known checkout.  This
+    # also keeps sudo/root callers independent of per-user Git configuration.
+    git_root="$(
+        git -c "safe.directory=$repository" -C "$repository" \
+            rev-parse --show-toplevel
+    )" || die "not a Git working tree: $repository"
+    git_root="$(cd -- "$git_root" && pwd -P)" ||
+        die "cannot resolve Git root: $git_root"
+    [ "$git_root" = "$repository" ] ||
+        die "repository argument is not the Git working-tree root: $repository"
+
+    resolved_commit="$(
+        git -c "safe.directory=$repository" -C "$repository" \
+            rev-parse --verify "$commit^{commit}"
+    )" || die "cannot resolve immutable archive commit: $commit"
+    [ "$resolved_commit" = "$commit" ] ||
+        die "immutable archive commit did not resolve exactly: $commit"
+
+    for path in "$@"; do
+        _git_tracked_tree_safe_relative_path "$path" ||
+            die "archive path must be a confined relative path: $path"
+        pathspecs+=(":(literal)$path")
+    done
+
+    output_dir="$(dirname -- "$output")"
+    output_name="$(basename -- "$output")"
+    output_dir="$(cd -- "$output_dir" && pwd -P)" ||
+        die "cannot resolve output directory: $output_dir"
+    output_path="$output_dir/$output_name"
+    [ ! -e "$output_path" ] && [ ! -L "$output_path" ] ||
+        die "refusing to replace archive output: $output_path"
+
+    snapshot_work_dir="$(mktemp -d "$output_dir/.git-commit-tree.XXXXXX")" ||
+        die "cannot create immutable-tree work directory in: $output_dir"
+    trap 'rm -rf -- "$snapshot_work_dir"' EXIT
+    archive_tmp="$snapshot_work_dir/archive.tar"
+
+    git -c "safe.directory=$repository" -c tar.umask=0022 \
+        -C "$repository" \
+        archive --format=tar --output="$archive_tmp" \
+        "$commit" -- "${pathspecs[@]}" ||
+        die "cannot archive immutable Git tree at: $commit"
+
+    # Publish without an overwrite window.  The temporary archive is on the
+    # same filesystem as OUTPUT, so a hard link provides atomic no-clobber
+    # semantics and cannot follow a pre-existing output symlink.
+    ln -- "$archive_tmp" "$output_path" ||
+        die "cannot publish immutable-tree archive: $output_path"
+    rm -f -- "$archive_tmp" ||
+        die "cannot remove temporary immutable-tree archive: $archive_tmp"
+)
 
 _git_tracked_tree_safe_relative_path() {
     local component

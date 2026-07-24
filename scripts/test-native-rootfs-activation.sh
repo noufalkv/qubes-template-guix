@@ -98,6 +98,8 @@ run_activation_twice() {
 }
 
 verify_activation_paths() {
+    # Expanded by the chrooted shell, not by this test process.
+    # shellcheck disable=SC2016
     as_root chroot "$mount_dir" /bin/sh -lc '
     set -eu
     test -d /rw
@@ -107,7 +109,20 @@ verify_activation_paths() {
     test -r /etc/qubes-guix-channel/.guix-channel
     test -r /etc/qubes-guix-channel/modules/qubes/packages.scm
     test -r /etc/qubes-guix-channel/modules/qubes/files/qvm-template-repo-query-guix.py
+    test -r /etc/qubes-guix-channel/modules/qubes/files/guix-updates-installed-check.scm
+    grep -Eq "^[0-9a-f]{40}$" \
+        /etc/qubes-guix-channel/modules/qubes/.qubes-channel-commit
+    test -r /etc/qubes-guix-channel/config/substitute-cache/signing-key.pub
     test -d /etc/qubes-guix-channel/modules/qubes/patches
+    test -r /etc/qubes-applied-guix-channels.scm
+    grep -Eq "^\(\(guix \"[0-9a-f]{40}\"\) \(qubes \"[0-9a-f]{40}\"\)\)$" \
+        /etc/qubes-applied-guix-channels.scm
+    channel_commit="$(cat \
+        /etc/qubes-guix-channel/modules/qubes/.qubes-channel-commit)"
+    applied_qubes_commit="$(sed -E \
+        "s/^.*\(qubes \"([0-9a-f]{40})\"\)\)$/\1/" \
+        /etc/qubes-applied-guix-channels.scm)"
+    test "$channel_commit" = "$applied_qubes_commit"
     test -f /etc/fstab
     test ! -L /etc/fstab
     printf "\n# qubes-guix activation fstab write check\n" >> /etc/fstab

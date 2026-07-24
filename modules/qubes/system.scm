@@ -2,15 +2,20 @@
 ;; Qubes TemplateVM operating-system building blocks.
 
 (define-module (qubes system)
+  #:use-module (guix channels)
+  #:use-module (guix describe)
   #:use-module (guix gexp)
   #:use-module (gnu)
   #:use-module (gnu bootloader)
   #:use-module (gnu services)
   #:use-module (gnu services dbus)
   #:use-module (gnu system privilege)
+  #:use-module (ice-9 format)
+  #:use-module (ice-9 rdelim)
   #:use-module (qubes bootloader)
   #:use-module (qubes packages)
   #:use-module (qubes services)
+  #:use-module (srfi srfi-1)
   #:export (%qubes-privileged-programs %qubes-system-services qubes-host-name
                                        qubes-operating-system))
 
@@ -18,6 +23,93 @@
   (cons (privileged-program
           (program (file-append qubes-vm-core "/lib/qubes/qfile-unpacker"))
           (setuid? #t)) %default-privileged-programs))
+
+(define %qubes-system-source-directory
+  ;; Compiled Guile modules retain a load-path-relative filename such as
+  ;; "qubes/system.scm".  Resolve it through %load-path before looking for the
+  ;; offline tree's adjacent revision marker.
+  (and=> (or (current-filename)
+             (module-filename (current-module)))
+         (lambda (file)
+           (and=> (if (and (positive? (string-length file))
+                           (char=? (string-ref file 0) #\/))
+                      file
+                      (search-path %load-path file))
+                  dirname))))
+
+(define (hex-commit? value)
+  (and (string? value)
+       (= (string-length value) 40)
+       (every (lambda (character)
+                (or (char-numeric? character)
+                    (memv character '(#\a #\b #\c #\d #\e #\f))))
+              (string->list value))))
+
+(define (channel->revision channel)
+  (let ((commit (channel-commit channel)))
+    (unless (hex-commit? commit)
+      (error "channel lacks an exact applied commit" (channel-name channel)))
+    (list (channel-name channel) commit)))
+
+(define (source-qubes-channel-revision)
+  ;; The installed offline source tree carries the commit it was copied from.
+  ;; Prefer that marker even if the invoking Guix profile contains a newer
+  ;; Qubes channel: -L gives the installed source tree module precedence.
+  (and %qubes-system-source-directory
+       (let ((marker (string-append %qubes-system-source-directory
+                                    "/.qubes-channel-commit")))
+         (and (file-exists? marker)
+              (call-with-input-file marker
+                (lambda (port)
+                  (let ((commit (read-line port)))
+                    (unless (and (hex-commit? commit)
+                                 (eof-object? (read-char port)))
+                      (error "invalid Qubes channel source revision" marker))
+                    (list 'qubes commit))))))))
+
+(define (environment-qubes-channel-revision)
+  (let ((commit (getenv "QUBES_TEMPLATE_CHANNEL_COMMIT")))
+    (cond
+      ((not commit) #f)
+      ((hex-commit? commit) (list 'qubes commit))
+      (else
+       (error "invalid QUBES_TEMPLATE_CHANNEL_COMMIT" commit)))))
+
+(define (applied-channel-revisions)
+  (let* ((revisions (map channel->revision (current-channels)))
+         (source-revision (source-qubes-channel-revision))
+         ;; Source selection follows the same precedence as module loading:
+         ;; the baked offline tree wins first, followed by the explicit commit
+         ;; supplied for a local -L build, then the invoking pull profile.
+         (qubes-revision
+          (or source-revision
+              (environment-qubes-channel-revision)
+              (find (lambda (revision) (eq? (car revision) 'qubes))
+                    revisions)
+              (error "cannot determine the applied Qubes channel revision")))
+         (revisions
+          (cons qubes-revision
+                (remove (lambda (revision) (eq? (car revision) 'qubes))
+                        revisions)))
+         (names (map car revisions)))
+    (unless (find (lambda (name) (eq? name 'guix)) names)
+      (error "cannot determine the applied Guix channel revision"))
+    (unless (= (length names) (length (delete-duplicates names eq?)))
+      (error "duplicate applied Guix channel name" names))
+    (sort revisions
+          (lambda (left right)
+            (string<? (symbol->string (car left))
+                      (symbol->string (car right)))))))
+
+(define %qubes-applied-channel-state-file
+  (plain-file "qubes-applied-guix-channels.scm"
+              (format #f "~s~%" (applied-channel-revisions))))
+
+(define %qubes-applied-channel-state-service
+  (simple-service 'qubes-applied-guix-channels
+                  etc-service-type
+                  `(("qubes-applied-guix-channels.scm"
+                     ,%qubes-applied-channel-state-file))))
 
 (define %qubes-system-services
   ;; The full service stack a Qubes Guix TemplateVM runs.  It is the same for
@@ -29,7 +121,9 @@
   ;; networking, updates proxy, GUI agent, ...);
   ;; - the Qubes sysctl service;
   ;; - the trimmed set of Guix base services Qubes does not own.
-  (append (list (service dbus-root-service-type)) %qubes-vm-gui-services
+  (append (list (service dbus-root-service-type)
+                %qubes-applied-channel-state-service)
+          %qubes-vm-gui-services
           (list %qubes-sysctl-service) %qubes-minimal-base-services))
 
 (define (qubes-host-name variant)
