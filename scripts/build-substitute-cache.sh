@@ -271,7 +271,7 @@ resolve_authenticated_pull_profile() {
     local profile_guix
 
     printf 'building authenticated channel-composed guix profile...\n' >&2
-    "$guix_bin" pull -C "$source_tree/config/guix-channels.scm" \
+    "$guix_bin" pull -C "$source_tree/config/guix-channels.scm" --fallback \
         -p "$profile" >&2 ||
         die "failed to build the guix pull profile"
 

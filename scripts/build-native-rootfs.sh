@@ -80,7 +80,7 @@ refresh_builder_guix() {
 
     printf 'refreshing builder Guix with: %s pull -p %s --allow-downgrades -C %s\n' \
         "$guix_bin" "$pull_profile" "$channels_file" >&2
-    "$guix_bin" pull -p "$pull_profile" --allow-downgrades \
+    "$guix_bin" pull -p "$pull_profile" --allow-downgrades --fallback \
         -C "$channels_file"
 
     current_guix="$pull_profile/bin/guix"
