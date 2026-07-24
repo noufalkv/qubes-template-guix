@@ -1774,11 +1774,13 @@ the ProxyVM/sys-firewall role.  The argument is the ignored service value."
 (define (qubes-feature-advertisement-program)
   "Return the program that advertises to dom0, via QubesDB feature requests
 and a qubes.FeaturesRequest qrexec call, the Qubes services this template
-implements natively (updates-proxy-setup, qubes-network, and PipeWire audio
-when installed), after waiting for the qrexec-agent socket."
+implements natively (updates-proxy-setup, qubes-network, qubes-update-check,
+and PipeWire audio when installed), after waiting for the qrexec-agent socket."
   (qubes-vm-service-program "qubes-feature-advertisement"
                             (define supported-services
-                              '("updates-proxy-setup" "qubes-network"))
+                              '("updates-proxy-setup"
+                                "qubes-network"
+                                "qubes-update-check"))
 
                             (define (request-feature name value)
                               (unless (qubesdb-write (string-append

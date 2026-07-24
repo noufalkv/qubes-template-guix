@@ -27,6 +27,15 @@ require_text '(define %qubes-update-check-initial-delay-seconds 300)' "$services
 require_text '(define %qubes-update-check-interval-seconds (* 2 24 60 60))' "$services"
 require_text '(define (qubes-update-check-scheduler-program)' "$services"
 require_text '(requirement '\''(qubes-qrexec-agent))' "$services"
+# The upstream feature hook discovers this service through systemd.  The
+# native Shepherd implementation must advertise the same feature directly.
+supported_services="$(
+    sed -n '/(define supported-services/,/))[[:space:]]*$/p' "$services"
+)"
+if ! grep -Fq '"qubes-update-check"' <<< "$supported_services"; then
+    printf 'update-check support is not advertised to dom0\n' >&2
+    exit 1
+fi
 require_text '"/proc/uptime"' "$services"
 require_text '(get-internal-real-time)' "$services"
 require_text 'internal-time-units-per-second' "$services"
