@@ -96,6 +96,17 @@ refresh_builder_guix() {
 }
 
 write_installed_config() {
+    local applied_state
+
+    applied_state="$mount_dir/var/guix/profiles/system/etc/qubes-applied-guix-channels.scm"
+    [ -r "$applied_state" ] ||
+        die "generated system lacks applied Guix channel state"
+    # `guix system init` installs the generation but does not materialize every
+    # etc-service entry before first boot on all Guix revisions.  Seed this
+    # generation-owned baseline explicitly so image inspection and the first
+    # update check see the exact state that activation will maintain later.
+    as_root install -m 0644 "$applied_state" \
+        "$mount_dir/etc/qubes-applied-guix-channels.scm"
     as_root install -m 0644 "$config" "$mount_dir/etc/config.scm"
     write_guix_channels
 }
