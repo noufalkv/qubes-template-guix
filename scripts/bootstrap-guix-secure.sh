@@ -17,6 +17,7 @@ readonly guix_branch=master
 readonly guix_introduction=9edb3f66fd807b096b48283debdcddccfea34bad
 readonly guix_introduction_signer='BBB0 2DDF 2CEA F6A8 0D1D  E643 A2A0 6DF2 A33A 54FA'
 readonly official_substitute_urls='https://ci.guix.gnu.org https://bordeaux.guix.gnu.org'
+readonly bootstrap_download_methods=content-addressed-mirrors
 
 # This is the official checker embedded in the 2026-07-02 Guix advisory.  Pin
 # both the artwork commit containing the post and the extracted Scheme block.
@@ -300,12 +301,16 @@ start_daemon \
     --listen="$daemon_socket" \
     --no-substitutes
 
-# Both client and daemon prohibit substitutes.  Retrying this operation is
-# safe: guix pull profiles are transactional and incomplete builds stay valid
-# store objects or garbage.
+# Both client and daemon prohibit substitutes.  Fetch fixed-output source
+# archives by their authenticated hashes from Guix's content-addressed source
+# mirrors instead of mutable upstream-generated archives.  These are ordinary
+# flat-file downloads checked against the derivation hash, not substitutes.
+# Retrying is safe: pull profiles are transactional and incomplete builds stay
+# valid store objects or garbage.
 retry_network env \
     -u GUIX_BUILD_OPTIONS -u GUIX_SUBSTITUTE_URLS \
     GUIX_DAEMON_SOCKET="$daemon_socket" \
+    GUIX_DOWNLOAD_METHODS="$bootstrap_download_methods" \
     "$bootstrap_guix" pull \
     --no-substitutes \
     --channels="$channels" \

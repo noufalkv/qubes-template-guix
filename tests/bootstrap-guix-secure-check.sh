@@ -44,6 +44,8 @@ printf '\n' >> "$EVENT_LOG"
 case "${1:-} ${2:-}" in
     'pull --no-substitutes')
         [ "$role" = bootstrap ]
+        [ "${GUIX_DOWNLOAD_METHODS:-}" = content-addressed-mirrors ]
+        printf 'gate:content-addressed-sources\n' >> "$EVENT_LOG"
         profile=""
         channels=""
         for argument in "$@"; do
@@ -271,6 +273,7 @@ assert_absent() {
 run_case success success || fail "secure bootstrap success fixture failed"
 bootstrap_start="$(event_line '^daemon:start:bootstrap:.*--no-substitutes')"
 pull="$(event_line '^guix:bootstrap: pull --no-substitutes ' )"
+sources="$(event_line '^gate:content-addressed-sources$')"
 authenticated="$(event_line '^gate:authenticated-source$')"
 floor="$(event_line '^gate:security-floor$')"
 safe_start="$(event_line '^daemon:start:fixed-safe:.*--no-substitutes')"
@@ -280,7 +283,8 @@ enabled="$(event_line '^daemon:start:fixed:.*--substitute-urls=https://ci\.guix\
 checker="$(event_line '^gate:advisory-check$')"
 
 [ "$bootstrap_start" -lt "$pull" ] || fail "pull preceded bootstrap daemon"
-[ "$pull" -lt "$authenticated" ] || fail "source authentication preceded pull"
+[ "$pull" -lt "$sources" ] || fail "source policy preceded pull"
+[ "$sources" -lt "$authenticated" ] || fail "source authentication preceded pull"
 [ "$authenticated" -lt "$floor" ] || fail "floor preceded authentication"
 [ "$floor" -lt "$safe_start" ] || fail "fixed daemon started before floor"
 [ "$safe_start" -lt "$ci_key" ] || fail "key authorization preceded fixed daemon"
