@@ -56,11 +56,60 @@ require_text 'generated system lacks applied Guix channel state' "$builder"
 require_text '.qubes-channel-commit' "$system"
 require_text '.qubes-channel-commit' "$builder"
 require_text "QUBES_TEMPLATE_CHANNEL_COMMIT=\$source_commit" "$substitute_builder"
-require_text 'export QUBES_TEMPLATE_CHANNEL_COMMIT=' "$substitute_workflow"
+require_text './scripts/bootstrap-guix-secure.sh' "$substitute_workflow"
+require_text './scripts/build-substitute-cache.sh prepare' "$substitute_workflow"
+require_text 'cancel-in-progress: false' "$substitute_workflow"
+require_text "cron: '17 4 * * *'" "$substitute_workflow"
+require_text "printf 'snapshot-sha256:%s\\n'" "$substitute_workflow"
+require_text \
+    "substitute-cache-snapshot?run=\$GITHUB_RUN_ID-\$GITHUB_RUN_ATTEMPT" \
+    "$substitute_workflow"
+require_text "cmp -- \"\$local_snapshot\" \"\$downloaded_snapshot\"" \
+    "$substitute_workflow"
+require_text \
+    '.revoke_gc_marker_releases[] | [.repository, .release_tag] | @tsv' \
+    "$substitute_workflow"
+require_text "grep -Fq '(HTTP 404)'" "$substitute_workflow"
+
+workflow_revoke_line="$(
+    grep -nF -- '- name: Revoke invalid GC markers before the Pages transition' \
+        "$substitute_workflow" | cut -d: -f1
+)"
+workflow_deploy_line="$(
+    grep -nF -- '- name: Deploy retained narinfo index to GitHub Pages' \
+        "$substitute_workflow" | cut -d: -f1
+)"
+workflow_verify_line="$(
+    grep -nF -- '- name: Verify the exact Pages snapshot and published cache' \
+        "$substitute_workflow" | cut -d: -f1
+)"
+workflow_marker_line="$(
+    grep -nF -- \
+        '- name: Record the verified Pages deployment for garbage collection' \
+        "$substitute_workflow" | cut -d: -f1
+)"
+workflow_cleanup_line="$(
+    grep -nF -- '- name: Remove Releases authorized by the GC plan' \
+        "$substitute_workflow" | cut -d: -f1
+)"
+if [ -z "$workflow_revoke_line" ] || [ -z "$workflow_deploy_line" ] ||
+        [ -z "$workflow_verify_line" ] || [ -z "$workflow_marker_line" ] ||
+        [ -z "$workflow_cleanup_line" ] ||
+        [ "$workflow_revoke_line" -ge "$workflow_deploy_line" ] ||
+        [ "$workflow_deploy_line" -ge "$workflow_verify_line" ] ||
+        [ "$workflow_verify_line" -ge "$workflow_marker_line" ] ||
+        [ "$workflow_marker_line" -ge "$workflow_cleanup_line" ]; then
+    printf '%s\n' \
+        'substitute GC ordering is not revoke -> deploy -> verify -> mark -> delete' \
+        >&2
+    exit 1
+fi
 require_text 'archive_git_commit_tree' "$builder"
 require_text 'archive_git_commit_tree' "$substitute_builder"
 require_text "\"\${source_paths[@]}\"" "$builder"
 require_text "\"\${source_paths[@]}\"" "$substitute_builder"
+require_text 'scripts/git-tracked-tree.sh' "$substitute_builder"
+require_text 'scripts/lib.sh' "$substitute_builder"
 require_text "system -L \"\$source_tree/modules\"" "$builder"
 require_text "system build -L \"\$source_tree/modules\"" "$substitute_builder"
 require_text "channels_file=\"\$source_tree/config/channels.scm\"" "$builder"
@@ -77,8 +126,13 @@ require_text "pull -C \"\$source_tree/config/guix-channels.scm\"" "$substitute_b
 require_text 'resolve_authenticated_pull_profile' "$substitute_builder"
 require_text 'describe --format=json' "$substitute_builder"
 require_text 'len(qubes_channels) != 1' "$substitute_builder"
-require_text 'actual_commit != expected_commit' "$substitute_builder"
+require_text 'actual_commit != expected_qubes_commit' "$substitute_builder"
 require_text "guix_bin=\"\$profile_guix\"" "$substitute_builder"
+require_text '--authenticated-guix-checkout' "$substitute_builder"
+require_text '--guix-security-floor' "$substitute_builder"
+require_text 'len(guix_channels) != 1' "$substitute_builder"
+require_text 'guix_channel.get("url") != expected_url' "$substitute_builder"
+require_text 'merge-base --is-ancestor' "$substitute_builder"
 if grep -Fq "\"\$repo_root/config/qubes-os-\$v.scm\"" "$substitute_builder" ||
         grep -Fq "pull -C \"\$repo_root/config/guix-channels.scm\"" \
             "$substitute_builder"; then

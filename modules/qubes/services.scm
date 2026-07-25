@@ -2459,17 +2459,14 @@ the ignored service value."
   '(("kernel.threads-max" . "51200")))
 
 (define %qubes-substitute-cache-url
-  ;; GitHub Pages host serving the channel's signed substitute cache (built by
-  ;; .github/workflows/substitute-cache.yml).  Update the user/repo if forked.
-  "https://noufalkv.github.io/qubes-template-guix")
+  ;; GitHub Actions publishes the signed v2 narinfo index to Pages and its
+  ;; immutable NAR payloads to versioned GitHub Releases.  Update the user/repo
+  ;; if this channel is forked.
+  "https://noufalkv.github.io/qubes-template-guix/v2")
 
 (define %qubes-substitute-cache-enabled?
-  ;; Disabled after the July 2, 2026 Guix substitute/pull advisory.  The
-  ;; existing development cache was produced by a workflow whose bootstrap
-  ;; daemon predates the fixed revision, so neither those objects nor that
-  ;; signing key are suitable inputs for a security rebuild.  Keep templates on
-  ;; official substitutes until the cache is rebuilt on a fixed, independently
-  ;; verified daemon with a rotated key.
+  ;; Enable only after the first clean v2 publication has passed the advisory
+  ;; checks.  The retired pre-advisory cache is outside this URL/key epoch.
   #f)
 
 (define %qubes-substitute-cache-key-file

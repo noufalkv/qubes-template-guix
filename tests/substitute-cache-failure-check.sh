@@ -36,6 +36,7 @@ cp -- "$repo_root/config/guix-channels.scm" \
 cp -- "$repo_root/config/substitute-cache/signing-key.pub" \
     "$fixture_repo/config/substitute-cache/signing-key.pub"
 cp -- "$repo_root/scripts/build-substitute-cache.sh" \
+    "$repo_root/scripts/substitute-cache-manifest.py" \
     "$repo_root/scripts/git-tracked-tree.sh" \
     "$repo_root/scripts/lib.sh" "$fixture_repo/scripts/"
 git -C "$fixture_repo" init -q
@@ -52,16 +53,62 @@ FAKE_FIXTURE_REPO="$fixture_repo"
 export FAKE_FIXTURE_REPO
 build_script="$fixture_repo/scripts/build-substitute-cache.sh"
 
+# Model the checkout handed off by bootstrap: FLOOR is the fixed minimum,
+# BOOTSTRAP_HEAD is the revision it authenticated, and the later composed pull
+# may select a newer descendant without being pinned to either one.
+real_git="$(command -v git)"
+authenticated_guix_checkout="$work_dir/authenticated-guix"
+git -C "$work_dir" init -q authenticated-guix
+git -C "$authenticated_guix_checkout" \
+    -c user.name='Guix checkout test' \
+    -c user.email='guix-checkout-test@example.invalid' \
+    -c commit.gpgSign=false \
+    commit -q --allow-empty -m 'Security floor'
+guix_security_floor="$(
+    git -C "$authenticated_guix_checkout" rev-parse --verify HEAD
+)"
+git -C "$authenticated_guix_checkout" \
+    -c user.name='Guix checkout test' \
+    -c user.email='guix-checkout-test@example.invalid' \
+    -c commit.gpgSign=false \
+    commit -q --allow-empty -m 'Bootstrap authenticated head'
+bootstrap_guix_head="$(
+    git -C "$authenticated_guix_checkout" rev-parse --verify HEAD
+)"
+git -C "$authenticated_guix_checkout" \
+    -c user.name='Guix checkout test' \
+    -c user.email='guix-checkout-test@example.invalid' \
+    -c commit.gpgSign=false \
+    commit -q --allow-empty -m 'Channel-composed pull head'
+FAKE_GUIX_COMMIT="$(
+    git -C "$authenticated_guix_checkout" rev-parse --verify HEAD
+)"
+git -C "$authenticated_guix_checkout" remote add origin \
+    https://codeberg.org/guix/guix.git
+git -C "$authenticated_guix_checkout" checkout -q --detach \
+    "$bootstrap_guix_head"
+export FAKE_GUIX_COMMIT
+export FAKE_AUTHENTICATED_GUIX_CHECKOUT="$authenticated_guix_checkout"
+export FAKE_GUIX_SECURITY_FLOOR="$guix_security_floor"
+export REAL_GIT="$real_git"
+security_options=(
+    --authenticated-guix-checkout "$authenticated_guix_checkout"
+    --guix-security-floor "$guix_security_floor"
+)
+
 fake_guix="$work_dir/guix"
 fake_guix_log="$work_dir/guix.log"
+fake_git="$work_dir/git"
+fake_git_log="$work_dir/git.log"
 fake_curl="$work_dir/curl"
 fake_curl_log="$work_dir/curl.log"
 fake_stat="$work_dir/stat"
 fake_narinfo_attempts="$work_dir/narinfo-attempts"
 fake_bake_started="$work_dir/bake-started"
-fake_store_path="$work_dir/store/system"
-fake_pull_target="$work_dir/store/pull-profile"
-fake_deriver="$work_dir/store/pull-profile.drv"
+fake_store_hash=00000000000000000000000000000000
+fake_store_path="$work_dir/store/$fake_store_hash-system"
+fake_pull_target="$work_dir/store/11111111111111111111111111111111-pull-profile"
+fake_deriver="$work_dir/store/22222222222222222222222222222222-pull-profile.drv"
 public_key="$work_dir/signing-key.pub"
 private_key="$work_dir/signing-key.sec"
 output="$work_dir/site"
@@ -99,8 +146,6 @@ printf '%s\n' original > "$gap_output/sentinel"
 printf '%s\n' preserve > "$late_replacement/nested/unrelated-data"
 printf '%s\n' preserve > "$gap_replacement/nested/unrelated-data"
 printf '%s\n' keep > "$unsafe_output/unrelated-data"
-printf '%s\n' public > "$public_key"
-printf '%s\n' private > "$private_key"
 
 cat > "$fake_guix" <<'EOF'
 #!/usr/bin/env bash
@@ -158,8 +203,20 @@ case "${1:-} ${2:-}" in
         if [ "${FAKE_GUIX_MODE:?}" = pull-commit-mismatch ]; then
             qubes_commit=0000000000000000000000000000000000000000
         fi
-        printf '[{"name":"guix","commit":"%s"},' \
-            '1111111111111111111111111111111111111111'
+        guix_url=https://codeberg.org/guix/guix.git
+        guix_branch=master
+        guix_commit="${FAKE_GUIX_COMMIT:?}"
+        extra_guix_channel=""
+        case "$FAKE_GUIX_MODE" in
+            guix-url-mismatch) guix_url=https://example.invalid/guix.git ;;
+            guix-branch-mismatch) guix_branch=testing ;;
+            guix-commit-malformed) guix_commit=abc123 ;;
+            guix-duplicate)
+                extra_guix_channel=',{"name":"guix","url":"https://codeberg.org/guix/guix.git","branch":"master","commit":"'"$guix_commit"'"}'
+                ;;
+        esac
+        printf '[{"name":"guix","url":"%s","branch":"%s","commit":"%s"}%s,' \
+            "$guix_url" "$guix_branch" "$guix_commit" "$extra_guix_channel"
         printf '{"name":"qubes","commit":"%s"}]\n' "$qubes_commit"
         ;;
     'gc --derivers')
@@ -191,6 +248,36 @@ EOF
 chmod +x "$fake_guix"
 mkdir -p "$fake_pull_target/bin"
 ln -s "$fake_guix" "$fake_pull_target/bin/guix"
+
+cat > "$fake_git" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${1:-}" = -C ] &&
+        [ "${2:-}" = "${FAKE_AUTHENTICATED_GUIX_CHECKOUT:?}" ]; then
+    printf '%s\n' "${*:3}" >> "${FAKE_GIT_LOG:?}"
+    case "${3:-}" in
+        fetch)
+            [ "${4:-}" = --no-tags ]
+            [ "${5:-}" = origin ]
+            [ "${6:-}" = \
+                '+refs/heads/master:refs/remotes/origin/master' ]
+            "$REAL_GIT" -C "$FAKE_AUTHENTICATED_GUIX_CHECKOUT" \
+                update-ref refs/remotes/origin/master "$FAKE_GUIX_COMMIT"
+            exit 0
+            ;;
+        merge-base)
+            if [ "${FAKE_GUIX_MODE:-}" = guix-floor-failure ] &&
+                    [ "${5:-}" = "${FAKE_GUIX_SECURITY_FLOOR:?}" ] &&
+                    [ "${6:-}" = "$FAKE_GUIX_COMMIT" ]; then
+                exit 1
+            fi
+            ;;
+    esac
+fi
+exec "$REAL_GIT" "$@"
+EOF
+chmod +x "$fake_git"
 
 cat > "$fake_curl" <<'EOF'
 #!/usr/bin/env bash
@@ -307,6 +394,199 @@ EOF
 chmod +x "$fake_stat"
 : > "$fake_guix_log"
 : > "$fake_curl_log"
+: > "$fake_git_log"
+export FAKE_GIT_LOG="$fake_git_log"
+
+# Prepare succeeds before either externally supplied signing-key file exists.
+# It realizes and records all inputs, but cannot reach guix publish.
+split_manifest="$work_dir/prepared-paths.json"
+split_prepare_log="$work_dir/split-prepare.log"
+split_digest="$(
+    env \
+        FAKE_GUIX_LOG="$fake_guix_log" \
+        FAKE_GUIX_MODE=publisher-success \
+        FAKE_STORE_PATH="$fake_store_path" \
+        FAKE_PULL_TARGET="$fake_pull_target" \
+        FAKE_DERIVER="$fake_deriver" \
+        FAKE_CURL_LOG="$fake_curl_log" \
+        GUIX="$fake_guix" \
+        PATH="$work_dir:$PATH" \
+        TMPDIR="$work_dir" \
+        "$build_script" prepare \
+            --manifest "$split_manifest" \
+            "${security_options[@]}" \
+            --variant normal 2> "$split_prepare_log"
+)" || {
+    sed 's/^/split prepare: /' "$split_prepare_log" >&2
+    exit 1
+}
+[[ "$split_digest" =~ ^[0-9a-f]{64}$ ]] || {
+    printf 'prepare did not return one manifest SHA-256\n' >&2
+    exit 1
+}
+[ "$(stat --format='%a' -- "$split_manifest")" = 400 ] || {
+    printf 'prepare manifest is not read-only\n' >&2
+    exit 1
+}
+if ! grep -q '^pull -C$' "$fake_guix_log" ||
+        ! grep -q '^system build$' "$fake_guix_log"; then
+    printf 'split prepare did not realize the pull profile and system\n' >&2
+    exit 1
+fi
+if grep -q '^publish -p$' "$fake_guix_log"; then
+    printf 'prepare reached guix publish without signing keys\n' >&2
+    exit 1
+fi
+[ ! -e "$public_key" ] && [ ! -e "$private_key" ] || {
+    printf 'signing-key fixture unexpectedly existed during prepare\n' >&2
+    exit 1
+}
+
+# Only now make the signing material available.  Export must consume the
+# concrete manifest and call publish directly: pull, describe, gc, and system
+# build would all cross the private-key isolation boundary.
+cp -- "$fixture_repo/config/substitute-cache/signing-key.pub" "$public_key"
+printf '%s\n' private > "$private_key"
+: > "$fake_guix_log"
+: > "$fake_curl_log"
+split_output="$work_dir/split-site"
+split_export_log="$work_dir/split-export.log"
+env \
+    FAKE_GUIX_LOG="$fake_guix_log" \
+    FAKE_GUIX_MODE=publisher-success \
+    FAKE_STORE_PATH="$fake_store_path" \
+    FAKE_PULL_TARGET="$fake_pull_target" \
+    FAKE_DERIVER="$fake_deriver" \
+    FAKE_CURL_LOG="$fake_curl_log" \
+    GUIX="$work_dir/must-not-be-used-by-export" \
+    GUIX_PUBLISH_PORT=18190 \
+    PATH="$work_dir:$PATH" \
+    TMPDIR="$work_dir" \
+    "$build_script" export \
+        --manifest "$split_manifest" \
+        --manifest-sha256 "$split_digest" \
+        --output "$split_output" \
+        --public-key "$public_key" \
+        --private-key "$private_key" > "$split_export_log" 2>&1 || {
+    sed 's/^/split export: /' "$split_export_log" >&2
+    exit 1
+}
+if [ "$(wc -l < "$fake_guix_log" | tr -d ' ')" -ne 1 ] ||
+        ! grep -q '^publish -p$' "$fake_guix_log"; then
+    printf 'export invoked Guix operations other than publish\n' >&2
+    sed 's/^/split export guix: /' "$fake_guix_log" >&2
+    exit 1
+fi
+[ -s "$split_output/$fake_store_hash.narinfo" ] || {
+    printf 'split export did not produce the static cache\n' >&2
+    exit 1
+}
+grep -Fxq \
+        'fetch --no-tags origin +refs/heads/master:refs/remotes/origin/master' \
+        "$fake_git_log" || {
+    printf 'prepare did not refresh the bootstrap-authenticated Guix checkout\n' \
+        >&2
+    exit 1
+}
+
+# Signing-capable export consumes only the manifest and never accepts either
+# source-authentication input from prepare.
+: > "$fake_guix_log"
+export_security_log="$work_dir/export-security-options.log"
+if "$build_script" export \
+        --manifest "$split_manifest" \
+        --manifest-sha256 "$split_digest" \
+        --output "$split_output" \
+        --public-key "$public_key" \
+        --private-key "$private_key" \
+        "${security_options[@]}" >"$export_security_log" 2>&1; then
+    printf 'export accepted prepare-only Guix authentication options\n' >&2
+    exit 1
+fi
+grep -q -- '--authenticated-guix-checkout is not accepted by export' \
+        "$export_security_log" || {
+    printf 'export misdiagnosed prepare-only Guix authentication options\n' >&2
+    exit 1
+}
+[ ! -s "$fake_guix_log" ] || {
+    printf 'rejected export authentication options reached Guix\n' >&2
+    exit 1
+}
+
+# Even a syntactically harmless change is rejected against the digest carried
+# out of the prepare step, before the signing-capable Guix is invoked.
+tampered_manifest="$work_dir/tampered-paths.json"
+cp -- "$split_manifest" "$tampered_manifest"
+chmod u+w "$tampered_manifest"
+printf ' \n' >> "$tampered_manifest"
+chmod 0400 "$tampered_manifest"
+: > "$fake_guix_log"
+tampered_log="$work_dir/tampered-manifest.log"
+if env \
+    FAKE_GUIX_LOG="$fake_guix_log" \
+    FAKE_GUIX_MODE=publisher-success \
+    FAKE_STORE_PATH="$fake_store_path" \
+    FAKE_PULL_TARGET="$fake_pull_target" \
+    FAKE_DERIVER="$fake_deriver" \
+    FAKE_CURL_LOG="$fake_curl_log" \
+    GUIX="$fake_guix" \
+    PATH="$work_dir:$PATH" \
+    TMPDIR="$work_dir" \
+    "$build_script" export \
+        --manifest "$tampered_manifest" \
+        --manifest-sha256 "$split_digest" \
+        --output "$split_output" \
+        --public-key "$public_key" \
+        --private-key "$private_key" > "$tampered_log" 2>&1; then
+    printf 'export accepted a modified prepare manifest\n' >&2
+    exit 1
+fi
+grep -q 'SHA-256 does not match the prepare-step output' "$tampered_log" || {
+    printf 'modified prepare manifest was misdiagnosed\n' >&2
+    exit 1
+}
+[ ! -s "$fake_guix_log" ] || {
+    printf 'modified prepare manifest reached Guix\n' >&2
+    exit 1
+}
+
+# Strict path validation is independent of the digest handoff: even when a
+# forged manifest is paired with its own digest, traversal cannot reach the
+# signing-capable publisher.
+injected_manifest="$work_dir/injected-paths.json"
+sed "s|$fake_store_path|$work_dir/store/../private|" \
+    "$split_manifest" > "$injected_manifest"
+chmod 0400 "$injected_manifest"
+injected_digest="$(sha256sum "$injected_manifest" | cut -d ' ' -f 1)"
+: > "$fake_guix_log"
+injected_log="$work_dir/injected-manifest.log"
+if env \
+    FAKE_GUIX_LOG="$fake_guix_log" \
+    FAKE_GUIX_MODE=publisher-success \
+    FAKE_STORE_PATH="$fake_store_path" \
+    FAKE_PULL_TARGET="$fake_pull_target" \
+    FAKE_DERIVER="$fake_deriver" \
+    FAKE_CURL_LOG="$fake_curl_log" \
+    GUIX="$fake_guix" \
+    PATH="$work_dir:$PATH" \
+    TMPDIR="$work_dir" \
+    "$build_script" export \
+        --manifest "$injected_manifest" \
+        --manifest-sha256 "$injected_digest" \
+        --output "$split_output" \
+        --public-key "$public_key" \
+        --private-key "$private_key" > "$injected_log" 2>&1; then
+    printf 'export accepted a path-injecting prepare manifest\n' >&2
+    exit 1
+fi
+grep -q 'is not a confined Guix store path' "$injected_log" || {
+    printf 'path-injecting prepare manifest was misdiagnosed\n' >&2
+    exit 1
+}
+[ ! -s "$fake_guix_log" ] || {
+    printf 'path-injecting prepare manifest reached Guix\n' >&2
+    exit 1
+}
 
 invalid_timeout_log="$work_dir/invalid-bake-timeout.log"
 if env \
@@ -323,6 +603,7 @@ if env \
         --output "$output" \
         --public-key "$public_key" \
         --private-key "$private_key" \
+        "${security_options[@]}" \
         --variant normal \
         --bake-timeout 0 >"$invalid_timeout_log" 2>&1; then
     printf 'substitute-cache build accepted a zero bake timeout\n' >&2
@@ -337,38 +618,49 @@ grep -q 'invalid --bake-timeout: 0' "$invalid_timeout_log" || {
     exit 1
 }
 
-config_backup="$work_dir/qubes-os-normal.scm"
-cp -- "$fixture_repo/config/qubes-os-normal.scm" "$config_backup"
-printf '%s\n' ';; uncommitted test change' >> \
-    "$fixture_repo/config/qubes-os-normal.scm"
-dirty_config_log="$work_dir/dirty-config.log"
-if env \
-    FAKE_GUIX_LOG="$fake_guix_log" \
-    FAKE_GUIX_MODE=system-failure \
-    FAKE_STORE_PATH="$fake_store_path" \
-    FAKE_PULL_TARGET="$fake_pull_target" \
-    FAKE_DERIVER="$fake_deriver" \
-    FAKE_CURL_LOG="$fake_curl_log" \
-    GUIX="$fake_guix" \
-    PATH="$work_dir:$PATH" \
-    TMPDIR="$work_dir" \
-    "$build_script" \
-        --output "$output" \
-        --public-key "$public_key" \
-        --private-key "$private_key" \
-        --variant normal >"$dirty_config_log" 2>&1; then
-    printf 'substitute-cache build accepted an uncommitted system config\n' >&2
-    exit 1
-fi
-grep -q 'source changes must be committed' "$dirty_config_log" || {
-    printf 'dirty system config was misdiagnosed\n' >&2
-    exit 1
+assert_dirty_source_rejected() {
+    local relative_path="$1"
+    local label="$2"
+    local backup="$work_dir/dirty-source-backup"
+    local dirty_log="$work_dir/dirty-${label}.log"
+
+    cp -- "$fixture_repo/$relative_path" "$backup"
+    printf '%s\n' '# uncommitted provenance test change' >> \
+        "$fixture_repo/$relative_path"
+    : > "$fake_guix_log"
+    if env \
+        FAKE_GUIX_LOG="$fake_guix_log" \
+        FAKE_GUIX_MODE=system-failure \
+        FAKE_STORE_PATH="$fake_store_path" \
+        FAKE_PULL_TARGET="$fake_pull_target" \
+        FAKE_DERIVER="$fake_deriver" \
+        FAKE_CURL_LOG="$fake_curl_log" \
+        GUIX="$fake_guix" \
+        PATH="$work_dir:$PATH" \
+        TMPDIR="$work_dir" \
+        "$build_script" \
+            --output "$output" \
+            --public-key "$public_key" \
+            --private-key "$private_key" \
+            "${security_options[@]}" \
+            --variant normal >"$dirty_log" 2>&1; then
+        printf 'substitute-cache build accepted dirty %s\n' "$relative_path" >&2
+        return 1
+    fi
+    grep -q 'source changes must be committed' "$dirty_log" || {
+        printf 'dirty %s was misdiagnosed\n' "$relative_path" >&2
+        return 1
+    }
+    [ ! -s "$fake_guix_log" ] || {
+        printf 'dirty %s reached Guix\n' "$relative_path" >&2
+        return 1
+    }
+    mv -- "$backup" "$fixture_repo/$relative_path"
 }
-[ ! -s "$fake_guix_log" ] || {
-    printf 'dirty system config was rejected only after invoking guix\n' >&2
-    exit 1
-}
-mv -- "$config_backup" "$fixture_repo/config/qubes-os-normal.scm"
+
+assert_dirty_source_rejected config/qubes-os-normal.scm system-config
+assert_dirty_source_rejected scripts/lib.sh shell-library
+assert_dirty_source_rejected scripts/git-tracked-tree.sh git-tree-library
 
 : > "$fake_guix_log"
 pull_mismatch_log="$work_dir/pull-commit-mismatch.log"
@@ -386,6 +678,7 @@ if env \
         --output "$output" \
         --public-key "$public_key" \
         --private-key "$private_key" \
+        "${security_options[@]}" \
         --variant normal >"$pull_mismatch_log" 2>&1; then
     printf 'substitute-cache build accepted a mismatched pulled Qubes commit\n' >&2
     exit 1
@@ -417,6 +710,64 @@ if find "$work_dir" -maxdepth 1 -name '.site.tmp.*' -print -quit |
     exit 1
 fi
 
+assert_guix_provenance_rejected() {
+    local mode="$1"
+    local expected="$2"
+    local manifest="$work_dir/$mode-manifest.json"
+    local failure_log="$work_dir/$mode.log"
+
+    : > "$fake_guix_log"
+    : > "$fake_git_log"
+    if env \
+        FAKE_GUIX_LOG="$fake_guix_log" \
+        FAKE_GUIX_MODE="$mode" \
+        FAKE_STORE_PATH="$fake_store_path" \
+        FAKE_PULL_TARGET="$fake_pull_target" \
+        FAKE_DERIVER="$fake_deriver" \
+        FAKE_CURL_LOG="$fake_curl_log" \
+        GUIX="$fake_guix" \
+        PATH="$work_dir:$PATH" \
+        TMPDIR="$work_dir" \
+        "$build_script" prepare \
+            --manifest "$manifest" \
+            "${security_options[@]}" \
+            --variant normal >"$failure_log" 2>&1; then
+        printf 'prepare accepted invalid Guix provenance mode %s\n' "$mode" >&2
+        return 1
+    fi
+    grep -Fq -- "$expected" "$failure_log" || {
+        printf 'Guix provenance failure %s was misdiagnosed\n' "$mode" >&2
+        sed 's/^/provenance failure: /' "$failure_log" >&2
+        return 1
+    }
+    grep -q '^describe --format=json$' "$fake_guix_log" || {
+        printf 'Guix provenance failure %s skipped profile inspection\n' \
+            "$mode" >&2
+        return 1
+    }
+    if grep -Eq '^(system build|publish -p)$' "$fake_guix_log"; then
+        printf 'Guix provenance failure %s reached realization or signing\n' \
+            "$mode" >&2
+        return 1
+    fi
+}
+
+assert_guix_provenance_rejected \
+    guix-duplicate \
+    'pulled channel manifest must contain exactly one Guix channel'
+assert_guix_provenance_rejected \
+    guix-url-mismatch \
+    'pulled Guix channel is not the expected Codeberg master channel'
+assert_guix_provenance_rejected \
+    guix-branch-mismatch \
+    'pulled Guix channel is not the expected Codeberg master channel'
+assert_guix_provenance_rejected \
+    guix-commit-malformed \
+    'pulled Guix channel commit is not a full lowercase object ID'
+assert_guix_provenance_rejected \
+    guix-floor-failure \
+    "resolved Guix $FAKE_GUIX_COMMIT predates security floor $guix_security_floor"
+
 : > "$fake_guix_log"
 if env \
     FAKE_GUIX_LOG="$fake_guix_log" \
@@ -432,6 +783,7 @@ if env \
         --output "$unsafe_output" \
         --public-key "$public_key" \
         --private-key "$private_key" \
+        "${security_options[@]}" \
         --variant normal >/dev/null 2>&1; then
     printf 'substitute-cache build accepted a non-cache output directory\n' >&2
     exit 1
@@ -465,6 +817,7 @@ assert_preserved_after_failure() {
             --output "$output" \
             --public-key "$public_key" \
             --private-key "$private_key" \
+            "${security_options[@]}" \
             --variant normal >"$failure_log" 2>&1; then
         printf 'substitute-cache build unexpectedly succeeded in %s mode\n' \
             "$mode" >&2
@@ -522,6 +875,7 @@ if env \
         --output "$output" \
         --public-key "$public_key" \
         --private-key "$private_key" \
+        "${security_options[@]}" \
         --variant normal >"$collision_log" 2>&1; then
     printf 'dead publisher was mistaken for an unrelated HTTP service\n' >&2
     exit 1
@@ -573,6 +927,7 @@ assert_bake_failure_preserved() {
             --output "$output" \
             --public-key "$public_key" \
             --private-key "$private_key" \
+            "${security_options[@]}" \
             --variant normal \
             --bake-timeout "$timeout" >"$bake_log" 2>&1; then
         printf 'substitute-cache build unexpectedly accepted %s\n' "$mode" >&2
@@ -641,6 +996,7 @@ if env \
         --output "$output" \
         --public-key "$public_key" \
         --private-key "$private_key" \
+        "${security_options[@]}" \
         --variant normal >"$late_failure_log" 2>&1; then
     printf 'substitute-cache build ignored a late nar download failure\n' >&2
     exit 1
@@ -701,6 +1057,7 @@ env \
         --output "$late_output" \
         --public-key "$public_key" \
         --private-key "$private_key" \
+        "${security_options[@]}" \
         --variant normal >"$late_replacement_log" 2>&1 &
 publication_pid="$!"
 for _ in {1..200}; do
@@ -775,6 +1132,7 @@ if env \
         --output "$gap_output" \
         --public-key "$public_key" \
         --private-key "$private_key" \
+        "${security_options[@]}" \
         --variant normal >"$gap_replacement_log" 2>&1; then
     printf 'substitute-cache build deleted a final-gap replacement\n' >&2
     exit 1
@@ -823,6 +1181,7 @@ env \
         --output "$output" \
         --public-key "$public_key" \
         --private-key "$private_key" \
+        "${security_options[@]}" \
         --variant normal >"$success_log" 2>&1 || {
     sed 's/^/successful publication: /' "$success_log" >&2
     exit 1
@@ -857,7 +1216,8 @@ done
     printf 'published cache has no ownership marker\n' >&2
     exit 1
 }
-[ -s "$output/nix-cache-info" ] && [ -s "$output/system.narinfo" ] &&
+[ -s "$output/nix-cache-info" ] &&
+        [ -s "$output/$fake_store_hash.narinfo" ] &&
         [ "$(< "$output/nar/fake.nar.zst")" = data ] || {
     printf 'published cache payload is incomplete\n' >&2
     exit 1
@@ -886,6 +1246,7 @@ env \
         --output "$output" \
         --public-key "$public_key" \
         --private-key "$private_key" \
+        "${security_options[@]}" \
         --variant normal \
         --bake-timeout 10 >"$delayed_log" 2>&1 || {
     sed 's/^/delayed bake: /' "$delayed_log" >&2
@@ -895,7 +1256,7 @@ env \
     printf 'delayed bake did not retry exactly once\n' >&2
     exit 1
 }
-[ -s "$output/system.narinfo" ] &&
+[ -s "$output/$fake_store_hash.narinfo" ] &&
         [ "$(< "$output/nar/fake.nar.zst")" = data ] || {
     printf 'delayed bake publication is incomplete\n' >&2
     exit 1

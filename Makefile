@@ -6,9 +6,11 @@ RUFF ?= ruff
 SHELLCHECK ?= shellcheck
 
 SHELL_SOURCES := $(wildcard scripts/*.sh tests/*.sh builder-v2-template/*.sh)
+PYTHON_SOURCES := $(wildcard modules/qubes/files/*.py scripts/*.py tests/*.py)
 
 .PHONY: \
 	artifact-check \
+	bootstrap-guix-secure-check \
 	build-rootimg \
 	build-rpm \
 	builder-v2-content-contract-check \
@@ -45,6 +47,7 @@ guix-check: check
 source-check: \
 	shell-syntax-check \
 	python-unit-check \
+	bootstrap-guix-secure-check \
 	builder-v2-content-contract-check \
 	channel-source-copy-check \
 	network-uplink-sysctl-source-check \
@@ -65,7 +68,10 @@ python-unit-check:
 
 lint:
 	$(SHELLCHECK) -x $(SHELL_SOURCES)
-	$(RUFF) check modules/qubes/files/*.py tests/*.py
+	$(RUFF) check $(PYTHON_SOURCES)
+
+bootstrap-guix-secure-check:
+	./tests/bootstrap-guix-secure-check.sh
 
 builder-v2-content-contract-check:
 	./tests/builder-v2-content-contract-check.sh

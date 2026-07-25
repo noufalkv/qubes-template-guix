@@ -1,168 +1,942 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Publish a static Guix substitute cache for the Qubes channel to GitHub Pages.
-#
-# SECURITY HOLD (2026-07-22): automatic execution is disabled and the only
-# remaining manual entry point fails before checkout, key access, or Guix
-# execution.  The previous Guix 1.5.0 bootstrap daemon predates the fixes in
-# https://guix.gnu.org/en/blog/2026/guix-substitute-pull-vulnerabilities/.
-# Re-enabling this workflow requires a source-only upgrade to a verified fixed
-# daemon before any substitute is consumed, plus rotation of the development
-# cache signing key and a clean rebuild of every published object.
-#
-# The Qubes channel has no substitute server, so a template's
-# "guix pull && guix system reconfigure" otherwise rebuilds every Qubes
-# derivation locally whenever the upstream Guix toolchain moves.  Guix itself
-# stays UNPINNED for security; this job just publishes prebuilt, signed nars for
-# the channel-specific store paths so the in-template update downloads them.
-#
-# Trust model: nars are signed by an Ed25519 key whose PRIVATE half lives in the
-# GUIX_SIGNING_KEY_SEC repository secret and whose PUBLIC half is committed at
-# config/substitute-cache/signing-key.pub and authorized by the template.  GitHub
-# Pages is an untrusted transport; the daemon verifies every narinfo signature.
-#
-# Guix is bootstrapped ONLY from the official GNU release binary on ftp.gnu.org,
-# with its detached OpenPGP signature verified -- no third-party images or
-# actions.  After bootstrap we "guix pull" the unpinned channels to current head.
+# Build current, signed Qubes-channel substitutes with GitHub Actions.  Small
+# narinfo indexes are served by GitHub Pages; immutable NAR payloads live in
+# bounded, versioned GitHub Release shards so older generations can remain
+# available without exceeding Pages' 1 GiB site limit.
 
 name: substitute-cache
 
 on:
+  push:
+    branches: [quality-refactor]
+    paths:
+      - '.github/workflows/substitute-cache.yml'
+      - '.guix-channel'
+      - '.guix-authorizations'
+      - 'config/channels.scm'
+      - 'config/guix-channels.scm'
+      - 'config/qubes-os-*.scm'
+      - 'config/substitute-cache/signing-key.pub'
+      - 'modules/**'
+      - 'scripts/bootstrap-guix-secure.sh'
+      - 'scripts/build-substitute-cache.sh'
+      - 'scripts/git-tracked-tree.sh'
+      - 'scripts/lib.sh'
+      - 'scripts/prepare-substitute-release.py'
+      - 'scripts/substitute-cache-manifest.py'
+  schedule:
+    # GNU's primary Guix publisher currently uses a 180-day cache horizon.
+    # Refresh daily so this unpinned channel normally follows within one day.
+    - cron: '17 4 * * *'
   workflow_dispatch:
 
 concurrency:
-  group: substitute-cache
-  cancel-in-progress: true
+  group: substitute-cache-v2
+  # A newer refresh must not interrupt an in-flight immutable Release publish.
+  cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
 env:
-  GUIX_VERSION: '1.5.0'
+  GUIX_BOOTSTRAP_VERSION: '1.5.0'
+  CACHE_RETENTION_DAYS: '180'
+  CACHE_MINIMUM_GENERATIONS: '8'
+  CACHE_GC_GRACE_DAYS: '1'
 
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 360
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      url: ${{ steps.deploy.outputs.page_url }}v2
+
     steps:
-      - name: Refuse publication while the Guix security hold is active
-        run: |
-          echo "::error::Substitute-cache publication is disabled until the bootstrap daemon is upgraded safely and the signing key is rotated."
-          exit 1
-
       - name: Check out channel
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Bootstrap Guix from the official GNU release (signature-verified)
+      - name: Install the signature-verified Guix bootstrap
+        env:
+          GUIX_RELEASE_SIGNER: A28BF40C3E551372662D14F741AAE7DCCA3D8351
         run: |
           set -euo pipefail
-          base="https://ftp.gnu.org/gnu/guix"
-          tarball="guix-binary-${GUIX_VERSION}.x86_64-linux.tar.xz"
-          wget -nv "$base/$tarball" "$base/$tarball.sig"
-          # Verify against the Guix maintainer key that signed this release
-          # (Efraim Flashner); fingerprint confirmed from the .sig issuer.
-          key=A28BF40C3E551372662D14F741AAE7DCCA3D8351
-          gpg --keyserver hkps://keyserver.ubuntu.com --recv-keys "$key" \
-            || gpg --keyserver hkps://keys.openpgp.org --recv-keys "$key"
-          gpg --verify "$tarball.sig" "$tarball"
-          # Install exactly as etc/guix-install.sh does, non-interactively.
-          sudo tar --warning=no-timestamp -xf "$tarball" -C /
-          sudo mkdir -p /etc/guix
-          if ! getent group guixbuild >/dev/null; then
-            sudo groupadd --system guixbuild
+          download_dir="$RUNNER_TEMP/guix-bootstrap-download"
+          gpg_home="$RUNNER_TEMP/guix-bootstrap-gnupg"
+          mkdir -m 700 -- "$download_dir" "$gpg_home"
+          tarball="guix-binary-${GUIX_BOOTSTRAP_VERSION}.x86_64-linux.tar.xz"
+          base=https://ftp.gnu.org/gnu/guix
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            --retry 4 --retry-all-errors --retry-delay 5 \
+            --output "$download_dir/$tarball" "$base/$tarball"
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            --retry 4 --retry-all-errors --retry-delay 5 \
+            --output "$download_dir/$tarball.sig" "$base/$tarball.sig"
+          if ! gpg --homedir "$gpg_home" \
+              --keyserver hkps://keyserver.ubuntu.com \
+              --recv-keys "$GUIX_RELEASE_SIGNER"; then
+            gpg --homedir "$gpg_home" \
+              --keyserver hkps://keys.openpgp.org \
+              --recv-keys "$GUIX_RELEASE_SIGNER"
           fi
-          for i in $(seq -w 1 10); do
-            if ! id -u "guixbuilder${i}" >/dev/null 2>&1; then
-              sudo useradd -g guixbuild -G guixbuild -d /var/empty \
-                -s "$(command -v nologin)" -c "Guix build user $i" \
-                --system "guixbuilder${i}"
-            fi
-          done
-          guix_root=/var/guix/profiles/per-user/root/current-guix
-          echo "$guix_root/bin" >> "$GITHUB_PATH"
+          gpg --homedir "$gpg_home" \
+            --status-fd=1 --verify \
+            "$download_dir/$tarball.sig" "$download_dir/$tarball" |
+            grep -F "[GNUPG:] VALIDSIG $GUIX_RELEASE_SIGNER "
 
-      - name: Start guix-daemon and authorize official substitutes
+          sudo tar --warning=no-timestamp \
+            --extract --file "$download_dir/$tarball" --directory /
+          sudo mkdir -p /etc/guix /var/empty
+          getent group guixbuild >/dev/null || sudo groupadd --system guixbuild
+          for number in $(seq -w 1 10); do
+            user="guixbuilder$number"
+            id -u "$user" >/dev/null 2>&1 ||
+              sudo useradd --system \
+                --gid guixbuild --groups guixbuild \
+                --home-dir /var/empty --shell /usr/sbin/nologin \
+                --comment "Guix build user $number" "$user"
+          done
+
+      - name: Build current Guix from authenticated source
+        id: guix
         run: |
           set -euo pipefail
-          guix_root=/var/guix/profiles/per-user/root/current-guix
-          # Launch the daemon directly (no systemd): the release unit file does
-          # not fit the ephemeral runner, and a plain background daemon is the
-          # reliable CI pattern.  Wait for its socket before proceeding.
-          sudo "$guix_root/bin/guix-daemon" --build-users-group=guixbuild \
-            --substitute-urls='https://ci.guix.gnu.org https://bordeaux.guix.gnu.org' \
-            >/tmp/guix-daemon.log 2>&1 &
-          for i in $(seq 1 30); do
-            [ -S /var/guix/daemon-socket/socket ] && break
-            sleep 1
-          done
-          [ -S /var/guix/daemon-socket/socket ] || {
-            echo "::error::guix-daemon socket never appeared"; cat /tmp/guix-daemon.log; exit 1; }
-          for F in "$guix_root"/share/guix/*.pub; do
-            sudo "$guix_root/bin/guix" archive --authorize < "$F"
-          done
+          ./scripts/bootstrap-guix-secure.sh \
+            --work-dir "$RUNNER_TEMP/secure-guix" \
+            --output-file "$GITHUB_OUTPUT"
 
-      - name: Refresh Guix and the Qubes channel (tracks current head, unpinned)
+      - name: Select the advisory-checked Guix daemon
         run: |
           set -euo pipefail
-          attempt=1
-          max_attempts=4
-          while ! guix pull --fallback -C config/channels.scm --allow-downgrades; do
-            if [ "$attempt" -ge "$max_attempts" ]; then
-              echo "::error::guix pull failed after $attempt attempts"
-              exit 1
-            fi
-            delay=$((attempt * 15))
-            echo "::warning::guix pull attempt $attempt/$max_attempts failed; retrying in ${delay}s"
-            sleep "$delay"
-            attempt=$((attempt + 1))
-          done
+          guix_bin='${{ steps.guix.outputs.guix_bin }}'
+          daemon_socket='${{ steps.guix.outputs.guix_daemon_socket }}'
+          authenticated_checkout='${{ steps.guix.outputs.authenticated_guix_checkout }}'
+          security_floor='${{ steps.guix.outputs.guix_security_floor }}'
+          test -x "$guix_bin/guix"
+          test -S "$daemon_socket"
+          test -d "$authenticated_checkout/.git"
+          [[ "$security_floor" =~ ^[0-9a-f]{40}$ ]]
+          printf '%s\n' "$guix_bin" >> "$GITHUB_PATH"
+          {
+            printf 'GUIX=%s/guix\n' "$guix_bin"
+            printf 'GUIX_DAEMON_SOCKET=%s\n' "$daemon_socket"
+            printf 'AUTHENTICATED_GUIX_CHECKOUT=%s\n' \
+              "$authenticated_checkout"
+            printf 'GUIX_SECURITY_FLOOR=%s\n' "$security_floor"
+          } >> "$GITHUB_ENV"
 
-      - name: Evaluate both system variants with the refreshed Guix
+      - name: Check for an existing deterministic generation
+        id: current
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          export PATH="$HOME/.config/guix/current/bin:$PATH"
-          qubes_channel_commit="$(git rev-parse --verify 'HEAD^{commit}')"
-          [[ "$qubes_channel_commit" =~ ^[0-9a-f]{40}$ ]]
-          export QUBES_TEMPLATE_CHANNEL_COMMIT="$qubes_channel_commit"
-          guix system build --dry-run -L modules config/qubes-os-normal.scm
-          guix system build --dry-run -L modules config/qubes-os-minimal.scm
+          generation_regex='^substitute-cache-v2-[0-9a-f]{40}-[0-9a-f]{40}$'
+          shard_regex='^substitute-cache-nars-v2-[0-9a-f]{40}-[0-9a-f]{40}-[0-9]{4}$'
+          marker_regex='^substitute-cache-gc-v2-[0-9a-f]{40}-[0-9a-f]{40}$'
+          releases="$RUNNER_TEMP/substitute-releases.json"
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$releases"
 
-      - name: Restore signing key
+          # A draft is never part of the public graph.  With runs serialized,
+          # managed drafts can only be leftovers from an interrupted publish.
+          mapfile -t draft_tags < <(
+            jq -r \
+              --arg generation "$generation_regex" \
+              --arg shard "$shard_regex" \
+              --arg marker "$marker_regex" '
+                .[][]
+                | select(.draft == true)
+                | select((.tag_name | test($generation)) or
+                         (.tag_name | test($shard)) or
+                         (.tag_name | test($marker)))
+                | .tag_name
+              ' "$releases"
+          )
+          for tag in "${draft_tags[@]}"; do
+            gh release delete "$tag" \
+              --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+          done
+          if test "${#draft_tags[@]}" -gt 0; then
+            gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$releases"
+          fi
+          test "$(
+            jq \
+              --arg generation "$generation_regex" \
+              --arg shard "$shard_regex" \
+              --arg marker "$marker_regex" '
+                [
+                  .[][]
+                  | select(.draft == true)
+                  | select((.tag_name | test($generation)) or
+                           (.tag_name | test($shard)) or
+                           (.tag_name | test($marker)))
+                ]
+                | length
+              ' "$releases"
+          )" -eq 0
+
+          qubes_commit="$(git rev-parse --verify 'HEAD^{commit}')"
+          guix_commit='${{ steps.guix.outputs.guix_commit }}'
+          [[ "$qubes_commit" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$guix_commit" =~ ^[0-9a-f]{40}$ ]]
+          release_tag="substitute-cache-v2-${qubes_commit}-${guix_commit}"
+          matching="$(
+            jq --arg tag "$release_tag" '
+              [
+                .[][]
+                | select(.draft == false and .tag_name == $tag)
+              ]
+              | length
+            ' "$releases"
+          )"
+          test "$matching" -le 1
+          realize_needed=true
+          if test "$matching" -eq 1; then
+            realize_needed=false
+          fi
+          {
+            printf 'releases=%s\n' "$releases"
+            printf 'qubes_commit=%s\n' "$qubes_commit"
+            printf 'guix_commit=%s\n' "$guix_commit"
+            printf 'release_tag=%s\n' "$release_tag"
+            printf 'generated_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            printf 'realize_needed=%s\n' "$realize_needed"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Authorize the new cache key for publication checks
+        run: |
+          set -euo pipefail
+          sudo env GUIX_DAEMON_SOCKET="$GUIX_DAEMON_SOCKET" \
+            sh -c 'exec "$1" archive --authorize < "$2"' sh \
+            "$GUIX" config/substitute-cache/signing-key.pub
+
+      - name: Realize current unpinned channel outputs without the signing key
+        if: steps.current.outputs.realize_needed == 'true'
+        id: realize
+        run: |
+          set -euo pipefail
+          manifest="$RUNNER_TEMP/substitute-realization.json"
+          digest="$(
+            ./scripts/build-substitute-cache.sh prepare \
+              --manifest "$manifest" \
+              --variant both \
+              --authenticated-guix-checkout "$AUTHENTICATED_GUIX_CHECKOUT" \
+              --guix-security-floor "$GUIX_SECURITY_FLOOR"
+          )"
+          mapfile -t revisions < <(
+            python3 - "$manifest" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as source:
+              document = json.load(source)
+          channels = {
+              channel["name"]: channel["commit"]
+              for channel in document["provenance"]["channels"]
+          }
+          print(document["provenance"]["source_commit"])
+          print(channels["guix"])
+          PY
+          )
+          test "${#revisions[@]}" -eq 2
+          qubes_commit="${revisions[0]}"
+          guix_commit="${revisions[1]}"
+          release_tag="substitute-cache-v2-${qubes_commit}-${guix_commit}"
+          generated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          {
+            printf 'manifest=%s\n' "$manifest"
+            printf 'manifest_sha256=%s\n' "$digest"
+            printf 'qubes_commit=%s\n' "$qubes_commit"
+            printf 'guix_commit=%s\n' "$guix_commit"
+            printf 'release_tag=%s\n' "$release_tag"
+            printf 'generated_at=%s\n' "$generated_at"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Select the generation identity
+        id: generation
+        run: |
+          set -euo pipefail
+          if test '${{ steps.current.outputs.realize_needed }}' = true; then
+            qubes_commit='${{ steps.realize.outputs.qubes_commit }}'
+            guix_commit='${{ steps.realize.outputs.guix_commit }}'
+            release_tag='${{ steps.realize.outputs.release_tag }}'
+            generated_at='${{ steps.realize.outputs.generated_at }}'
+          else
+            qubes_commit='${{ steps.current.outputs.qubes_commit }}'
+            guix_commit='${{ steps.current.outputs.guix_commit }}'
+            release_tag='${{ steps.current.outputs.release_tag }}'
+            generated_at='${{ steps.current.outputs.generated_at }}'
+          fi
+          [[ "$qubes_commit" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$guix_commit" =~ ^[0-9a-f]{40}$ ]]
+          test "$release_tag" \
+            = "substitute-cache-v2-${qubes_commit}-${guix_commit}"
+          [[ "$generated_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+          {
+            printf 'qubes_commit=%s\n' "$qubes_commit"
+            printf 'guix_commit=%s\n' "$guix_commit"
+            printf 'release_tag=%s\n' "$release_tag"
+            printf 'generated_at=%s\n' "$generated_at"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Load prior Release state for preparation
+        id: history
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          generation_regex='^substitute-cache-v2-[0-9a-f]{40}-[0-9a-f]{40}$'
+          shard_regex='^substitute-cache-nars-v2-[0-9a-f]{40}-[0-9a-f]{40}-[0-9]{4}$'
+          marker_regex='^substitute-cache-gc-v2-[0-9a-f]{40}-[0-9a-f]{40}$'
+          metadata_dir="$RUNNER_TEMP/substitute-history"
+          releases='${{ steps.current.outputs.releases }}'
+          release_inventory="$RUNNER_TEMP/substitute-release-inventory.json"
+          mkdir -m 700 -- "$metadata_dir"
+
+          release_tag='${{ steps.generation.outputs.release_tag }}'
+          matching="$(
+            jq --arg tag "$release_tag" '
+              [
+                .[][]
+                | select(.draft == false and .tag_name == $tag)
+              ]
+              | length
+            ' "$releases"
+          )"
+          test "$matching" -le 1
+          publish_needed=true
+          if test "$matching" -eq 1; then
+            publish_needed=false
+          fi
+
+          if test "$publish_needed" = true; then
+            # This snapshot is used only to deduplicate the new generation.
+            # Public shards are never deleted here: a retained generation may
+            # still reference one even when its same-revision metadata is gone.
+            jq \
+              --arg repository "$GITHUB_REPOSITORY" \
+              --arg generation "$generation_regex" \
+              --arg shard "$shard_regex" \
+              --arg marker "$marker_regex" '
+                {
+                  repository: $repository,
+                  releases: [
+                    .[][]
+                    | select(.draft == false)
+                    | select((.tag_name | test($generation)) or
+                             (.tag_name | test($shard)) or
+                             (.tag_name | test($marker)))
+                    | {
+                        release_tag: .tag_name,
+                        published_at: .published_at,
+                        assets: (
+                          [.assets[]? | {name, size, digest, state}]
+                          | sort_by(.name)
+                        )
+                      }
+                  ] | sort_by(.release_tag)
+                }
+              ' "$releases" > "$release_inventory"
+
+            metadata_assets="$RUNNER_TEMP/substitute-prior-metadata.tsv"
+            jq -r --arg generation "$generation_regex" '
+              .[][]
+              | select(.draft == false)
+              | select(.tag_name | test($generation))
+              | . as $release
+              | [.assets[]? |
+                   select(.name == "substitute-cache-v2-metadata.zip")]
+                as $metadata
+              | if ($metadata | length) == 1 then
+                  [
+                    $release.tag_name,
+                    $metadata[0].id,
+                    $metadata[0].size,
+                    $metadata[0].digest,
+                    $metadata[0].state
+                  ] | @tsv
+                else
+                  error("generation metadata asset is not unique")
+                end
+            ' "$releases" > "$metadata_assets"
+            while IFS=$'\t' read -r tag asset_id size digest state; do
+              [[ "$tag" =~ $generation_regex ]]
+              [[ "$asset_id" =~ ^[0-9]+$ ]]
+              [[ "$size" =~ ^[0-9]+$ ]]
+              [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+              test "$state" = uploaded
+              destination="$metadata_dir/$tag.zip"
+              gh api --header 'Accept: application/octet-stream' \
+                "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" \
+                > "$destination.part"
+              test "$(stat -c '%s' "$destination.part")" -eq "$size"
+              test "$(sha256sum "$destination.part" | cut -d ' ' -f 1)" \
+                = "${digest#sha256:}"
+              mv -- "$destination.part" "$destination"
+            done < "$metadata_assets"
+          fi
+          {
+            printf 'metadata_dir=%s\n' "$metadata_dir"
+            printf 'release_inventory=%s\n' "$release_inventory"
+            printf 'publish_needed=%s\n' "$publish_needed"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Export and sign the realized cache
+        if: steps.history.outputs.publish_needed == 'true'
         env:
           GUIX_SIGNING_KEY_SEC: ${{ secrets.GUIX_SIGNING_KEY_SEC }}
         run: |
           set -euo pipefail
-          if [ -z "${GUIX_SIGNING_KEY_SEC:-}" ]; then
-            echo "::error::GUIX_SIGNING_KEY_SEC secret is not set. Generate a key,"
-            echo "::error::store the private half as this secret, and commit the"
-            echo "::error::public half to config/substitute-cache/signing-key.pub."
-            exit 1
-          fi
-          mkdir -p "$RUNNER_TEMP/keys"
-          printf '%s' "$GUIX_SIGNING_KEY_SEC" > "$RUNNER_TEMP/keys/signing-key.sec"
-          cp config/substitute-cache/signing-key.pub "$RUNNER_TEMP/keys/signing-key.pub"
-          chmod 600 "$RUNNER_TEMP/keys/signing-key.sec"
-
-      - name: Build static substitute cache
-        run: |
-          set -euo pipefail
-          export PATH="$HOME/.config/guix/current/bin:$PATH"
-          ./scripts/build-substitute-cache.sh \
-            --output "$RUNNER_TEMP/site" \
-            --public-key "$RUNNER_TEMP/keys/signing-key.pub" \
-            --private-key "$RUNNER_TEMP/keys/signing-key.sec" \
-            --variant both \
+          test -n "${GUIX_SIGNING_KEY_SEC:-}"
+          key_dir="$RUNNER_TEMP/substitute-signing-key"
+          mkdir -m 700 -- "$key_dir"
+          cleanup_key() {
+            rm -f -- \
+              "$key_dir/signing-key.sec" "$key_dir/signing-key.pub"
+            rmdir -- "$key_dir" 2>/dev/null || true
+          }
+          trap cleanup_key EXIT
+          umask 077
+          printf '%s' "$GUIX_SIGNING_KEY_SEC" > "$key_dir/signing-key.sec"
+          unset GUIX_SIGNING_KEY_SEC
+          cp -- config/substitute-cache/signing-key.pub \
+            "$key_dir/signing-key.pub"
+          ./scripts/build-substitute-cache.sh export \
+            --manifest '${{ steps.realize.outputs.manifest }}' \
+            --manifest-sha256 '${{ steps.realize.outputs.manifest_sha256 }}' \
+            --output "$RUNNER_TEMP/fresh-cache" \
+            --public-key "$key_dir/signing-key.pub" \
+            --private-key "$key_dir/signing-key.sec" \
             --compression zstd:19
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ${{ runner.temp }}/site
+      - name: Prepare deduplicated Release assets and retained Pages index
+        if: steps.history.outputs.publish_needed == 'true'
+        id: prepare_release
+        run: |
+          set -euo pipefail
+          metadata_dir='${{ steps.history.outputs.metadata_dir }}'
+          prior=()
+          shopt -s nullglob
+          for metadata in "$metadata_dir"/*.zip; do
+            prior+=(--prior-metadata "$metadata")
+          done
+          output="$RUNNER_TEMP/prepared-substitute-release"
+          python3 scripts/prepare-substitute-release.py prepare \
+            --cache-dir "$RUNNER_TEMP/fresh-cache" \
+            --output-dir "$output" \
+            --repository "$GITHUB_REPOSITORY" \
+            --release-tag '${{ steps.generation.outputs.release_tag }}' \
+            --generated-at '${{ steps.generation.outputs.generated_at }}' \
+            --qubes-commit '${{ steps.generation.outputs.qubes_commit }}' \
+            --guix-commit '${{ steps.generation.outputs.guix_commit }}' \
+            --release-inventory '${{ steps.history.outputs.release_inventory }}' \
+            --retention-days "$CACHE_RETENTION_DAYS" \
+            --minimum-generations "$CACHE_MINIMUM_GENERATIONS" \
+            --gc-grace-days "$CACHE_GC_GRACE_DAYS" \
+            "${prior[@]}"
+          printf 'output=%s\n' "$output" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy to GitHub Pages
+      - name: Publish immutable NAR shards and generation metadata
+        if: steps.history.outputs.publish_needed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          output='${{ steps.prepare_release.outputs.output }}'
+          tag='${{ steps.generation.outputs.release_tag }}'
+          qubes_commit='${{ steps.generation.outputs.qubes_commit }}'
+          guix_commit='${{ steps.generation.outputs.guix_commit }}'
+          releases='${{ steps.current.outputs.releases }}'
+          notes="$RUNNER_TEMP/substitute-release-notes"
+
+          shards=()
+          shard_root="$output/release-assets/nar-shards"
+          if test -d "$shard_root"; then
+            mapfile -d '' -t shards < <(
+              find "$shard_root" -mindepth 1 -maxdepth 1 -type d \
+                -print0 | sort -z
+            )
+          fi
+          for shard in "${shards[@]}"; do
+            shard_tag="$(basename -- "$shard")"
+            [[ "$shard_tag" =~ ^substitute-cache-nars-v2-[0-9a-f]{40}-[0-9a-f]{40}-[0-9]{4}$ ]]
+            mapfile -d '' -t nar_assets < <(
+              find "$shard" -mindepth 1 -maxdepth 1 -type f \
+                -name 'nar-v2-sha256-*' -print0 | sort -z
+            )
+            test "${#nar_assets[@]}" -ge 1
+            test "${#nar_assets[@]}" -le 900
+
+            # A previous interrupted run may have made this immutable shard
+            # public before publishing its generation metadata.  Reuse it only
+            # when every API-reported asset exactly matches the local plan.
+            matching="$(
+              jq --arg tag "$shard_tag" '
+                [
+                  .[][]
+                  | select(.draft == false and .tag_name == $tag)
+                ]
+                | length
+              ' "$releases"
+            )"
+            test "$matching" -le 1
+            if test "$matching" -eq 1; then
+              expected_assets="$RUNNER_TEMP/$shard_tag.expected.tsv"
+              published_assets="$RUNNER_TEMP/$shard_tag.published.tsv"
+              : > "$expected_assets"
+              for asset in "${nar_assets[@]}"; do
+                printf '%s\t%s\tsha256:%s\tuploaded\n' \
+                  "$(basename -- "$asset")" \
+                  "$(stat -c '%s' "$asset")" \
+                  "$(sha256sum "$asset" | cut -d ' ' -f 1)" \
+                  >> "$expected_assets"
+              done
+              jq -r --arg tag "$shard_tag" '
+                .[][]
+                | select(.draft == false and .tag_name == $tag)
+                | .assets[]?
+                | [.name, .size, .digest, .state]
+                | @tsv
+              ' "$releases" > "$published_assets"
+              LC_ALL=C sort -o "$expected_assets" "$expected_assets"
+              LC_ALL=C sort -o "$published_assets" "$published_assets"
+              cmp -- "$expected_assets" "$published_assets"
+              continue
+            fi
+
+            {
+              printf 'Qubes channel: %s\n' "$qubes_commit"
+              printf 'Guix channel: %s\n\n' "$guix_commit"
+              printf '%s\n' \
+                'Content-addressed NAR payloads built by GitHub Actions.'
+            } > "$notes"
+            gh release create "$shard_tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Guix substitute NAR shard ${shard_tag##*-}" \
+              --notes-file "$notes" \
+              --draft --prerelease --latest=false
+            gh release upload "$shard_tag" \
+              --repo "$GITHUB_REPOSITORY" "${nar_assets[@]}"
+            gh release edit "$shard_tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --draft=false --prerelease --latest=false
+          done
+
+          {
+            printf 'Qubes channel: %s\n' "$qubes_commit"
+            printf 'Guix channel: %s\n\n' "$guix_commit"
+            printf \
+              'Signed narinfos are retained for %s days and at least %s generations.\n' \
+              "$CACHE_RETENTION_DAYS" "$CACHE_MINIMUM_GENERATIONS"
+            printf \
+              'Unreferenced Releases have a %s-day cleanup grace period.\n' \
+              "$CACHE_GC_GRACE_DAYS"
+            printf '%s\n' \
+              'NAR shards remain while retained or grace-protected metadata references them.'
+          } > "$notes"
+          gh release create "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Guix substitutes ${tag#substitute-cache-v2-}" \
+            --notes-file "$notes" \
+            --draft --prerelease --latest=false
+          gh release upload "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            "$output/release-assets/substitute-cache-v2-metadata.zip" \
+            "$output/release-assets/substitute-cache-v2-manifest.json"
+          gh release edit "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft=false --prerelease --latest=false
+
+      - name: Recover Pages and cleanup plan from public Releases
+        id: public_graph
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          generation_regex='^substitute-cache-v2-[0-9a-f]{40}-[0-9a-f]{40}$'
+          shard_regex='^substitute-cache-nars-v2-[0-9a-f]{40}-[0-9a-f]{40}-[0-9]{4}$'
+          marker_regex='^substitute-cache-gc-v2-[0-9a-f]{40}-[0-9a-f]{40}$'
+          tag='${{ steps.generation.outputs.release_tag }}'
+          publish_needed='${{ steps.history.outputs.publish_needed }}'
+          test "$publish_needed" = true || test "$publish_needed" = false
+
+          recovered=false
+          for attempt in $(seq 1 6); do
+            snapshot="$RUNNER_TEMP/substitute-public-snapshot-$attempt"
+            metadata_dir="$snapshot/metadata"
+            releases="$snapshot/releases.json"
+            release_inventory="$snapshot/release-inventory.json"
+            metadata_assets="$snapshot/metadata-assets.tsv"
+            output="$RUNNER_TEMP/recovered-substitute-pages-$attempt"
+            mkdir -m 700 -- "$snapshot" "$metadata_dir"
+
+            # Run a complete attempt in isolation.  A just-published Release
+            # can briefly lack final asset state or digests, so retry the
+            # entire API snapshot rather than mixing observations.
+            set +e
+            (
+              set -euo pipefail
+              gh api --paginate --slurp \
+                "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$releases"
+              test "$(
+                jq --arg tag "$tag" '
+                  [
+                    .[][]
+                    | select(.draft == false and .tag_name == $tag)
+                  ]
+                  | length
+                ' "$releases"
+              )" -eq 1
+
+              jq \
+                --arg repository "$GITHUB_REPOSITORY" \
+                --arg generation "$generation_regex" \
+                --arg shard "$shard_regex" \
+                --arg marker "$marker_regex" '
+                  {
+                    repository: $repository,
+                    releases: [
+                      .[][]
+                      | select(.draft == false)
+                      | select((.tag_name | test($generation)) or
+                               (.tag_name | test($shard)) or
+                               (.tag_name | test($marker)))
+                      | {
+                          release_tag: .tag_name,
+                          published_at: .published_at,
+                          assets: (
+                            [.assets[]? | {name, size, digest, state}]
+                            | sort_by(.name)
+                          )
+                        }
+                    ] | sort_by(.release_tag)
+                  }
+                ' "$releases" > "$release_inventory"
+
+              generation_count="$(
+                jq --arg generation "$generation_regex" '
+                  [
+                    .[][]
+                    | select(.draft == false)
+                    | select(.tag_name | test($generation))
+                  ]
+                  | length
+                ' "$releases"
+              )"
+              test "$generation_count" -gt 0
+              jq -r --arg generation "$generation_regex" '
+                .[][]
+                | select(.draft == false)
+                | select(.tag_name | test($generation))
+                | . as $release
+                | [.assets[]? |
+                     select(.name == "substitute-cache-v2-metadata.zip")]
+                  as $metadata
+                | if ($metadata | length) == 1 then
+                    [
+                      $release.tag_name,
+                      $metadata[0].id,
+                      $metadata[0].size,
+                      $metadata[0].digest,
+                      $metadata[0].state
+                    ] | @tsv
+                  else
+                    error("generation metadata asset is not unique")
+                  end
+              ' "$releases" > "$metadata_assets"
+              test "$(wc -l < "$metadata_assets")" -eq "$generation_count"
+              while IFS=$'\t' read -r release_tag asset_id size digest state; do
+                [[ "$release_tag" =~ $generation_regex ]]
+                [[ "$asset_id" =~ ^[0-9]+$ ]]
+                [[ "$size" =~ ^[0-9]+$ ]]
+                [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+                test "$state" = uploaded
+                destination="$metadata_dir/$release_tag.zip"
+                gh api --header 'Accept: application/octet-stream' \
+                  "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" \
+                  > "$destination.part"
+                test "$(stat -c '%s' "$destination.part")" -eq "$size"
+                test "$(sha256sum "$destination.part" | cut -d ' ' -f 1)" \
+                  = "${digest#sha256:}"
+                mv -- "$destination.part" "$destination"
+              done < "$metadata_assets"
+
+              prior=()
+              shopt -s nullglob
+              for metadata in "$metadata_dir"/*.zip; do
+                prior+=(--prior-metadata "$metadata")
+              done
+              test "${#prior[@]}" -eq "$generation_count"
+              if test "$publish_needed" = true; then
+                current_metadata='${{ steps.prepare_release.outputs.output }}/release-assets/substitute-cache-v2-metadata.zip'
+                test -f "$current_metadata"
+                cmp -- "$current_metadata" "$metadata_dir/$tag.zip"
+              fi
+              python3 scripts/prepare-substitute-release.py recover \
+                  --output-dir "$output" \
+                  --repository "$GITHUB_REPOSITORY" \
+                  --as-of '${{ steps.generation.outputs.generated_at }}' \
+                  --release-inventory "$release_inventory" \
+                  --retention-days "$CACHE_RETENTION_DAYS" \
+                  --minimum-generations "$CACHE_MINIMUM_GENERATIONS" \
+                  --gc-grace-days "$CACHE_GC_GRACE_DAYS" \
+                  "${prior[@]}"
+            )
+            snapshot_status=$?
+            set -e
+            if test "$snapshot_status" -eq 0; then
+              recovered=true
+              break
+            fi
+            test "$attempt" -lt 6
+            sleep 5
+          done
+          test "$recovered" = true
+          printf 'output=%s\n' "$output" >> "$GITHUB_OUTPUT"
+
+      - name: Stage the v2 Pages site
+        id: pages
+        run: |
+          set -euo pipefail
+          prepared='${{ steps.public_graph.outputs.output }}'
+          test -d "$prepared/pages"
+          test -f "$prepared/release-plan.json"
+          site="$RUNNER_TEMP/substitute-pages-site"
+          mkdir -- "$site"
+          mv -- "$prepared/pages" "$site/v2"
+          snapshot_manifest="$RUNNER_TEMP/substitute-pages-snapshot-manifest"
+          (
+            cd "$site/v2"
+            find . -type f \
+              ! -path './substitute-cache-snapshot' -print0 |
+              LC_ALL=C sort -z |
+              xargs -0 -r sha256sum --
+          ) > "$snapshot_manifest"
+          test -s "$snapshot_manifest"
+          snapshot_sha256="$(
+            sha256sum "$snapshot_manifest" | cut -d ' ' -f 1
+          )"
+          [[ "$snapshot_sha256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$GITHUB_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$GITHUB_RUN_ATTEMPT" =~ ^[0-9]+$ ]]
+          {
+            printf 'snapshot-sha256:%s\n' "$snapshot_sha256"
+            printf 'github-run-id:%s\n' "$GITHUB_RUN_ID"
+            printf 'github-run-attempt:%s\n' "$GITHUB_RUN_ATTEMPT"
+          } > "$site/v2/substitute-cache-snapshot"
+          printf 'site=%s\n' "$site" >> "$GITHUB_OUTPUT"
+          printf 'plan=%s\n' "$prepared/release-plan.json" >> "$GITHUB_OUTPUT"
+
+      - name: Validate every staged narinfo signature
+        run: |
+          set -euo pipefail
+          site='${{ steps.pages.outputs.site }}'
+          local_index="$site/v2"
+          mapfile -d '' -t narinfos < <(
+            find "$local_index" -maxdepth 1 -type f -name '*.narinfo' \
+              -print0 | sort -z
+          )
+          test "${#narinfos[@]}" -gt 0
+          expected="$RUNNER_TEMP/staged-substitute-paths"
+          : > "$expected"
+          for narinfo in "${narinfos[@]}"; do
+            store_path="$(sed -n 's/^StorePath: //p' "$narinfo")"
+            nar_url="$(sed -n 's/^URL: //p' "$narinfo")"
+            [[ "$store_path" =~ ^/gnu/store/[0-9abcdfghijklmnpqrsvwxyz]{32}-.+ ]]
+            [[ "$nar_url" =~ ^https://github.com/${GITHUB_REPOSITORY}/releases/download/substitute-cache-nars-v2-[0-9a-f]{40}-[0-9a-f]{40}-[0-9]{4}/nar-v2-sha256-[0-9a-f]{64}$ ]]
+            printf '%s\n' "$store_path" >> "$expected"
+          done
+          sort -u -o "$expected" "$expected"
+          test "$(wc -l < "$expected")" -eq "${#narinfos[@]}"
+
+          query="$RUNNER_TEMP/staged-substitute-query"
+          {
+            printf 'have'
+            while IFS= read -r store_path; do
+              printf ' %s' "$store_path"
+            done < "$expected"
+            printf '\n'
+          } > "$query"
+
+          port="$(
+            python3 -c \
+              'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'
+          )"
+          python3 -m http.server "$port" \
+            --bind 127.0.0.1 --directory "$site" \
+            > "$RUNNER_TEMP/staged-substitute-http.log" 2>&1 &
+          server_pid=$!
+          stop_server() {
+            kill "$server_pid" 2>/dev/null || true
+            wait "$server_pid" 2>/dev/null || true
+          }
+          trap stop_server EXIT
+          for attempt in $(seq 1 20); do
+            kill -0 "$server_pid" 2>/dev/null
+            if curl --fail --silent --show-error \
+                "http://127.0.0.1:$port/v2/nix-cache-info" \
+                > /dev/null; then
+              break
+            fi
+            test "$attempt" -lt 20
+            sleep 0.25
+          done
+
+          actual="$RUNNER_TEMP/staged-substitute-query-result"
+          "$GUIX" substitute --query \
+            --substitute-urls="http://127.0.0.1:$port/v2" \
+            < "$query" | sed '/^$/d' | sort -u > "$actual"
+          cmp -- "$expected" "$actual"
+          stop_server
+          trap - EXIT
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        with:
+          path: ${{ steps.pages.outputs.site }}
+
+      - name: Revoke invalid GC markers before the Pages transition
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          marker_regex='^substitute-cache-gc-v2-[0-9a-f]{40}-[0-9a-f]{40}$'
+          jq -e '
+            [.revoke_gc_marker_releases[] |
+              [.repository, .release_tag] | @tsv] as $revoked
+            | [.delete_releases[] |
+                [.repository, .release_tag] | @tsv] as $deleted
+            | (($revoked + $deleted | length) ==
+               ($revoked + $deleted | unique | length))
+          ' '${{ steps.pages.outputs.plan }}' > /dev/null
+          delete_release_if_present() {
+            local repository="$1"
+            local tag="$2"
+            local error_file="$RUNNER_TEMP/revoke-$tag.error"
+            local release_id
+            if ! release_id="$(
+              gh api "repos/$repository/releases/tags/$tag" \
+                --jq '.id' 2> "$error_file"
+            )"; then
+              if grep -Fq '(HTTP 404)' "$error_file"; then
+                rm -f -- "$error_file"
+                return 0
+              fi
+              cat -- "$error_file" >&2
+              return 1
+            fi
+            rm -f -- "$error_file"
+            [[ "$release_id" =~ ^[0-9]+$ ]]
+            gh release delete "$tag" \
+              --repo "$repository" --cleanup-tag --yes
+          }
+
+          jq -r \
+            '.revoke_gc_marker_releases[] | [.repository, .release_tag] | @tsv' \
+            '${{ steps.pages.outputs.plan }}' |
+          while IFS=$'\t' read -r repository tag; do
+            test "$repository" = "$GITHUB_REPOSITORY"
+            [[ "$tag" =~ $marker_regex ]]
+            delete_release_if_present "$repository" "$tag"
+          done
+
+      - name: Deploy retained narinfo index to GitHub Pages
         id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+
+      - name: Verify the exact Pages snapshot and published cache
+        run: |
+          set -euo pipefail
+          cache_url='${{ steps.deploy.outputs.page_url }}v2'
+          local_index='${{ steps.pages.outputs.site }}/v2'
+          local_snapshot="$local_index/substitute-cache-snapshot"
+          downloaded_snapshot="$RUNNER_TEMP/published-substitute-cache-snapshot"
+          test -s "$local_snapshot"
+          snapshot_url="$cache_url/substitute-cache-snapshot?run=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent --show-error --location \
+                --header 'Cache-Control: no-cache' \
+                --output "$downloaded_snapshot" "$snapshot_url" &&
+                cmp -s -- "$local_snapshot" "$downloaded_snapshot"; then
+              break
+            fi
+            test "$attempt" -lt 12
+            sleep 10
+          done
+          cmp -- "$local_snapshot" "$downloaded_snapshot"
+
+          narinfo="$(find "$local_index" -maxdepth 1 -type f -name '*.narinfo' | sort | head -n 1)"
+          test -n "$narinfo"
+          name="$(basename -- "$narinfo")"
+          downloaded="$RUNNER_TEMP/published.narinfo"
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent --show-error --location \
+                --output "$downloaded" "$cache_url/$name" &&
+                cmp -s -- "$narinfo" "$downloaded"; then
+              break
+            fi
+            test "$attempt" -lt 12
+            sleep 10
+          done
+          store_path="$(sed -n 's/^StorePath: //p' "$narinfo")"
+          nar_url="$(sed -n 's/^URL: //p' "$narinfo")"
+          test -n "$store_path"
+          [[ "$nar_url" =~ ^https://github.com/${GITHUB_REPOSITORY}/releases/download/substitute-cache-nars-v2-[0-9a-f]{40}-[0-9a-f]{40}-[0-9]{4}/nar-v2-sha256-[0-9a-f]{64}$ ]]
+          curl --fail --silent --show-error --location --head \
+            --max-time 60 "$nar_url" >/dev/null
+          query_result="$(
+            printf 'have %s\n' "$store_path" |
+              "$GUIX" substitute --query --substitute-urls="$cache_url"
+          )"
+          grep -Fx -- "$store_path" <<< "$query_result"
+
+      - name: Record the verified Pages deployment for garbage collection
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          marker_regex='^substitute-cache-gc-v2-[0-9a-f]{40}-[0-9a-f]{40}$'
+          notes="$RUNNER_TEMP/substitute-gc-marker-notes"
+          jq -r \
+            '.create_gc_marker_releases[] | [.repository, .release_tag] | @tsv' \
+            '${{ steps.pages.outputs.plan }}' |
+          while IFS=$'\t' read -r repository tag; do
+            test "$repository" = "$GITHUB_REPOSITORY"
+            [[ "$tag" =~ $marker_regex ]]
+            printf 'Records a verified Pages deployment for %s.\n' \
+              "${tag#substitute-cache-gc-v2-}" > "$notes"
+            gh release create "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Substitute cache GC marker ${tag#substitute-cache-gc-v2-}" \
+              --notes-file "$notes" \
+              --prerelease --latest=false
+          done
+
+      - name: Remove Releases authorized by the GC plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          current='${{ steps.generation.outputs.release_tag }}'
+          managed_regex='^(substitute-cache-v2-[0-9a-f]{40}-[0-9a-f]{40}|substitute-cache-nars-v2-[0-9a-f]{40}-[0-9a-f]{40}-[0-9]{4}|substitute-cache-gc-v2-[0-9a-f]{40}-[0-9a-f]{40})$'
+          # Preserve the helper's metadata, shard, then marker deletion order.
+          jq -r '.delete_releases[] | [.repository, .release_tag] | @tsv' \
+            '${{ steps.pages.outputs.plan }}' |
+          while IFS=$'\t' read -r repository tag; do
+            test "$repository" = "$GITHUB_REPOSITORY"
+            [[ "$tag" =~ $managed_regex ]]
+            test "$tag" != "$current"
+            gh release delete "$tag" \
+              --repo "$repository" --cleanup-tag --yes
+          done
