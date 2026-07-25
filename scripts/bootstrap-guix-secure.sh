@@ -17,7 +17,21 @@ readonly guix_branch=master
 readonly guix_introduction=9edb3f66fd807b096b48283debdcddccfea34bad
 readonly guix_introduction_signer='BBB0 2DDF 2CEA F6A8 0D1D  E643 A2A0 6DF2 A33A 54FA'
 readonly official_substitute_urls='https://ci.guix.gnu.org https://bordeaux.guix.gnu.org'
-readonly bootstrap_download_methods=content-addressed-mirrors
+
+# Codeberg has regenerated this release archive more than once while keeping
+# the tag contents unchanged (https://codeberg.org/guix/guix/issues/9920).
+# Current Guix intentionally retains the earlier bytes.  Seed that exact
+# fixed-output object from Guix's content-addressed mirrors before the pull;
+# if the current unpinned channel no longer refers to it, the object is simply
+# unused.
+readonly bootstrap_seed_name=guile-lzlib-0.3.0.tar.gz
+readonly bootstrap_seed_hash=1v1pfqp6hwl0rivs7swhqnfgznxlfnws9ldmn6avnhd10filfa3a
+readonly bootstrap_seed_sha256=6a2847a303a141bb95b1b5d1a4b975b4dbff9cc590eba377cc8072682e7637ec
+readonly bootstrap_seed_store_path=/gnu/store/mifnwzdhdz0aj01ig4kfig0ajaq7phzy-guile-lzlib-0.3.0.tar.gz
+readonly -a bootstrap_seed_mirrors=(
+    https://bordeaux.guix.gnu.org
+    https://ci.guix.gnu.org
+)
 
 # This is the official checker embedded in the 2026-07-02 Guix advisory.  Pin
 # both the artwork commit containing the post and the extracted Scheme block.
@@ -143,6 +157,9 @@ esac
 [ -d "$work_parent" ] || die "work directory parent does not exist: $work_parent"
 work_parent="$(cd -- "$work_parent" && pwd -P)"
 work_dir="$work_parent/$work_name"
+case "$work_dir" in
+    *[?#]*) die "--work-dir cannot contain '?' or '#'" ;;
+esac
 [ ! -e "$work_dir" ] && [ ! -L "$work_dir" ] ||
     die "--work-dir already exists: $work_dir"
 mkdir -m 700 -- "$work_dir"
@@ -292,8 +309,56 @@ checksum() {
     printf '%s\n' "${value%% *}"
 }
 
+seed_bootstrap_source() {
+    local archive="$work_dir/$bootstrap_seed_name"
+    local base url result store_path reported_hash
+    local seeded=0
+
+    for base in "${bootstrap_seed_mirrors[@]}"; do
+        rm -f -- "$archive"
+        url="$base/file/$bootstrap_seed_name/sha256/$bootstrap_seed_hash"
+        if retry_network curl \
+                --fail \
+                --silent \
+                --show-error \
+                --location \
+                --proto '=https' \
+                --proto-redir '=https' \
+                --tlsv1.2 \
+                --output "$archive" \
+                "$url"; then
+            if [ "$(checksum "$archive")" = "$bootstrap_seed_sha256" ]; then
+                seeded=1
+                break
+            fi
+            printf 'content-addressed source checksum mismatch from %s\n' \
+                "$base" >&2
+        fi
+    done
+    [ "$seeded" -eq 1 ] ||
+        die "could not fetch the expected $bootstrap_seed_name source object"
+    [ -f "$archive" ] && [ ! -L "$archive" ] ||
+        die "content-addressed source is not a regular file"
+
+    # `guix download file://...` adds a flat file under its basename.  Requiring
+    # both its reported hash and exact fixed-output store path prevents a
+    # successful-but-wrong seed from masking the later authenticated build.
+    result="$(env -u GUIX_BUILD_OPTIONS -u GUIX_SUBSTITUTE_URLS \
+        GUIX_DAEMON_SOCKET="$daemon_socket" \
+        "$bootstrap_guix" download --format=nix-base32 "file://$archive")" ||
+        die "could not add the content-addressed source to the private store"
+    store_path="${result%%$'\n'*}"
+    [ "$store_path" != "$result" ] ||
+        die "guix download returned an incomplete source result"
+    reported_hash="${result#*$'\n'}"
+    [ "$store_path" = "$bootstrap_seed_store_path" ] ||
+        die "content-addressed source resolved to an unexpected store path"
+    [ "$reported_hash" = "$bootstrap_seed_hash" ] ||
+        die "content-addressed source resolved to an unexpected hash"
+}
+
 export GUIX_DAEMON_SOCKET="$daemon_socket"
-unset GUIX_BUILD_OPTIONS GUIX_SUBSTITUTE_URLS
+unset GUIX_BUILD_OPTIONS GUIX_DOWNLOAD_METHODS GUIX_SUBSTITUTE_URLS
 
 start_daemon \
     bootstrap "$bootstrap_daemon" "$work_dir/daemon-bootstrap.log" \
@@ -301,16 +366,18 @@ start_daemon \
     --listen="$daemon_socket" \
     --no-substitutes
 
-# Both client and daemon prohibit substitutes.  Fetch fixed-output source
-# archives by their authenticated hashes from Guix's content-addressed source
-# mirrors instead of mutable upstream-generated archives.  These are ordinary
-# flat-file downloads checked against the derivation hash, not substitutes.
+# Both client and daemon prohibit substitutes.  Guix computes its replacement
+# profile in a clean environment, so an outer GUIX_DOWNLOAD_METHODS setting
+# cannot change that computation's source derivations.  Pre-seed the one known
+# regenerated archive explicitly; these are ordinary flat-file bytes checked
+# against the derivation hash, not a substitute.
+seed_bootstrap_source
+
 # Retrying is safe: pull profiles are transactional and incomplete builds stay
 # valid store objects or garbage.
 retry_network env \
     -u GUIX_BUILD_OPTIONS -u GUIX_SUBSTITUTE_URLS \
     GUIX_DAEMON_SOCKET="$daemon_socket" \
-    GUIX_DOWNLOAD_METHODS="$bootstrap_download_methods" \
     "$bootstrap_guix" pull \
     --no-substitutes \
     --channels="$channels" \

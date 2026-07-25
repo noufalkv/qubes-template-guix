@@ -42,10 +42,35 @@ printf ' %s' "$@" >> "$EVENT_LOG"
 printf '\n' >> "$EVENT_LOG"
 
 case "${1:-} ${2:-}" in
+    'download --format=nix-base32')
+        [ "$role" = bootstrap ]
+        [ -z "${GUIX_DOWNLOAD_METHODS:-}" ]
+        [ -z "${GUIX_SUBSTITUTE_URLS:-}" ]
+        case "${3:-}" in
+            file://*/guile-lzlib-0.3.0.tar.gz) ;;
+            *) exit 31 ;;
+        esac
+        if [ "${FAKE_MODE:?}" = seed-store-mismatch ]; then
+            printf '%s\n' \
+                '/gnu/store/00000000000000000000000000000000-guile-lzlib-0.3.0.tar.gz'
+        else
+            printf '%s\n' \
+                '/gnu/store/mifnwzdhdz0aj01ig4kfig0ajaq7phzy-guile-lzlib-0.3.0.tar.gz'
+        fi
+        if [ "${FAKE_MODE:?}" = seed-hash-mismatch ]; then
+            printf '%s\n' \
+                '0000000000000000000000000000000000000000000000000000'
+        else
+            printf '%s\n' \
+                '1v1pfqp6hwl0rivs7swhqnfgznxlfnws9ldmn6avnhd10filfa3a'
+        fi
+        printf 'gate:seeded-content-addressed-source\n' >> "$EVENT_LOG"
+        ;;
     'pull --no-substitutes')
         [ "$role" = bootstrap ]
-        [ "${GUIX_DOWNLOAD_METHODS:-}" = content-addressed-mirrors ]
-        printf 'gate:content-addressed-sources\n' >> "$EVENT_LOG"
+        [ -z "${GUIX_DOWNLOAD_METHODS:-}" ]
+        [ -z "${GUIX_SUBSTITUTE_URLS:-}" ]
+        printf 'gate:source-only-pull\n' >> "$EVENT_LOG"
         profile=""
         channels=""
         for argument in "$@"; do
@@ -176,6 +201,7 @@ cat > "$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 output=""
+url="${*: -1}"
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --output) output="${2:?}"; shift 2 ;;
@@ -183,8 +209,23 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 [ -n "$output" ]
-printf '%s\n' '```scheme' '(display "fixture")' '```' > "$output"
-printf 'gate:downloaded-pinned-advisory\n' >> "${EVENT_LOG:?}"
+case "$output" in
+    *.tar.gz)
+        seed_path='/file/guile-lzlib-0.3.0.tar.gz/sha256/'
+        seed_hash=1v1pfqp6hwl0rivs7swhqnfgznxlfnws9ldmn6avnhd10filfa3a
+        case "$url" in
+            "https://bordeaux.guix.gnu.org$seed_path$seed_hash"|\
+            "https://ci.guix.gnu.org$seed_path$seed_hash") ;;
+            *) exit 1 ;;
+        esac
+        printf 'content-addressed fixture\n' > "$output"
+        printf 'gate:downloaded-content-addressed-source\n' >> "${EVENT_LOG:?}"
+        ;;
+    *)
+        printf '%s\n' '```scheme' '(display "fixture")' '```' > "$output"
+        printf 'gate:downloaded-pinned-advisory\n' >> "${EVENT_LOG:?}"
+        ;;
+esac
 EOF
 
 cat > "$fake_bin/sha256sum" <<'EOF'
@@ -192,6 +233,13 @@ cat > "$fake_bin/sha256sum" <<'EOF'
 set -euo pipefail
 target="${*: -1}"
 case "$target" in
+    *.tar.gz)
+        if [ "${FAKE_MODE:?}" = seed-digest-mismatch ]; then
+            digest=0000000000000000000000000000000000000000000000000000000000000000
+        else
+            digest=6a2847a303a141bb95b1b5d1a4b975b4dbff9cc590eba377cc8072682e7637ec
+        fi
+        ;;
     *.md) digest=d410b62e5753c5a4d8d0446033fdd252980c0207cce8590cade381f498375428 ;;
     *.scm) digest=a20c52fb0f968aa9b2bbddd96c3f55479bb70dede503a9a0a4534f34ffa283bb ;;
     *) exit 1 ;;
@@ -272,8 +320,11 @@ assert_absent() {
 # The successful path proves the complete trust transition and its ordering.
 run_case success success || fail "secure bootstrap success fixture failed"
 bootstrap_start="$(event_line '^daemon:start:bootstrap:.*--no-substitutes')"
+seed_download="$(event_line '^gate:downloaded-content-addressed-source$')"
+seed_checksum="$(event_line '^gate:checksum:guile-lzlib-0\.3\.0\.tar\.gz$')"
+seed_store="$(event_line '^gate:seeded-content-addressed-source$')"
 pull="$(event_line '^guix:bootstrap: pull --no-substitutes ' )"
-sources="$(event_line '^gate:content-addressed-sources$')"
+source_only="$(event_line '^gate:source-only-pull$')"
 authenticated="$(event_line '^gate:authenticated-source$')"
 floor="$(event_line '^gate:security-floor$')"
 safe_start="$(event_line '^daemon:start:fixed-safe:.*--no-substitutes')"
@@ -283,8 +334,12 @@ enabled="$(event_line '^daemon:start:fixed:.*--substitute-urls=https://ci\.guix\
 checker="$(event_line '^gate:advisory-check$')"
 
 [ "$bootstrap_start" -lt "$pull" ] || fail "pull preceded bootstrap daemon"
-[ "$pull" -lt "$sources" ] || fail "source policy preceded pull"
-[ "$sources" -lt "$authenticated" ] || fail "source authentication preceded pull"
+[ "$bootstrap_start" -lt "$seed_download" ] || fail "source seed preceded bootstrap daemon"
+[ "$seed_download" -lt "$seed_checksum" ] || fail "source seed was not checked"
+[ "$seed_checksum" -lt "$seed_store" ] || fail "source entered the store before verification"
+[ "$seed_store" -lt "$pull" ] || fail "pull preceded the verified source seed"
+[ "$pull" -lt "$source_only" ] || fail "source-only policy preceded pull"
+[ "$source_only" -lt "$authenticated" ] || fail "source authentication preceded pull"
 [ "$authenticated" -lt "$floor" ] || fail "floor preceded authentication"
 [ "$floor" -lt "$safe_start" ] || fail "fixed daemon started before floor"
 [ "$safe_start" -lt "$ci_key" ] || fail "key authorization preceded fixed daemon"
@@ -306,6 +361,17 @@ grep -q '^guix_security_floor=897832f374dcdc9eeaf19d01e70b9a92fccfc68c$' \
     "$test_root/output-success" || fail "security floor output missing"
 [ -d "$test_root/run-success/guix-source" ] ||
     fail "authenticated checkout was not retained for the caller"
+
+# A bad mirror response or an unexpected store identity fails before the pull.
+for mode in seed-digest-mismatch seed-store-mismatch seed-hash-mismatch; do
+    if run_case "$mode" "$mode"; then
+        fail "$mode unexpectedly succeeded"
+    fi
+    event_line '^daemon:stop:bootstrap$' >/dev/null
+    assert_absent '^guix:bootstrap: pull '
+    [ ! -s "$test_root/output-$mode" ] ||
+        fail "$mode emitted trusted outputs"
+done
 
 # A revision below the floor cannot start or authorize the replacement daemon.
 if run_case floor-failure floor-failure; then
