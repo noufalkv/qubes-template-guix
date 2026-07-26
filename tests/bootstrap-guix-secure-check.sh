@@ -47,24 +47,34 @@ case "${1:-} ${2:-}" in
         [ -z "${GUIX_DOWNLOAD_METHODS:-}" ]
         [ -z "${GUIX_SUBSTITUTE_URLS:-}" ]
         case "${3:-}" in
-            file://*/guile-lzlib-0.3.0.tar.gz) ;;
+            file://*/guile-lzlib-0.3.0.tar.gz)
+                seed_name=guile-lzlib-0.3.0.tar.gz
+                seed_path=/gnu/store/mifnwzdhdz0aj01ig4kfig0ajaq7phzy-guile-lzlib-0.3.0.tar.gz
+                seed_hash=1v1pfqp6hwl0rivs7swhqnfgznxlfnws9ldmn6avnhd10filfa3a
+                ;;
+            file://*/guile-zlib-0.2.2.tar.gz)
+                seed_name=guile-zlib-0.2.2.tar.gz
+                seed_path=/gnu/store/chwnfavlpd6kpj2fzb2bbpyy8m6jshqf-guile-zlib-0.2.2.tar.gz
+                seed_hash=04p9lb3bq5y0k358s8agpksx9x68vzx330cb8jkn4qp3qj7cmnx2
+                ;;
             *) exit 31 ;;
         esac
-        if [ "${FAKE_MODE:?}" = seed-store-mismatch ]; then
+        if [ "${FAKE_MODE:?}" = seed-store-mismatch ] &&
+                [ "$seed_name" = guile-zlib-0.2.2.tar.gz ]; then
             printf '%s\n' \
-                '/gnu/store/00000000000000000000000000000000-guile-lzlib-0.3.0.tar.gz'
+                "/gnu/store/00000000000000000000000000000000-$seed_name"
         else
-            printf '%s\n' \
-                '/gnu/store/mifnwzdhdz0aj01ig4kfig0ajaq7phzy-guile-lzlib-0.3.0.tar.gz'
+            printf '%s\n' "$seed_path"
         fi
-        if [ "${FAKE_MODE:?}" = seed-hash-mismatch ]; then
+        if [ "${FAKE_MODE:?}" = seed-hash-mismatch ] &&
+                [ "$seed_name" = guile-zlib-0.2.2.tar.gz ]; then
             printf '%s\n' \
                 '0000000000000000000000000000000000000000000000000000'
         else
-            printf '%s\n' \
-                '1v1pfqp6hwl0rivs7swhqnfgznxlfnws9ldmn6avnhd10filfa3a'
+            printf '%s\n' "$seed_hash"
         fi
-        printf 'gate:seeded-content-addressed-source\n' >> "$EVENT_LOG"
+        printf 'gate:seeded-content-addressed-source:%s\n' \
+            "$seed_name" >> "$EVENT_LOG"
         ;;
     'pull --no-substitutes')
         [ "$role" = bootstrap ]
@@ -211,15 +221,25 @@ done
 [ -n "$output" ]
 case "$output" in
     *.tar.gz)
-        seed_path='/file/guile-lzlib-0.3.0.tar.gz/sha256/'
-        seed_hash=1v1pfqp6hwl0rivs7swhqnfgznxlfnws9ldmn6avnhd10filfa3a
+        seed_name="${output##*/}"
+        case "$seed_name" in
+            guile-lzlib-0.3.0.tar.gz)
+                seed_hash=1v1pfqp6hwl0rivs7swhqnfgznxlfnws9ldmn6avnhd10filfa3a
+                ;;
+            guile-zlib-0.2.2.tar.gz)
+                seed_hash=04p9lb3bq5y0k358s8agpksx9x68vzx330cb8jkn4qp3qj7cmnx2
+                ;;
+            *) exit 1 ;;
+        esac
+        seed_path="/file/$seed_name/sha256/$seed_hash"
         case "$url" in
-            "https://bordeaux.guix.gnu.org$seed_path$seed_hash"|\
-            "https://ci.guix.gnu.org$seed_path$seed_hash") ;;
+            "https://bordeaux.guix.gnu.org$seed_path"|\
+            "https://ci.guix.gnu.org$seed_path") ;;
             *) exit 1 ;;
         esac
         printf 'content-addressed fixture\n' > "$output"
-        printf 'gate:downloaded-content-addressed-source\n' >> "${EVENT_LOG:?}"
+        printf 'gate:downloaded-content-addressed-source:%s\n' \
+            "$seed_name" >> "${EVENT_LOG:?}"
         ;;
     *)
         printf '%s\n' '```scheme' '(display "fixture")' '```' > "$output"
@@ -232,12 +252,16 @@ cat > "$fake_bin/sha256sum" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 target="${*: -1}"
-case "$target" in
-    *.tar.gz)
+name="${target##*/}"
+case "$name" in
+    guile-lzlib-0.3.0.tar.gz)
+        digest=6a2847a303a141bb95b1b5d1a4b975b4dbff9cc590eba377cc8072682e7637ec
+        ;;
+    guile-zlib-0.2.2.tar.gz)
         if [ "${FAKE_MODE:?}" = seed-digest-mismatch ]; then
             digest=0000000000000000000000000000000000000000000000000000000000000000
         else
-            digest=6a2847a303a141bb95b1b5d1a4b975b4dbff9cc590eba377cc8072682e7637ec
+            digest=a2dbca8ec4e36262a7448b8131fadfc8f4d4f5bc4f218dca98c017bcc6a2e912
         fi
         ;;
     *.md) digest=d410b62e5753c5a4d8d0446033fdd252980c0207cce8590cade381f498375428 ;;
@@ -320,9 +344,12 @@ assert_absent() {
 # The successful path proves the complete trust transition and its ordering.
 run_case success success || fail "secure bootstrap success fixture failed"
 bootstrap_start="$(event_line '^daemon:start:bootstrap:.*--no-substitutes')"
-seed_download="$(event_line '^gate:downloaded-content-addressed-source$')"
-seed_checksum="$(event_line '^gate:checksum:guile-lzlib-0\.3\.0\.tar\.gz$')"
-seed_store="$(event_line '^gate:seeded-content-addressed-source$')"
+lzlib_download="$(event_line '^gate:downloaded-content-addressed-source:guile-lzlib-0\.3\.0\.tar\.gz$')"
+lzlib_checksum="$(event_line '^gate:checksum:guile-lzlib-0\.3\.0\.tar\.gz$')"
+lzlib_store="$(event_line '^gate:seeded-content-addressed-source:guile-lzlib-0\.3\.0\.tar\.gz$')"
+zlib_download="$(event_line '^gate:downloaded-content-addressed-source:guile-zlib-0\.2\.2\.tar\.gz$')"
+zlib_checksum="$(event_line '^gate:checksum:guile-zlib-0\.2\.2\.tar\.gz$')"
+zlib_store="$(event_line '^gate:seeded-content-addressed-source:guile-zlib-0\.2\.2\.tar\.gz$')"
 pull="$(event_line '^guix:bootstrap: pull --no-substitutes ' )"
 source_only="$(event_line '^gate:source-only-pull$')"
 authenticated="$(event_line '^gate:authenticated-source$')"
@@ -334,10 +361,13 @@ enabled="$(event_line '^daemon:start:fixed:.*--substitute-urls=https://ci\.guix\
 checker="$(event_line '^gate:advisory-check$')"
 
 [ "$bootstrap_start" -lt "$pull" ] || fail "pull preceded bootstrap daemon"
-[ "$bootstrap_start" -lt "$seed_download" ] || fail "source seed preceded bootstrap daemon"
-[ "$seed_download" -lt "$seed_checksum" ] || fail "source seed was not checked"
-[ "$seed_checksum" -lt "$seed_store" ] || fail "source entered the store before verification"
-[ "$seed_store" -lt "$pull" ] || fail "pull preceded the verified source seed"
+[ "$bootstrap_start" -lt "$lzlib_download" ] || fail "source seed preceded bootstrap daemon"
+[ "$lzlib_download" -lt "$lzlib_checksum" ] || fail "lzlib seed was not checked"
+[ "$lzlib_checksum" -lt "$lzlib_store" ] || fail "lzlib entered the store before verification"
+[ "$lzlib_store" -lt "$zlib_download" ] || fail "source seed order changed"
+[ "$zlib_download" -lt "$zlib_checksum" ] || fail "zlib seed was not checked"
+[ "$zlib_checksum" -lt "$zlib_store" ] || fail "zlib entered the store before verification"
+[ "$zlib_store" -lt "$pull" ] || fail "pull preceded the verified source seeds"
 [ "$pull" -lt "$source_only" ] || fail "source-only policy preceded pull"
 [ "$source_only" -lt "$authenticated" ] || fail "source authentication preceded pull"
 [ "$authenticated" -lt "$floor" ] || fail "floor preceded authentication"
@@ -367,6 +397,10 @@ for mode in seed-digest-mismatch seed-store-mismatch seed-hash-mismatch; do
     if run_case "$mode" "$mode"; then
         fail "$mode unexpectedly succeeded"
     fi
+    event_line '^gate:seeded-content-addressed-source:guile-lzlib-0\.3\.0\.tar\.gz$' \
+        >/dev/null
+    event_line '^gate:downloaded-content-addressed-source:guile-zlib-0\.2\.2\.tar\.gz$' \
+        >/dev/null
     event_line '^daemon:stop:bootstrap$' >/dev/null
     assert_absent '^guix:bootstrap: pull '
     [ ! -s "$test_root/output-$mode" ] ||
