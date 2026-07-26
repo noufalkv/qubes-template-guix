@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Replace an old binary Guix bootstrap with an authenticated, current Guix
-# without letting the bootstrap daemon consume a substitute.  The security
-# floor below is a minimum, not a channel pin: config/channels.scm stays
-# unpinned and every invocation resolves its current authenticated head.
+# Build a current Guix from authenticated source before allowing substitutes.
+# The signed Guix 1.5 binary is used only to authenticate Git history.  The
+# security floor below is a minimum, not a channel pin: config/channels.scm
+# stays unpinned and each invocation resolves its current authenticated head.
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -18,15 +18,16 @@ readonly guix_introduction=9edb3f66fd807b096b48283debdcddccfea34bad
 readonly guix_introduction_signer='BBB0 2DDF 2CEA F6A8 0D1D  E643 A2A0 6DF2 A33A 54FA'
 readonly official_substitute_urls='https://ci.guix.gnu.org https://bordeaux.guix.gnu.org'
 
-# Codeberg has regenerated these release archives while keeping their tag
-# contents unchanged (https://codeberg.org/guix/guix/issues/9920).  Current
-# Guix intentionally retains the earlier bytes.  Seed those exact fixed-output
-# objects from Guix's content-addressed mirrors before the pull; an object is
-# simply unused once the current unpinned channel no longer refers to it.
-readonly -a bootstrap_seed_mirrors=(
-    https://bordeaux.guix.gnu.org
-    https://ci.guix.gnu.org
-)
+# Current Guix needs a newer Guile-Git than Ubuntu 24.04 ships.  Pin both the
+# signed annotated tag object and its peeled commit, and verify the signature
+# with the maintainer key from Guix's authenticated keyring before executing
+# any of this source.
+readonly guile_git_repository=https://codeberg.org/guile-git/guile-git.git
+readonly guile_git_tag=v0.10.0
+readonly guile_git_tag_object=a4811307677141cb3600aba42f8a6fd2ac096d4e
+readonly guile_git_commit=05d4a48c811f29c8db80ee6697fe658950fb503e
+readonly guile_git_signer=3CE464558A84FDC69DB40CFB090B11993D9AEBB5
+readonly guile_git_key=civodul-3D9AEBB5.key
 
 # This is the official checker embedded in the 2026-07-02 Guix advisory.  Pin
 # both the artwork commit containing the post and the extracted Scheme block.
@@ -47,13 +48,14 @@ usage() {
 Usage: bootstrap-guix-secure.sh --work-dir DIR --output-file FILE [options]
 
 Options:
-  --work-dir DIR           New private directory for the fixed profile, source
-                           checkout, daemon socket, and logs (required).
+  --work-dir DIR           New private directory for the profile, authenticated
+                           source, daemon socket, and logs (required).
   --output-file FILE       Existing regular file to receive GitHub Actions
                            key=value outputs (required; defaults to GITHUB_OUTPUT).
   --channels FILE          Unpinned authenticated channels file.
                            Default: config/channels.scm.
-  --bootstrap-profile DIR  Installed binary-bootstrap Guix profile.
+  --bootstrap-profile DIR  Signed Guix 1.5 binary-bootstrap profile.  It is
+                           used only for local Git authentication.
   --build-users-group NAME guix-daemon build users group. Default: guixbuild.
   --root-command COMMAND   Single command used to run daemon/ACL operations as
                            root. Default: sudo when not already root.
@@ -127,18 +129,39 @@ if grep -Eq '\(commit([[:space:]]|\))' "$channels"; then
 fi
 
 bootstrap_guix="$bootstrap_profile/bin/guix"
-bootstrap_daemon="$bootstrap_profile/bin/guix-daemon"
 [ -x "$bootstrap_guix" ] || die "bootstrap guix is not executable: $bootstrap_guix"
-[ -x "$bootstrap_daemon" ] ||
-    die "bootstrap guix-daemon is not executable: $bootstrap_daemon"
 
-for command in awk cat chmod cmp curl env git grep mkdir python3 rm seq sha256sum sleep; do
+for command in autoreconf awk cat chmod cmp curl env git gpg grep make mkdir \
+        nproc python3 rm seq sha256sum sleep; do
     need "$command"
 done
+env_command="$(command -v env)"
 if [ "$root_command_set" -eq 0 ] && [ "$(id -u)" -ne 0 ]; then
     root_command=sudo
 fi
 [ -z "$root_command" ] || need "$root_command"
+
+# Do not let ambient Git configuration redirect the reviewed HTTPS remotes,
+# install executable template hooks, or relocate the repositories.  HOME is
+# deliberately left untouched; Git's explicit config controls are sufficient.
+export GIT_CONFIG_GLOBAL=/dev/null
+export GIT_CONFIG_SYSTEM=/dev/null
+export GIT_CONFIG_NOSYSTEM=1
+export GIT_TERMINAL_PROMPT=0
+unset GIT_ASKPASS SSH_ASKPASS GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
+unset GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_INDEX_FILE
+
+# These variables can replace Guix modules, redirect the pull, move state and
+# authorization files, or explicitly disable substitute authentication.  None
+# is a valid caller override for this trust bootstrap.
+unset GUIX GUIX_ALLOW_UNAUTHENTICATED_SUBSTITUTES GUIX_BUILD_OPTIONS
+unset GUIX_CONFIGURATION_DIRECTORY GUIX_DAEMON_SOCKET GUIX_DATABASE_DIRECTORY
+unset GUIX_DOWNLOAD_METHODS GUIX_EXTENSIONS_PATH GUIX_LOG_DIRECTORY
+unset GUIX_PACKAGE_PATH GUIX_PROFILE GUIX_PULL_URL GUIX_STATE_DIRECTORY
+unset GUIX_SUBSTITUTE_URLS GUIX_TLS_CERTIFICATE_DIRECTORY GUIX_UNINSTALLED
+unset NIX_CONF_DIR NIX_DB_DIR NIX_LOG_DIR NIX_REMOTE NIX_STATE_DIR
+unset NIX_STORE NIX_STORE_DIR
 
 case "$work_dir" in
     /*) ;;
@@ -162,10 +185,29 @@ mkdir -m 700 -- "$work_dir"
 profile="$work_dir/current-guix"
 daemon_socket="$work_dir/daemon-socket"
 source_checkout="$work_dir/guix-source"
+guile_git_checkout="$work_dir/guile-git-source"
+guile_git_prefix="$work_dir/guile-git"
+guile_git_gnupg="$work_dir/guile-git-gnupg"
+bootstrap_xdg_cache="$work_dir/bootstrap-xdg-cache"
+bootstrap_xdg_config="$work_dir/bootstrap-xdg-config"
+final_xdg_cache="$work_dir/final-xdg-cache"
+final_xdg_config="$work_dir/final-xdg-config"
+native_xdg_cache="$work_dir/native-xdg-cache"
+native_xdg_config="$work_dir/native-xdg-config"
+host_build_xdg_cache="$work_dir/host-build-xdg-cache"
+host_build_xdg_config="$work_dir/host-build-xdg-config"
+native_prefix="$work_dir/native-guix"
+empty_git_template="$work_dir/empty-git-template"
 describe_json="$work_dir/guix-describe.json"
 advisory_source="$work_dir/2026-07-02-security-advisory.md"
 advisory_checker="$work_dir/guix-substitute-and-pull-vuln-check.scm"
-advisory_output="$work_dir/advisory-check.out"
+
+mkdir -m 700 -- \
+    "$bootstrap_xdg_cache" "$bootstrap_xdg_config" \
+    "$final_xdg_cache" "$final_xdg_config" \
+    "$native_xdg_cache" "$native_xdg_config" \
+    "$host_build_xdg_cache" "$host_build_xdg_config" \
+    "$guile_git_gnupg" "$empty_git_template"
 
 daemon_pid=""
 daemon_job_pid=""
@@ -233,13 +275,13 @@ trap 'exit 143' TERM
 
 start_daemon() {
     local phase=$1
-    local daemon=$2
+    local command=$2
     local log_file=$3
     local pid_file="$work_dir/daemon-$phase.pid"
     local attempt recorded_pid=""
     shift 3
 
-    [ -x "$daemon" ] || die "$phase daemon is not executable: $daemon"
+    [ -x "$command" ] || die "$phase daemon command is not executable: $command"
     [ ! -e "$daemon_socket" ] && [ ! -L "$daemon_socket" ] ||
         die "refusing to replace an existing daemon socket: $daemon_socket"
     : > "$pid_file"
@@ -251,11 +293,11 @@ start_daemon() {
         # shellcheck disable=SC2016
         "$root_command" sh -c \
             'printf "%s\n" "$$" > "$1"; shift; exec "$@"' \
-            sh "$pid_file" "$daemon" "$@" >> "$log_file" 2>&1 &
+            sh "$pid_file" "$command" "$@" >> "$log_file" 2>&1 &
     else
         # shellcheck disable=SC2016
         sh -c 'printf "%s\n" "$$" > "$1"; shift; exec "$@"' \
-            sh "$pid_file" "$daemon" "$@" >> "$log_file" 2>&1 &
+            sh "$pid_file" "$command" "$@" >> "$log_file" 2>&1 &
     fi
     daemon_job_pid=$!
 
@@ -304,165 +346,204 @@ checksum() {
     printf '%s\n' "${value%% *}"
 }
 
-seed_bootstrap_source() {
-    [ "$#" -eq 4 ] || die "invalid bootstrap source record"
-    local name=$1
-    local expected_hash=$2
-    local expected_sha256=$3
-    local expected_store_path=$4
-    local seed_dir="$work_dir/bootstrap-source-$expected_hash-$name"
-    local archive="$seed_dir/$name"
-    local base url result store_path reported_hash
-    local seeded=0
+authenticate_guix() {
+    local guix=$1
+    local end=$2
+    local xdg_cache=$3
+    local xdg_config=$4
 
-    case "$name" in
-        ''|*[!A-Za-z0-9._+-]*) die "invalid bootstrap source name: $name" ;;
-    esac
-    if [ "${#expected_hash}" -ne 52 ] ||
-            [[ "$expected_hash" == *[!0123456789abcdfghijklmnpqrsvwxyz]* ]]; then
-        die "invalid bootstrap source Nix hash for $name"
-    fi
-    if [ "${#expected_sha256}" -ne 64 ] ||
-            [[ "$expected_sha256" == *[!0-9a-f]* ]]; then
-        die "invalid bootstrap source SHA-256 for $name"
-    fi
-    mkdir -m 700 -- "$seed_dir"
-    for base in "${bootstrap_seed_mirrors[@]}"; do
-        rm -f -- "$archive"
-        url="$base/file/$name/sha256/$expected_hash"
-        if retry_network curl \
-                --fail \
-                --silent \
-                --show-error \
-                --location \
-                --proto '=https' \
-                --proto-redir '=https' \
-                --tlsv1.2 \
-                --output "$archive" \
-                "$url"; then
-            if [ "$(checksum "$archive")" = "$expected_sha256" ]; then
-                seeded=1
-                break
-            fi
-            printf 'content-addressed source checksum mismatch from %s\n' \
-                "$base" >&2
-        fi
-    done
-    [ "$seeded" -eq 1 ] ||
-        die "could not fetch the expected $name source object"
-    [ -f "$archive" ] && [ ! -L "$archive" ] ||
-        die "content-addressed source is not a regular file"
-
-    # `guix download file://...` adds a flat file under its basename.  Requiring
-    # both its reported hash and exact fixed-output store path prevents a
-    # successful-but-wrong seed from masking the later authenticated build.
-    result="$(env -u GUIX_BUILD_OPTIONS -u GUIX_SUBSTITUTE_URLS \
-        GUIX_DAEMON_SOCKET="$daemon_socket" \
-        "$bootstrap_guix" download --format=nix-base32 "file://$archive")" ||
-        die "could not add the source through the isolated bootstrap daemon"
-    store_path="${result%%$'\n'*}"
-    [ "$store_path" != "$result" ] ||
-        die "guix download returned an incomplete source result"
-    reported_hash="${result#*$'\n'}"
-    [ "$store_path" = "$expected_store_path" ] ||
-        die "content-addressed source resolved to an unexpected store path"
-    [ "$reported_hash" = "$expected_hash" ] ||
-        die "content-addressed source resolved to an unexpected hash"
+    env \
+        -u GUILE_LOAD_PATH -u GUILE_LOAD_COMPILED_PATH \
+        -u GUIX_BUILD_OPTIONS -u GUIX_DOWNLOAD_METHODS \
+        -u GUIX_SUBSTITUTE_URLS -u GUIX \
+        XDG_CACHE_HOME="$xdg_cache" \
+        XDG_CONFIG_HOME="$xdg_config" \
+        GUIX_DAEMON_SOCKET="$work_dir/no-bootstrap-daemon" \
+        "$guix" git authenticate \
+        --repository="$source_checkout" \
+        --end="$end" \
+        --keyring=origin/keyring \
+        --cache-key="$guix_introduction" \
+        "$guix_introduction" "$guix_introduction_signer"
 }
 
-seed_bootstrap_sources() {
-    seed_bootstrap_source \
-        guile-lzlib-0.3.0.tar.gz \
-        1v1pfqp6hwl0rivs7swhqnfgznxlfnws9ldmn6avnhd10filfa3a \
-        6a2847a303a141bb95b1b5d1a4b975b4dbff9cc590eba377cc8072682e7637ec \
-        /gnu/store/mifnwzdhdz0aj01ig4kfig0ajaq7phzy-guile-lzlib-0.3.0.tar.gz
-    seed_bootstrap_source \
-        guile-zlib-0.2.2.tar.gz \
-        04p9lb3bq5y0k358s8agpksx9x68vzx330cb8jkn4qp3qj7cmnx2 \
-        a2dbca8ec4e36262a7448b8131fadfc8f4d4f5bc4f218dca98c017bcc6a2e912 \
-        /gnu/store/chwnfavlpd6kpj2fzb2bbpyy8m6jshqf-guile-zlib-0.2.2.tar.gz
+check_security_floor() {
+    local commit=$1
+
+    git -C "$source_checkout" merge-base --is-ancestor \
+        "$security_floor" "$commit" ||
+        die "resolved Guix $commit predates security floor $security_floor"
 }
 
-export GUIX_DAEMON_SOCKET="$daemon_socket"
-unset GUIX_BUILD_OPTIONS GUIX_DOWNLOAD_METHODS GUIX_SUBSTITUTE_URLS
-
-start_daemon \
-    bootstrap "$bootstrap_daemon" "$work_dir/daemon-bootstrap.log" \
-    --build-users-group="$build_users_group" \
-    --listen="$daemon_socket" \
-    --no-substitutes
-
-# Both client and daemon prohibit substitutes.  Guix computes its replacement
-# profile in a clean environment, so an outer GUIX_DOWNLOAD_METHODS setting
-# cannot change that computation's source derivations.  Pre-seed the known
-# regenerated archives explicitly; these are ordinary flat-file bytes checked
-# against the derivation hash, not a substitute.
-seed_bootstrap_sources
-
-# Retrying is safe: pull profiles are transactional and incomplete builds stay
-# valid store objects or garbage.
-retry_network env \
-    -u GUIX_BUILD_OPTIONS -u GUIX_SUBSTITUTE_URLS \
-    GUIX_DAEMON_SOCKET="$daemon_socket" \
-    "$bootstrap_guix" pull \
-    --no-substitutes \
-    --channels="$channels" \
-    --profile="$profile"
-
-fixed_guix="$profile/bin/guix"
-fixed_daemon="$profile/bin/guix-daemon"
-[ -x "$fixed_guix" ] || die "guix pull did not produce an executable guix"
-[ -x "$fixed_daemon" ] || die "guix pull did not produce an executable guix-daemon"
-
-env -u GUIX_BUILD_OPTIONS -u GUIX_SUBSTITUTE_URLS \
-    GUIX_DAEMON_SOCKET="$daemon_socket" \
-    "$fixed_guix" describe --format=json --profile="$profile" > "$describe_json"
-
-resolved_commit="$(python3 - "$describe_json" "$guix_repository" "$guix_branch" <<'PY'
-import json
-import re
-import sys
-
-path, expected_url, expected_branch = sys.argv[1:]
-with open(path, encoding="utf-8") as source:
-    channels = json.load(source)
-matches = [channel for channel in channels if channel.get("name") == "guix"]
-if len(matches) != 1:
-    raise SystemExit("guix describe must contain exactly one guix channel")
-channel = matches[0]
-if channel.get("url") != expected_url or channel.get("branch") != expected_branch:
-    raise SystemExit("resolved guix channel does not match the authenticated source")
-commit = channel.get("commit", "")
-if not re.fullmatch(r"[0-9a-f]{40}", commit):
-    raise SystemExit("resolved guix commit is not a full lowercase object ID")
-print(commit)
-PY
-)"
-
-# Fetch the branch and keyring, authenticate from Guix's introduction through
-# the exact revision selected by the unpinned pull, then apply the ancestry
-# floor to that authenticated graph.
+# Fetch objects without checking out or executing repository content.  Guix
+# 1.5 authenticates the full history from the official introduction; only then
+# is the source materialized for the native build.
 mkdir -m 700 -- "$source_checkout"
-git -C "$source_checkout" init --quiet
+git -C "$source_checkout" init --quiet --template="$empty_git_template"
 git -C "$source_checkout" remote add origin "$guix_repository"
 retry_network git -C "$source_checkout" fetch \
     --no-tags \
     origin \
     "+refs/heads/$guix_branch:refs/remotes/origin/$guix_branch" \
     '+refs/heads/keyring:refs/remotes/origin/keyring'
-git -C "$source_checkout" cat-file -e "$resolved_commit^{commit}"
+authenticated_head="$(
+    git -C "$source_checkout" rev-parse --verify \
+        "refs/remotes/origin/$guix_branch^{commit}"
+)"
+[[ "$authenticated_head" =~ ^[0-9a-f]{40}$ ]] ||
+    die "fetched Guix head is not a full lowercase object ID"
 git -C "$source_checkout" cat-file -e "$security_floor^{commit}"
-git -C "$source_checkout" checkout --quiet --detach "$resolved_commit"
-env -u GUIX_BUILD_OPTIONS -u GUIX_SUBSTITUTE_URLS \
-    GUIX_DAEMON_SOCKET="$daemon_socket" \
-    "$fixed_guix" git authenticate \
-    --repository="$source_checkout" \
-    --end="$resolved_commit" \
-    --keyring=refs/remotes/origin/keyring \
-    "$guix_introduction" "$guix_introduction_signer"
-git -C "$source_checkout" merge-base --is-ancestor \
-    "$security_floor" "$resolved_commit" ||
-    die "resolved Guix $resolved_commit predates security floor $security_floor"
+authenticate_guix \
+    "$bootstrap_guix" "$authenticated_head" \
+    "$bootstrap_xdg_cache" "$bootstrap_xdg_config"
+check_security_floor "$authenticated_head"
+git -C "$source_checkout" checkout --quiet --detach "$authenticated_head"
+
+# Verify and build the host Guile-Git needed by current Guix.  The key is read
+# from the already authenticated Guix keyring.  The historical signing key is
+# expired today, so git-verify-tag exits nonzero even though it emits VALIDSIG;
+# accept only the exact primary fingerprint and exact pinned tag object.
+mkdir -m 700 -- "$guile_git_checkout"
+git -C "$guile_git_checkout" init --quiet --template="$empty_git_template"
+git -C "$guile_git_checkout" remote add origin "$guile_git_repository"
+retry_network git -C "$guile_git_checkout" fetch \
+    --no-tags \
+    origin \
+    "+refs/tags/$guile_git_tag:refs/tags/$guile_git_tag"
+[ "$(git -C "$guile_git_checkout" rev-parse --verify \
+        "refs/tags/$guile_git_tag")" = "$guile_git_tag_object" ] ||
+    die "Guile-Git tag object does not match the reviewed object"
+[ "$(git -C "$guile_git_checkout" cat-file -t "$guile_git_tag_object")" = tag ] ||
+    die "Guile-Git release reference is not an annotated tag"
+[ "$(git -C "$guile_git_checkout" rev-parse --verify \
+        "$guile_git_tag_object^{commit}")" = "$guile_git_commit" ] ||
+    die "Guile-Git tag does not resolve to the reviewed commit"
+
+guile_git_key_file="$work_dir/$guile_git_key"
+git -C "$source_checkout" show \
+    "refs/remotes/origin/keyring:$guile_git_key" > "$guile_git_key_file"
+chmod 600 "$guile_git_key_file"
+GNUPGHOME="$guile_git_gnupg" gpg --batch --import "$guile_git_key_file" \
+    > "$work_dir/guile-git-key-import.log" 2>&1
+primary_fingerprint="$(
+    GNUPGHOME="$guile_git_gnupg" gpg --batch --with-colons --fingerprint \
+        "$guile_git_signer" 2>/dev/null |
+        awk -F: '$1 == "pub" { public = 1; next }
+                  public && $1 == "fpr" { print $10; exit }'
+)"
+[ "$primary_fingerprint" = "$guile_git_signer" ] ||
+    die "Guile-Git signing key has an unexpected primary fingerprint"
+
+set +e
+GNUPGHOME="$guile_git_gnupg" git -C "$guile_git_checkout" verify-tag \
+    --raw "$guile_git_tag_object" \
+    > "$work_dir/guile-git-tag-status" 2>&1
+verify_tag_status=$?
+set -e
+# A zero status is allowed too if the authenticated keyring is renewed later.
+if [ "$verify_tag_status" -ne 0 ] &&
+        ! grep -Fq '[GNUPG:] EXPKEYSIG ' "$work_dir/guile-git-tag-status"; then
+    cat "$work_dir/guile-git-tag-status" >&2
+    die "Guile-Git tag signature verification failed"
+fi
+valid_signature_count="$(
+    awk -v fingerprint="$guile_git_signer" '
+        $1 == "[GNUPG:]" && $2 == "VALIDSIG" && NF == 12 &&
+        $3 == fingerprint && $12 == fingerprint { count++ }
+        END { print count + 0 }
+    ' "$work_dir/guile-git-tag-status"
+)"
+[ "$valid_signature_count" -eq 1 ] || {
+    cat "$work_dir/guile-git-tag-status" >&2
+    die "Guile-Git tag lacks the exact expected valid signature"
+}
+if grep -Eq '^\[GNUPG:\] (BADSIG|ERRSIG|NO_PUBKEY|REVKEYSIG) ' \
+        "$work_dir/guile-git-tag-status"; then
+    cat "$work_dir/guile-git-tag-status" >&2
+    die "Guile-Git tag reported a bad or revoked signature"
+fi
+
+git -C "$guile_git_checkout" checkout --quiet --detach "$guile_git_commit"
+run_host_build() {
+    env \
+        -u GUILE_LOAD_PATH -u GUILE_LOAD_COMPILED_PATH \
+        XDG_CACHE_HOME="$host_build_xdg_cache" \
+        XDG_CONFIG_HOME="$host_build_xdg_config" \
+        "$@"
+}
+(
+    cd -- "$guile_git_checkout"
+    run_host_build autoreconf -vfi
+    run_host_build ./configure --prefix="$guile_git_prefix"
+    run_host_build make -j"$(nproc)"
+    run_host_build make install
+)
+
+guile_load_path="$guile_git_prefix/share/guile/site/3.0"
+guile_compiled_path="$guile_git_prefix/lib/guile/3.0/site-ccache"
+[ -d "$guile_load_path/git" ] || die "Guile-Git source modules were not installed"
+[ -d "$guile_compiled_path/git" ] ||
+    die "Guile-Git compiled modules were not installed"
+
+# Build just the native Guix core, command launcher, and daemon.  This avoids
+# the multi-hour source-only `guix pull` while still ensuring that no Guix
+# source executes before authentication and the security-floor check.
+(
+    cd -- "$source_checkout"
+    env \
+        GUILE_LOAD_PATH="$guile_load_path" \
+        GUILE_LOAD_COMPILED_PATH="$guile_compiled_path" \
+        ./bootstrap
+    env \
+        GUILE_LOAD_PATH="$guile_load_path" \
+        GUILE_LOAD_COMPILED_PATH="$guile_compiled_path" \
+        ./configure \
+        --prefix="$native_prefix" \
+        --localstatedir=/var \
+        --sysconfdir=/etc
+    env \
+        GUILE_LOAD_PATH="$guile_load_path" \
+        GUILE_LOAD_COMPILED_PATH="$guile_compiled_path" \
+        make -j"$(nproc)" \
+        make-core-go nix/libstore/schema.sql.hh guix-daemon scripts/guix
+)
+
+native_pre_inst="$source_checkout/pre-inst-env"
+native_daemon="$source_checkout/guix-daemon"
+[ -x "$native_pre_inst" ] || die "native Guix build lacks pre-inst-env"
+[ -x "$native_daemon" ] || die "native Guix build lacks guix-daemon"
+[ -x "$source_checkout/scripts/guix" ] || die "native Guix build lacks guix"
+
+run_native_guix() {
+    env \
+        -u GUIX_BUILD_OPTIONS -u GUIX_DOWNLOAD_METHODS \
+        -u GUIX_SUBSTITUTE_URLS \
+        GUILE_LOAD_PATH="$guile_load_path" \
+        GUILE_LOAD_COMPILED_PATH="$guile_compiled_path" \
+        XDG_CACHE_HOME="$native_xdg_cache" \
+        XDG_CONFIG_HOME="$native_xdg_config" \
+        GUIX_DAEMON_SOCKET="$daemon_socket" \
+        "$native_pre_inst" guix "$@"
+}
+
+authenticate_with_native_guix() {
+    local end=$1
+
+    env \
+        -u GUIX_BUILD_OPTIONS -u GUIX_DOWNLOAD_METHODS \
+        -u GUIX_SUBSTITUTE_URLS \
+        GUILE_LOAD_PATH="$guile_load_path" \
+        GUILE_LOAD_COMPILED_PATH="$guile_compiled_path" \
+        XDG_CACHE_HOME="$final_xdg_cache" \
+        XDG_CONFIG_HOME="$final_xdg_config" \
+        GUIX_DAEMON_SOCKET="$work_dir/no-bootstrap-daemon" \
+        "$native_pre_inst" guix git authenticate \
+        --repository="$source_checkout" \
+        --end="$end" \
+        --keyring=origin/keyring \
+        --cache-key="$guix_introduction" \
+        "$guix_introduction" "$guix_introduction_signer"
+}
 
 retry_network curl \
     --fail \
@@ -486,56 +567,143 @@ awk '
     die "official Guix advisory checker checksum mismatch"
 chmod 600 "$advisory_checker"
 
-# The bootstrap daemon has served its only purpose.  Bring up the fixed daemon
-# without substitutes first, then authorize only the official keys shipped by
-# that authenticated profile.  A final restart enables their URLs.
-stop_daemon
+check_advisory() {
+    local phase=$1
+    local output="$work_dir/advisory-$phase.out"
+    local results="$work_dir/advisory-$phase.results"
+    local LC_ALL=C
+    shift
+
+    export LC_ALL
+
+    if ! "$@" repl -- "$advisory_checker" > "$output" 2>&1; then
+        cat "$output" >&2
+        die "$phase Guix vulnerability checker did not pass"
+    fi
+    awk '
+        /^(restore-file|fetch-narinfos|file-uris|cache-key):/ { print }
+    ' "$output" > "$results"
+    printf '%s\n' \
+        'restore-file: not vulnerable' \
+        'fetch-narinfos: not vulnerable' \
+        'file-uris: not vulnerable' \
+        'cache-key: not vulnerable' > "$results.expected"
+    if ! cmp -s "$results.expected" "$results"; then
+        cat "$output" >&2
+        die "$phase Guix vulnerability checker results are vulnerable or inconclusive"
+    fi
+}
+
+# Start the authenticated native daemon with substitutes disabled, authorize
+# only keys from the authenticated source, then restart with official URLs and
+# require the advisory checker to pass before the unpinned pull.
 start_daemon \
-    fixed-safe "$fixed_daemon" "$work_dir/daemon-fixed-safe.log" \
+    native-safe "$env_command" "$work_dir/daemon-native-safe.log" \
+    GUILE_LOAD_PATH="$guile_load_path" \
+    GUILE_LOAD_COMPILED_PATH="$guile_compiled_path" \
+    "$native_pre_inst" guix-daemon \
     --build-users-group="$build_users_group" \
     --listen="$daemon_socket" \
     --no-substitutes
 
 for key_name in ci.guix.gnu.org.pub bordeaux.guix.gnu.org.pub; do
-    key_file="$profile/share/guix/$key_name"
+    key_file="$source_checkout/etc/substitutes/$key_name"
     [ -f "$key_file" ] && [ -r "$key_file" ] ||
-        die "fixed Guix profile lacks official substitute key: $key_name"
+        die "authenticated Guix source lacks official substitute key: $key_name"
     run_root env \
-        -u GUIX_BUILD_OPTIONS -u GUIX_SUBSTITUTE_URLS \
+        -u GUIX_BUILD_OPTIONS -u GUIX_DOWNLOAD_METHODS \
+        -u GUIX_SUBSTITUTE_URLS \
+        GUILE_LOAD_PATH="$guile_load_path" \
+        GUILE_LOAD_COMPILED_PATH="$guile_compiled_path" \
         GUIX_DAEMON_SOCKET="$daemon_socket" \
-        "$fixed_guix" archive --authorize < "$key_file"
+        "$native_pre_inst" guix archive --authorize < "$key_file"
 done
 
 stop_daemon
 start_daemon \
-    fixed "$fixed_daemon" "$work_dir/daemon-fixed.log" \
+    native "$env_command" "$work_dir/daemon-native.log" \
+    GUILE_LOAD_PATH="$guile_load_path" \
+    GUILE_LOAD_COMPILED_PATH="$guile_compiled_path" \
+    "$native_pre_inst" guix-daemon \
     --build-users-group="$build_users_group" \
     --listen="$daemon_socket" \
     --substitute-urls="$official_substitute_urls"
 
-if ! env \
-        -u GUIX_BUILD_OPTIONS -u GUIX_SUBSTITUTE_URLS \
-        LC_ALL=C \
-        GUIX_DAEMON_SOCKET="$daemon_socket" \
-        "$fixed_guix" repl -- "$advisory_checker" \
-        > "$advisory_output" 2>&1; then
-    cat "$advisory_output" >&2
-    die "official Guix vulnerability checker did not pass"
-fi
-awk '
-    /^(restore-file|fetch-narinfos|file-uris|cache-key):/ { print }
-' "$advisory_output" > "$work_dir/advisory-results"
-printf '%s\n' \
-    'restore-file: not vulnerable' \
-    'fetch-narinfos: not vulnerable' \
-    'file-uris: not vulnerable' \
-    'cache-key: not vulnerable' > "$work_dir/advisory-results.expected"
-if ! cmp -s \
-        "$work_dir/advisory-results.expected" \
-        "$work_dir/advisory-results"; then
-    cat "$advisory_output" >&2
-    die "Guix vulnerability checker results are vulnerable or inconclusive"
-fi
+check_advisory native run_native_guix
+
+# This is the only pull.  It remains unpinned and now has authenticated,
+# advisory-checked native Guix plus official substitutes, instead of asking the
+# old binary bootstrap to build all of current Guix without substitutes.
+retry_network run_native_guix pull \
+    --channels="$channels" \
+    --profile="$profile"
+
+fixed_guix="$profile/bin/guix"
+fixed_daemon="$profile/bin/guix-daemon"
+[ -x "$fixed_guix" ] || die "guix pull did not produce an executable guix"
+[ -x "$fixed_daemon" ] || die "guix pull did not produce an executable guix-daemon"
+
+run_native_guix describe --format=json --profile="$profile" > "$describe_json"
+
+resolved_commit="$(python3 - "$describe_json" "$guix_repository" "$guix_branch" <<'PY'
+import json
+import re
+import sys
+
+path, expected_url, expected_branch = sys.argv[1:]
+with open(path, encoding="utf-8") as source:
+    channels = json.load(source)
+matches = [channel for channel in channels if channel.get("name") == "guix"]
+if len(matches) != 1:
+    raise SystemExit("guix describe must contain exactly one guix channel")
+channel = matches[0]
+if channel.get("url") != expected_url or channel.get("branch") != expected_branch:
+    raise SystemExit("resolved guix channel does not match the authenticated source")
+commit = channel.get("commit", "")
+if not re.fullmatch(r"[0-9a-f]{40}", commit):
+    raise SystemExit("resolved guix commit is not a full lowercase object ID")
+print(commit)
+PY
+)"
+
+# The branch may have advanced while the native pull ran.  Fetch and
+# authenticate the exact revision recorded by the profile, require it to extend
+# both the initially authenticated head and the security floor, and only then
+# update the retained checkout.
+retry_network git -C "$source_checkout" fetch \
+    --no-tags \
+    origin \
+    "+refs/heads/$guix_branch:refs/remotes/origin/$guix_branch" \
+    '+refs/heads/keyring:refs/remotes/origin/keyring'
+git -C "$source_checkout" cat-file -e "$resolved_commit^{commit}"
+authenticate_with_native_guix "$resolved_commit"
+git -C "$source_checkout" merge-base --is-ancestor \
+    "$resolved_commit" "refs/remotes/origin/$guix_branch" ||
+    die "pulled Guix revision is not on the refreshed channel branch"
+git -C "$source_checkout" merge-base --is-ancestor \
+    "$authenticated_head" "$resolved_commit" ||
+    die "pulled Guix revision does not extend the initially authenticated head"
+check_security_floor "$resolved_commit"
+
+# The native daemon's GUIX points into the source tree, so stop it before
+# switching that checkout to the newly authenticated revision.
+stop_daemon
+git -C "$source_checkout" checkout --quiet --detach "$resolved_commit"
+
+start_daemon \
+    fixed "$env_command" "$work_dir/daemon-fixed.log" \
+    -u GUILE_LOAD_PATH -u GUILE_LOAD_COMPILED_PATH -u GUIX \
+    "$fixed_daemon" \
+    --build-users-group="$build_users_group" \
+    --listen="$daemon_socket" \
+    --substitute-urls="$official_substitute_urls"
+
+check_advisory fixed env \
+    -u GUILE_LOAD_PATH -u GUILE_LOAD_COMPILED_PATH \
+    -u GUIX_BUILD_OPTIONS -u GUIX_DOWNLOAD_METHODS \
+    -u GUIX_SUBSTITUTE_URLS \
+    GUIX_DAEMON_SOCKET="$daemon_socket" \
+    "$fixed_guix"
 
 {
     printf 'guix_profile=%s\n' "$profile"

@@ -64,6 +64,19 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Install native Guix build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            autoconf automake autopoint build-essential bzip2 ca-certificates \
+            curl gawk gettext git gnupg graphviz gzip help2man locales \
+            pkg-config po4a slirp4netns texinfo xz-utils \
+            guile-3.0 guile-3.0-dev guile-bytestructures guile-gcrypt \
+            guile-gnutls guile-json guile-library guile-lzlib guile-semver \
+            guile-sqlite3 guile-zlib guile-zstd libbz2-dev libgcrypt20-dev \
+            libgit2-dev libsqlite3-dev zlib1g-dev
+
       - name: Install the signature-verified Guix bootstrap
         env:
           GUIX_RELEASE_SIGNER: A28BF40C3E551372662D14F741AAE7DCCA3D8351
