@@ -393,6 +393,14 @@ authenticated_head="$(
 [[ "$authenticated_head" =~ ^[0-9a-f]{40}$ ]] ||
     die "fetched Guix head is not a full lowercase object ID"
 git -C "$source_checkout" cat-file -e "$security_floor^{commit}"
+# `guix git authenticate` inspects HEAD even when --end is explicit.  A fresh
+# non-bare repository starts with HEAD pointing at refs/heads/master, so make
+# that ref resolve to the fetched candidate without checking out or executing
+# any unauthenticated source.  Requiring the ref not to exist keeps this a
+# one-time initialization rather than a hidden branch update.
+git -C "$source_checkout" update-ref \
+    "refs/heads/$guix_branch" "$authenticated_head" \
+    0000000000000000000000000000000000000000
 authenticate_guix \
     "$bootstrap_guix" "$authenticated_head" \
     "$bootstrap_xdg_cache" "$bootstrap_xdg_config"

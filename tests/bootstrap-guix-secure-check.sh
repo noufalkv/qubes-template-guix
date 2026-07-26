@@ -334,6 +334,13 @@ case "$operation" in
             exit 43
         fi
         ;;
+    update-ref)
+        [ "$directory" = "${FAKE_RUN_DIR:?}/guix-source" ]
+        [ "${1:-}" = refs/heads/master ]
+        [ "${2:-}" = "$initial" ]
+        [ "${3:-}" = 0000000000000000000000000000000000000000 ]
+        printf 'gate:initialized-local-guix-head\n' >> "$EVENT_LOG"
+        ;;
     show)
         [ "$directory" = "${FAKE_RUN_DIR:?}/guix-source" ]
         [ "${1:-}" = refs/remotes/origin/keyring:civodul-3D9AEBB5.key ]
@@ -585,6 +592,8 @@ run_case success success || {
     sed 's/^/  /' "$test_root/stderr-success" >&2
     fail "secure bootstrap success fixture failed"
 }
+initial_fetch="$(event_line '^gate:fetch-guix:1$')"
+local_head="$(event_line '^gate:initialized-local-guix-head$')"
 initial_auth="$(event_line '^gate:authenticated-initial$')"
 initial_floor="$(event_line '^gate:security-floor-initial$')"
 source_checkout="$(event_line '^gate:checkout-initial-guix$')"
@@ -607,6 +616,8 @@ final_checkout="$(event_line '^gate:checkout-final-guix$')"
 fixed_start="$(event_line '^daemon:start:fixed:.*--substitute-urls=https://ci\.guix\.gnu\.org https://bordeaux\.guix\.gnu\.org')"
 fixed_checker="$(event_line '^gate:advisory-check:fixed$')"
 
+[ "$initial_fetch" -lt "$local_head" ] || fail "local Guix head preceded fetch"
+[ "$local_head" -lt "$initial_auth" ] || fail "authentication ran with an unresolved HEAD"
 [ "$initial_auth" -lt "$initial_floor" ] || fail "floor preceded initial authentication"
 [ "$initial_floor" -lt "$source_checkout" ] || fail "Guix source executed before its floor"
 [ "$source_checkout" -lt "$tag_fetch" ] || fail "Guile-Git fetch preceded authenticated source"
