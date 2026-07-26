@@ -62,16 +62,11 @@ root="$(cd -- "$(dirname -- "$0")" && pwd -P)"
 printf 'pre-inst:' >> "${EVENT_LOG:?}"
 printf ' %s' "$@" >> "$EVENT_LOG"
 printf '\n' >> "$EVENT_LOG"
+# Bare names can resolve the vulnerable binary bootstrap from PATH.  Require
+# the caller to select an artifact from this authenticated native build.
 case "${1:-}" in
-    guix)
-        shift
-        exec "$root/scripts/guix" "$@"
-        ;;
-    guix-daemon)
-        shift
-        exec "$root/guix-daemon" "$@"
-        ;;
-    *) exec "$@" ;;
+    "$root/scripts/guix"|"$root/guix-daemon") exec "$@" ;;
+    *) exit 70 ;;
 esac
 EOF
 

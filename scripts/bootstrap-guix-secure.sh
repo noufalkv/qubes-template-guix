@@ -516,11 +516,15 @@ guile_compiled_path="$guile_git_prefix/lib/guile/3.0/site-ccache"
         make-core-go nix/libstore/schema.sql.hh guix-daemon scripts/guix
 )
 
+# `pre-inst-env` supplies this build's module paths, but a bare executable name
+# can still resolve the old binary bootstrap from PATH.  Select every native
+# client and daemon artifact by its authenticated build-tree path.
 native_pre_inst="$source_checkout/pre-inst-env"
+native_guix="$source_checkout/scripts/guix"
 native_daemon="$source_checkout/guix-daemon"
 [ -x "$native_pre_inst" ] || die "native Guix build lacks pre-inst-env"
+[ -x "$native_guix" ] || die "native Guix build lacks guix"
 [ -x "$native_daemon" ] || die "native Guix build lacks guix-daemon"
-[ -x "$source_checkout/scripts/guix" ] || die "native Guix build lacks guix"
 
 run_native_guix() {
     env \
@@ -531,7 +535,7 @@ run_native_guix() {
         XDG_CACHE_HOME="$native_xdg_cache" \
         XDG_CONFIG_HOME="$native_xdg_config" \
         GUIX_DAEMON_SOCKET="$daemon_socket" \
-        "$native_pre_inst" guix "$@"
+        "$native_pre_inst" "$native_guix" "$@"
 }
 
 authenticate_with_native_guix() {
@@ -545,7 +549,7 @@ authenticate_with_native_guix() {
         XDG_CACHE_HOME="$final_xdg_cache" \
         XDG_CONFIG_HOME="$final_xdg_config" \
         GUIX_DAEMON_SOCKET="$work_dir/no-bootstrap-daemon" \
-        "$native_pre_inst" guix git authenticate \
+        "$native_pre_inst" "$native_guix" git authenticate \
         --repository="$source_checkout" \
         --end="$end" \
         --keyring=origin/keyring \
@@ -609,7 +613,7 @@ start_daemon \
     native-safe "$env_command" "$work_dir/daemon-native-safe.log" \
     GUILE_LOAD_PATH="$guile_load_path" \
     GUILE_LOAD_COMPILED_PATH="$guile_compiled_path" \
-    "$native_pre_inst" guix-daemon \
+    "$native_pre_inst" "$native_daemon" \
     --build-users-group="$build_users_group" \
     --listen="$daemon_socket" \
     --no-substitutes
@@ -624,7 +628,7 @@ for key_name in ci.guix.gnu.org.pub bordeaux.guix.gnu.org.pub; do
         GUILE_LOAD_PATH="$guile_load_path" \
         GUILE_LOAD_COMPILED_PATH="$guile_compiled_path" \
         GUIX_DAEMON_SOCKET="$daemon_socket" \
-        "$native_pre_inst" guix archive --authorize < "$key_file"
+        "$native_pre_inst" "$native_guix" archive --authorize < "$key_file"
 done
 
 stop_daemon
@@ -632,7 +636,7 @@ start_daemon \
     native "$env_command" "$work_dir/daemon-native.log" \
     GUILE_LOAD_PATH="$guile_load_path" \
     GUILE_LOAD_COMPILED_PATH="$guile_compiled_path" \
-    "$native_pre_inst" guix-daemon \
+    "$native_pre_inst" "$native_daemon" \
     --build-users-group="$build_users_group" \
     --listen="$daemon_socket" \
     --substitute-urls="$official_substitute_urls"
