@@ -60,6 +60,9 @@ require_text './scripts/bootstrap-guix-secure.sh' "$substitute_workflow"
 require_text './scripts/build-substitute-cache.sh prepare' "$substitute_workflow"
 require_text 'cancel-in-progress: false' "$substitute_workflow"
 require_text "cron: '17 4 * * *'" "$substitute_workflow"
+require_text \
+    "shard_regex='^substitute-cache-nars-v2-[0-9a-f]{40}-[0-9a-f]{40}-[0-9]{4}-[0-9a-f]{64}\$'" \
+    "$substitute_workflow"
 require_text "printf 'snapshot-sha256:%s\\n'" "$substitute_workflow"
 require_text \
     "substitute-cache-snapshot?run=\$GITHUB_RUN_ID-\$GITHUB_RUN_ATTEMPT" \

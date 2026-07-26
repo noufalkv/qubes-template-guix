@@ -19,9 +19,10 @@ The manifest records the SHA-256 and size of every member, the immutable shard
 that owns every referenced NAR asset, and which NAR assets were first
 published with that generation.  Generation metadata uses the deterministic
 tag ``substitute-cache-v2-<qubes-commit>-<guix-commit>`` and is kept separate
-from NAR shards.  A shard holds at most 900 assets and uses the deterministic
-tag ``substitute-cache-nars-v2-<qubes-commit>-<guix-commit>-NNNN``.  ZIPs
-without the version-2 manifest member are pre-epoch input and are ignored.
+from NAR shards.  A shard holds at most 900 assets and uses the content-bound
+tag ``substitute-cache-nars-v2-<qubes-commit>-<guix-commit>-NNNN-<sha256>``,
+where ``sha256`` identifies its canonical asset set.  ZIPs without the
+version-2 manifest member are pre-epoch input and are ignored.
 
 Existing NAR references are accepted only after a release inventory confirms
 that the published shard contains a completely uploaded canonical asset with
@@ -117,16 +118,16 @@ MAX_FILE_SIZE = (1 << 63) - 1
 STORE_HASH_RE = re.compile(r"[0-9abcdfghijklmnpqrsvwxyz]{32}")
 NARINFO_NAME_RE = re.compile(STORE_HASH_RE.pattern + r"\.narinfo")
 SAFE_NAR_SEGMENT_RE = re.compile(r"[A-Za-z0-9._+-]+")
-SAFE_TAG_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+SAFE_TAG_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,254}")
 SAFE_REPOSITORY_PART_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,99}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 GITHUB_SHA256_RE = re.compile(r"sha256:([0-9a-f]{64})")
-NAR_ASSET_NAME_RE = re.compile(r"nar-v2-sha256-([0-9a-f]{64})")
 COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 TIMESTAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 GENERATION_TAG_RE = re.compile(re.escape(TAG_PREFIX) + r"([0-9a-f]{40})-([0-9a-f]{40})")
 NAR_SHARD_TAG_RE = re.compile(
-    re.escape(NAR_SHARD_TAG_PREFIX) + r"([0-9a-f]{40})-([0-9a-f]{40})-([0-9]{4})"
+    re.escape(NAR_SHARD_TAG_PREFIX)
+    + r"([0-9a-f]{40})-([0-9a-f]{40})-([0-9]{4})-([0-9a-f]{64})"
 )
 GC_MARKER_TAG_RE = re.compile(
     re.escape(GC_MARKER_TAG_PREFIX) + r"([0-9a-f]{40})-([0-9a-f]{40})"
@@ -319,12 +320,12 @@ def validate_generation_tag(value: str, field: str = "release tag") -> str:
 
 def parse_nar_shard_tag(
     value: str, field: str = "NAR shard release tag"
-) -> tuple[str, str, int]:
+) -> tuple[str, str, int, str]:
     value = validate_github_tag(value, field)
     match = NAR_SHARD_TAG_RE.fullmatch(value)
     if match is None or match.group(3) == "0000":
         fail(f"invalid {field}: {value!r}")
-    return match.group(1), match.group(2), int(match.group(3))
+    return match.group(1), match.group(2), int(match.group(3)), match.group(4)
 
 
 def parse_timestamp(value: Any, field: str) -> dt.datetime:
@@ -388,13 +389,22 @@ def release_tag_for_commits(qubes_commit: str, guix_commit: str) -> str:
 
 
 def nar_shard_tag_for_commits(
-    qubes_commit: str, guix_commit: str, shard_number: int
+    qubes_commit: str,
+    guix_commit: str,
+    shard_number: int,
+    shard_asset_set_sha256: str,
 ) -> str:
-    """Return the deterministic NAR shard tag for a generation."""
+    """Return the content-bound NAR shard tag for a generation."""
 
     if not 1 <= shard_number <= 9999:
         fail("NAR shard number must be from 1 to 9999")
-    return f"{NAR_SHARD_TAG_PREFIX}{qubes_commit}-{guix_commit}-{shard_number:04d}"
+    shard_asset_set_sha256 = require_sha256(
+        shard_asset_set_sha256, "NAR shard asset-set SHA-256"
+    )
+    return (
+        f"{NAR_SHARD_TAG_PREFIX}{qubes_commit}-{guix_commit}-"
+        f"{shard_number:04d}-{shard_asset_set_sha256}"
+    )
 
 
 def gc_marker_tag_for_commits(qubes_commit: str, guix_commit: str) -> str:
@@ -427,8 +437,35 @@ def validate_revision_tag(
         )
 
 
+def asset_name(digest: str) -> str:
+    return f"nar-v2-sha256-{digest}"
+
+
+def nar_shard_asset_set_digest(assets: Iterable[tuple[str, int]]) -> str:
+    """Hash the canonical names, digests, and sizes uploaded to one shard."""
+
+    canonical_assets: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, (raw_digest, raw_size) in enumerate(assets):
+        digest = require_sha256(raw_digest, f"NAR shard asset[{index}].sha256")
+        size = require_size(raw_size, f"NAR shard asset[{index}].size")
+        if digest in seen:
+            fail(f"NAR shard asset set contains duplicate SHA-256: {digest}")
+        seen.add(digest)
+        canonical_assets.append(
+            {"name": asset_name(digest), "sha256": digest, "size": size}
+        )
+    if not 1 <= len(canonical_assets) <= MAX_NAR_ASSETS_PER_SHARD:
+        fail(
+            "NAR shard asset set must contain from 1 to "
+            f"{MAX_NAR_ASSETS_PER_SHARD} assets"
+        )
+    canonical_assets.sort(key=lambda item: item["sha256"])
+    return sha256_bytes(canonical_json(canonical_assets))
+
+
 def validate_published_shards(generation: Generation) -> None:
-    """Prove that newly published objects use deterministic bounded shards."""
+    """Prove that newly published objects use content-bound bounded shards."""
 
     published = generation.published_sha256
     object_map = generation.object_map
@@ -445,24 +482,30 @@ def validate_published_shards(generation: Generation) -> None:
             "published_nar_sha256 does not match objects in this generation's "
             "NAR shards"
         )
-    for index, digest in enumerate(published):
+    published_assets: list[Asset] = []
+    for digest in published:
         asset = object_map.get(digest)
         if asset is None:
             fail(f"published NAR is absent from nar_objects: {digest}")
+        published_assets.append(asset)
+    for offset in range(0, len(published_assets), MAX_NAR_ASSETS_PER_SHARD):
+        shard_assets = published_assets[offset : offset + MAX_NAR_ASSETS_PER_SHARD]
+        shard_number = offset // MAX_NAR_ASSETS_PER_SHARD + 1
+        shard_digest = nar_shard_asset_set_digest(
+            (asset.sha256, asset.size) for asset in shard_assets
+        )
         expected_tag = nar_shard_tag_for_commits(
             generation.qubes_commit,
             generation.guix_commit,
-            index // MAX_NAR_ASSETS_PER_SHARD + 1,
+            shard_number,
+            shard_digest,
         )
-        if (
-            asset.owner_repository != generation.repository
-            or asset.owner_release_tag != expected_tag
-        ):
-            fail(f"published NAR has a non-deterministic shard owner: {digest}")
-
-
-def asset_name(digest: str) -> str:
-    return f"nar-v2-sha256-{digest}"
+        for asset in shard_assets:
+            if (
+                asset.owner_repository != generation.repository
+                or asset.owner_release_tag != expected_tag
+            ):
+                fail(f"published NAR has a non-canonical shard owner: {asset.sha256}")
 
 
 def asset_url(repository: str, release_tag: str, name: str) -> str:
@@ -863,14 +906,24 @@ def load_release_inventory(path: Path, repository: str) -> ReleaseInventory:
                 )
             assets[name] = InventoryAsset(size, digest_match.group(1))
         if NAR_SHARD_TAG_RE.fullmatch(tag):
-            parse_nar_shard_tag(tag, f"{release_field}.release_tag")
-            if len(assets) > MAX_NAR_ASSETS_PER_SHARD:
+            shard_identity = parse_nar_shard_tag(tag, f"{release_field}.release_tag")
+            if not 1 <= len(assets) <= MAX_NAR_ASSETS_PER_SHARD:
                 fail(
-                    f"NAR shard {tag} contains more than "
+                    f"NAR shard {tag} must contain from 1 to "
                     f"{MAX_NAR_ASSETS_PER_SHARD} assets"
                 )
-            if any(NAR_ASSET_NAME_RE.fullmatch(name) is None for name in assets):
-                fail(f"NAR shard {tag} contains a non-NAR asset")
+            for name, inventory_asset in assets.items():
+                expected_name = asset_name(inventory_asset.sha256)
+                if name != expected_name:
+                    fail(
+                        f"NAR shard {tag} asset name does not match its "
+                        f"API digest: {name!r}"
+                    )
+            inventory_digest = nar_shard_asset_set_digest(
+                (asset.sha256, asset.size) for asset in assets.values()
+            )
+            if inventory_digest != shard_identity[3]:
+                fail(f"NAR shard {tag} asset-set digest does not match its tag")
         elif GC_MARKER_TAG_RE.fullmatch(tag):
             generation_tag_for_gc_marker(tag)
             if assets:
@@ -1731,11 +1784,13 @@ def prepare_release(
 
     local_by_digest: dict[str, tuple[int, Path]] = {}
     for digest, size, path in local_objects.values():
-        local_by_digest.setdefault(digest, (size, path))
+        previous = local_by_digest.setdefault(digest, (size, path))
+        if previous[0] != size:
+            fail(f"local NARs have conflicting sizes for SHA-256 {digest}")
 
     current_assets: dict[str, Asset] = {}
     published: set[str] = set()
-    new_index = 0
+    new_objects: list[tuple[str, int, Path]] = []
     for digest, (size, _) in sorted(local_by_digest.items()):
         prior_asset = prior_objects.get(digest)
         if prior_asset is not None:
@@ -1743,22 +1798,31 @@ def prepare_release(
                 fail(f"prior object has conflicting size for SHA-256 {digest}")
             current_assets[digest] = prior_asset
             continue
-        name = asset_name(digest)
+        new_objects.append((digest, size, local_by_digest[digest][1]))
+
+    for offset in range(0, len(new_objects), MAX_NAR_ASSETS_PER_SHARD):
+        shard_objects = new_objects[offset : offset + MAX_NAR_ASSETS_PER_SHARD]
+        shard_number = offset // MAX_NAR_ASSETS_PER_SHARD + 1
+        shard_digest = nar_shard_asset_set_digest(
+            (digest, size) for digest, size, _ in shard_objects
+        )
         shard_tag = nar_shard_tag_for_commits(
             qubes_commit,
             guix_commit,
-            new_index // MAX_NAR_ASSETS_PER_SHARD + 1,
+            shard_number,
+            shard_digest,
         )
-        current_assets[digest] = Asset(
-            sha256=digest,
-            size=size,
-            name=name,
-            url=asset_url(repository, shard_tag, name),
-            owner_repository=repository,
-            owner_release_tag=shard_tag,
-        )
-        published.add(digest)
-        new_index += 1
+        for digest, size, _ in shard_objects:
+            name = asset_name(digest)
+            current_assets[digest] = Asset(
+                sha256=digest,
+                size=size,
+                name=name,
+                url=asset_url(repository, shard_tag, name),
+                owner_repository=repository,
+                owner_release_tag=shard_tag,
+            )
+            published.add(digest)
 
     current_narinfos: list[Narinfo] = []
     for item in local_narinfos:

@@ -18,8 +18,10 @@ rejects a key file that contains comments ("Bad character in S-expression").
 
 ## Trust model
 
-Trust is by signature, not by GitHub.  When enabled, the template authorizes
-this key and adds the Pages URL to `guix-daemon` (see
+Clients authenticate cache contents with this key rather than GitHub's
+transport identity.  GitHub Actions remains trusted to build the cache and
+protect the private key.  When enabled, the template authorizes the public key
+and adds the Pages URL to `guix-daemon` (see
 `%qubes-substitute-cache-url`, `%qubes-substitute-cache-key-file`, and the
 `%qubes-substitute-cache-enabled?` flag in `(qubes services)`).  The current,
 advisory-checked Guix daemon verifies the signed narinfo and NAR hash before
@@ -36,34 +38,31 @@ realized store paths.
 
 Actions resolves the current unpinned Guix and Qubes channel heads daily.  Each
 new generation reuses existing content-addressed assets, splits new NARs across
-bounded Release shards, then publishes the retained narinfo index atomically
-through Pages.
+bounded, content-identified Release shards, then publishes the retained narinfo
+index atomically through Pages.
 
-GNU's [primary Guix publisher configuration][guix-publisher] currently sets
-`guix publish`'s TTL to 180 days.  Under [Guix's TTL semantics][guix-publish],
-an on-disk cache entry is eligible for removal after it has not been accessed
-for that period and its store item is gone.  GitHub does not expose equivalent
-access timestamps, so this cache retains generations for 180 days and always
-keeps at least eight.  After an expired generation leaves Pages, a marker made
-only after the deployment is verified starts a one-day cleanup grace period
-for its metadata and NAR shards.  Retained older Guix/Qubes generations
-therefore keep working without placing NAR payloads in GitHub Pages' 1 GiB
-site.
+The [ci.guix.gnu.org configuration][guix-publisher] sets `guix publish`'s TTL
+to 180 days, while [Bordeaux's cleanup][guix-bordeaux] protects new objects for
+six months.  Guix does not guarantee availability for the full TTL: an
+unaccessed publisher-cache entry can become removable after that period when
+its store item is gone.  GitHub exposes neither access times nor store
+references, so this cache uses a deterministic policy: retain generations for
+180 days and always keep at least eight.  After an expired generation leaves
+Pages, a marker made only after the deployment is verified starts a one-day
+cleanup grace period for its metadata and NAR shards.  Retained older
+Guix/Qubes generations therefore keep working without placing NAR payloads in
+GitHub Pages' 1 GiB site.
 
 [guix-publisher]: https://codeberg.org/guix/maintenance/src/branch/master/hydra/modules/sysadmin/services.scm
+[guix-bordeaux]: https://codeberg.org/guix/maintenance/src/branch/master/hydra/bayfront.scm
 [guix-publish]: https://guix.gnu.org/manual/en/html_node/Invoking-guix-publish.html
-
-For substitutes to be useful the published outputs must be **reproducible**:
-every custom Qubes derivation has been checked bit-for-bit with
-`guix build --check --rounds=2`, so a user's locally computed store hash matches
-the published nar and the substitute is actually used.
 
 ## Private key
 
 The matching private key is **not committed**. It must live in the repository
 Actions secret `GUIX_SIGNING_KEY_SEC` (Settings -> Secrets and variables ->
-Actions) so the workflow can sign nars. This is a **dev** key; provision a
-maintained key before any production use.
+Actions) so the workflow can sign nars.  Treat it as a long-lived repository
+key and rotate it only with the cache epoch as described below.
 
 ## Rotation (breaking change)
 

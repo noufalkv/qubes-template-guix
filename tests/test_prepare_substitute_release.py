@@ -45,6 +45,7 @@ class SubstituteReleaseStateTests(unittest.TestCase):
         self.inventory_releases = {}
         self.inventory_published_at = {}
         self.inventory_index = 0
+        self.generation_shards = {}
 
     def tearDown(self):
         self.temporary_directory.cleanup()
@@ -81,13 +82,16 @@ class SubstituteReleaseStateTests(unittest.TestCase):
         self.inventory_releases[manifest["release_tag"]] = generation_assets
         self.inventory_published_at[manifest["release_tag"]] = manifest["generated_at"]
         shard_root = release_assets / "nar-shards"
+        shard_tags = []
         if shard_root.is_dir():
             for shard_dir in shard_root.iterdir():
+                shard_tags.append(shard_dir.name)
                 self.inventory_releases[shard_dir.name] = {
                     asset.name: self.inventory_asset(asset)
                     for asset in shard_dir.iterdir()
                 }
                 self.inventory_published_at[shard_dir.name] = manifest["generated_at"]
+        self.generation_shards[manifest["release_tag"]] = tuple(sorted(shard_tags))
 
     def register_gc_marker(self, name, published_at):
         tag = self.gc_marker_tag(name)
@@ -205,11 +209,8 @@ class SubstituteReleaseStateTests(unittest.TestCase):
         guix_commit = hashlib.sha1(f"guix:{name}".encode()).hexdigest()
         return HELPER.release_tag_for_commits(qubes_commit, guix_commit)
 
-    @staticmethod
-    def shard_tag(name, number=1):
-        qubes_commit = hashlib.sha1(f"qubes:{name}".encode()).hexdigest()
-        guix_commit = hashlib.sha1(f"guix:{name}".encode()).hexdigest()
-        return HELPER.nar_shard_tag_for_commits(qubes_commit, guix_commit, number)
+    def shard_tag(self, name, number=1):
+        return self.generation_shards[self.release_tag(name)][number - 1]
 
     @staticmethod
     def gc_marker_tag(name):
@@ -340,6 +341,89 @@ class SubstituteReleaseStateTests(unittest.TestCase):
         )
         self.assertTrue((recovered / "pages" / narinfo_name).is_file())
 
+    def test_changed_same_revision_asset_set_uses_a_distinct_shard_tag(self):
+        prior_cache, _, _ = self.make_cache(
+            "retry-prior-cache",
+            index=0,
+            payload=b"retained prior object",
+            relative_url="nar/zstd/retry-prior",
+        )
+        prior = self.prepare(
+            prior_cache,
+            "retry-prior",
+            "2026-07-24T10:00:00Z",
+        )
+        prior_metadata = self.metadata_path(prior)
+        prior_shard = self.shard_tag("retry-prior")
+
+        qubes_commit = hashlib.sha1(b"qubes:retry-current").hexdigest()
+        guix_commit = hashlib.sha1(b"guix:retry-current").hexdigest()
+        release_tag = HELPER.release_tag_for_commits(qubes_commit, guix_commit)
+
+        def prepare_attempt(cache, output):
+            HELPER.prepare_release(
+                cache_dir=cache,
+                output_dir=output,
+                repository=REPOSITORY,
+                release_tag=release_tag,
+                qubes_commit=qubes_commit,
+                guix_commit=guix_commit,
+                generated_at_text="2026-07-25T10:00:00Z",
+                prior_metadata=[prior_metadata],
+                release_inventory=self.write_inventory(),
+                retention_days=180,
+                minimum_generations=8,
+            )
+
+        first_cache, _, _ = self.make_cache(
+            "retry-first-cache",
+            index=1,
+            payload=b"available only during first attempt",
+            relative_url="nar/zstd/retry-first",
+        )
+        first = self.work_dir / "retry-first-output"
+        prepare_attempt(first_cache, first)
+        first_shard_dirs = list((first / "release-assets" / "nar-shards").iterdir())
+        self.assertEqual(len(first_shard_dirs), 1)
+        first_shard_dir = first_shard_dirs[0]
+        first_shard = first_shard_dir.name
+
+        # Simulate interruption after this shard became public but before its
+        # generation metadata Release was created.
+        self.inventory_releases[first_shard] = {
+            asset.name: self.inventory_asset(asset)
+            for asset in first_shard_dir.iterdir()
+        }
+        self.inventory_published_at[first_shard] = "2026-07-25T10:00:00Z"
+
+        retry_cache, _, _ = self.make_cache(
+            "retry-second-cache",
+            index=2,
+            payload=b"available only during retry",
+            relative_url="nar/zstd/retry-second",
+        )
+        retry = self.work_dir / "retry-second-output"
+        prepare_attempt(retry_cache, retry)
+        retry_shard_dirs = list((retry / "release-assets" / "nar-shards").iterdir())
+        self.assertEqual(len(retry_shard_dirs), 1)
+        retry_shard = retry_shard_dirs[0].name
+
+        first_identity = HELPER.parse_nar_shard_tag(first_shard)
+        retry_identity = HELPER.parse_nar_shard_tag(retry_shard)
+        self.assertEqual(first_identity[:3], retry_identity[:3])
+        self.assertNotEqual(first_identity[3], retry_identity[3])
+
+        plan = self.read_plan(retry)
+        deleted_shards = {
+            item["release_tag"] for item in plan["delete_nar_shard_releases"]
+        }
+        referenced_shards = {
+            item["release_tag"] for item in plan["referenced_nar_shard_releases"]
+        }
+        self.assertIn(first_shard, deleted_shards)
+        self.assertNotIn(prior_shard, deleted_shards)
+        self.assertIn(prior_shard, referenced_shards)
+
     def test_new_nars_are_split_into_deterministic_900_asset_shards(self):
         cache = self.make_many_cache("large-cache", 901)
 
@@ -406,7 +490,7 @@ class SubstituteReleaseStateTests(unittest.TestCase):
         self.inventory_releases[shard_tag] = dict(shard_assets)
         asset_name = next(iter(shard_assets))
         del self.inventory_releases[shard_tag][asset_name]
-        with self.assertRaisesRegex(HELPER.StateError, "missing NAR asset"):
+        with self.assertRaisesRegex(HELPER.StateError, "must contain from 1"):
             HELPER.recover_release_state(
                 output_dir=self.work_dir / "missing-asset-recovery",
                 repository=REPOSITORY,
@@ -419,9 +503,7 @@ class SubstituteReleaseStateTests(unittest.TestCase):
 
         self.inventory_releases[shard_tag] = dict(shard_assets)
         self.inventory_releases[shard_tag][asset_name]["size"] += 1
-        with self.assertRaisesRegex(
-            HELPER.StateError, "wrong NAR asset digest or size"
-        ):
+        with self.assertRaisesRegex(HELPER.StateError, "asset-set digest"):
             HELPER.recover_release_state(
                 output_dir=self.work_dir / "bad-inventory-recovery",
                 repository=REPOSITORY,
@@ -475,7 +557,7 @@ class SubstituteReleaseStateTests(unittest.TestCase):
 
         self.inventory_releases = copy.deepcopy(baseline)
         self.inventory_releases[shard_tag][nar_name]["digest"] = "sha256:" + "0" * 64
-        with self.assertRaisesRegex(HELPER.StateError, "wrong NAR asset digest"):
+        with self.assertRaisesRegex(HELPER.StateError, "asset name does not match"):
             HELPER.recover_release_state(
                 output_dir=self.work_dir / "wrong-nar-digest",
                 repository=REPOSITORY,
@@ -485,6 +567,66 @@ class SubstituteReleaseStateTests(unittest.TestCase):
                 retention_days=180,
                 minimum_generations=8,
             )
+
+    def test_content_bound_shard_inventory_rejects_noncanonical_sets(self):
+        cache, _, _ = self.make_cache("content-bound-inventory")
+        output = self.prepare(cache, "content-bound-inventory", "2026-07-25T10:00:00Z")
+        metadata = self.metadata_path(output)
+        baseline = copy.deepcopy(self.inventory_releases)
+        shard_tag = self.shard_tag("content-bound-inventory")
+        asset_name, asset = next(iter(baseline[shard_tag].items()))
+
+        empty = copy.deepcopy(baseline)
+        empty[shard_tag] = {}
+
+        extra = copy.deepcopy(baseline)
+        extra_content = b"unexpected extra shard asset"
+        extra_digest = hashlib.sha256(extra_content).hexdigest()
+        extra[shard_tag][HELPER.asset_name(extra_digest)] = {
+            "digest": f"sha256:{extra_digest}",
+            "size": len(extra_content),
+            "state": "uploaded",
+        }
+
+        mismatched_name = copy.deepcopy(baseline)
+        del mismatched_name[shard_tag][asset_name]
+        mismatched_name[shard_tag][HELPER.asset_name("0" * 64)] = copy.deepcopy(asset)
+
+        wrong_tag_inventory = copy.deepcopy(baseline)
+        qubes_commit, guix_commit, shard_number, tag_digest = (
+            HELPER.parse_nar_shard_tag(shard_tag)
+        )
+        wrong_digest = "0" * 64 if tag_digest != "0" * 64 else "1" * 64
+        wrong_tag = HELPER.nar_shard_tag_for_commits(
+            qubes_commit,
+            guix_commit,
+            shard_number,
+            wrong_digest,
+        )
+        wrong_tag_inventory[wrong_tag] = wrong_tag_inventory.pop(shard_tag)
+
+        cases = (
+            ("empty", empty, "must contain from 1"),
+            ("extra", extra, "asset-set digest"),
+            ("name-digest", mismatched_name, "asset name does not match"),
+            ("tag-digest", wrong_tag_inventory, "asset-set digest"),
+        )
+        for label, inventory, message in cases:
+            with self.subTest(case=label):
+                self.inventory_releases = inventory
+                inventory_path = self.write_inventory()
+                with self.assertRaisesRegex(HELPER.StateError, message):
+                    HELPER.load_release_inventory(inventory_path, REPOSITORY)
+                with self.assertRaisesRegex(HELPER.StateError, message):
+                    HELPER.recover_release_state(
+                        output_dir=self.work_dir / f"noncanonical-{label}",
+                        repository=REPOSITORY,
+                        as_of_text="2026-07-25T10:00:00Z",
+                        prior_metadata=[metadata],
+                        release_inventory=inventory_path,
+                        retention_days=180,
+                        minimum_generations=8,
+                    )
 
     def test_inventory_exactly_matches_loaded_generation_releases(self):
         cache, _, _ = self.make_cache("generation-inventory")
