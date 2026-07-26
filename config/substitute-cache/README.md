@@ -27,10 +27,10 @@ and adds the Pages URL to `guix-daemon` (see
 advisory-checked Guix daemon verifies the signed narinfo and NAR hash before
 installing a substitute.
 
-The workflow first upgrades its release bootstrap from authenticated, unpinned
-Guix source with substitutes disabled.  It requires a revision containing the
-advisory fixes and all four official vulnerability checks to pass before
-enabling official substitutes.  Qubes/Guix evaluation completes before the
+The workflow uses signed Guix 1.5 only to authenticate current Guix source,
+builds a minimal native daemon from that source, and checks the security floor
+before enabling official substitutes.  It then runs all four official advisory
+checks around the unpinned pull.  Qubes/Guix evaluation completes before the
 private cache key is restored; the later export phase only signs already
 realized store paths.
 
@@ -49,9 +49,14 @@ its store item is gone.  GitHub exposes neither access times nor store
 references, so this cache uses a deterministic policy: retain generations for
 180 days and always keep at least eight.  After an expired generation leaves
 Pages, a marker made only after the deployment is verified starts a one-day
-cleanup grace period for its metadata and NAR shards.  Retained older
-Guix/Qubes generations therefore keep working without placing NAR payloads in
-GitHub Pages' 1 GiB site.
+cleanup grace period for its metadata and NAR shards.  This preserves the
+channel-specific narinfos and NARs exported by this cache; dependencies omitted
+because an official server already supplied them remain subject to that
+server's retention policy.
+
+GitHub may disable scheduled workflows after 60 days without repository
+activity.  Keep the schedule monitored; if GitHub disables it, a maintainer
+must re-enable it before `workflow_dispatch` can provide a manual refresh.
 
 [guix-publisher]: https://codeberg.org/guix/maintenance/src/branch/master/hydra/modules/sysadmin/services.scm
 [guix-bordeaux]: https://codeberg.org/guix/maintenance/src/branch/master/hydra/bayfront.scm
@@ -59,10 +64,11 @@ GitHub Pages' 1 GiB site.
 
 ## Private key
 
-The matching private key is **not committed**. It must live in the repository
-Actions secret `GUIX_SIGNING_KEY_SEC` (Settings -> Secrets and variables ->
-Actions) so the workflow can sign nars.  Treat it as a long-lived repository
-key and rotate it only with the cache epoch as described below.
+The matching private key is **not committed**. It must live in the
+`github-pages` environment secret `GUIX_SIGNING_KEY_SEC` so only the
+branch-restricted publication environment can expose it to the signing step.
+Treat it as a long-lived cache key and rotate it only with the cache epoch as
+described below.
 
 ## Rotation (breaking change)
 

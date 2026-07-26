@@ -118,6 +118,8 @@ class SubstituteReleaseStateTests(unittest.TestCase):
         file_size=None,
         signature=b"Signature: cache.example:unchanged-signature\n",
         nar_hash=b"sha256:fixture",
+        deriver=b"unknown-deriver",
+        nix_cache_info=NIX_CACHE_INFO,
     ):
         cache = self.work_dir / name
         nar_path = cache.joinpath(*relative_url.split("/"))
@@ -131,14 +133,16 @@ class SubstituteReleaseStateTests(unittest.TestCase):
             + b"\n"
             + b"NarSize: 1234\n"
             + b"References: \n"
-            + b"Deriver: unknown-deriver\n"
+            + b"Deriver: "
+            + deriver
+            + b"\n"
             + signature
             + f"URL: {relative_url}\n".encode()
             + b"Compression: zstd\n"
         )
         if file_size is not None:
             narinfo += f"FileSize: {file_size}\n".encode()
-        (cache / "nix-cache-info").write_bytes(NIX_CACHE_INFO)
+        (cache / "nix-cache-info").write_bytes(nix_cache_info)
         (cache / f"{hash_text}.narinfo").write_bytes(narinfo)
         (cache / ".qubes-template-guix-cache").write_text(
             "qubes-template-guix static cache v1\n", encoding="ascii"
@@ -446,7 +450,7 @@ class SubstituteReleaseStateTests(unittest.TestCase):
         self.assertEqual(owners[:900], [self.shard_tag("large", 1)] * 900)
         self.assertEqual(owners[900:], [self.shard_tag("large", 2)])
 
-    def test_newest_transport_object_wins_for_same_signed_store_path(self):
+    def test_newest_metadata_wins_for_same_content_identity(self):
         first_cache, _, narinfo_name = self.make_cache(
             "transport-one", payload=b"old compressed representation"
         )
@@ -456,6 +460,7 @@ class SubstituteReleaseStateTests(unittest.TestCase):
             payload=b"new compressed representation",
             relative_url="nar/zstd/new-representation.nar.zst",
             signature=b"Signature: cache.example:new-signature\n",
+            deriver=b"different-deriver",
         )
 
         second = self.prepare(
@@ -467,8 +472,33 @@ class SubstituteReleaseStateTests(unittest.TestCase):
 
         published = (second / "pages" / narinfo_name).read_text()
         self.assertIn(f"/{self.shard_tag('transport-two')}/", published)
+        self.assertIn("Deriver: different-deriver", published)
         self.assertIn("Signature: cache.example:new-signature", published)
         self.assertNotIn(self.shard_tag("transport-one"), published)
+
+    def test_newest_nix_cache_info_wins_across_retained_generations(self):
+        first_cache, _, _ = self.make_cache("cache-info-one")
+        first = self.prepare(first_cache, "cache-info-one", "2026-07-24T10:00:00Z")
+        newest_cache_info = (
+            b"StoreDir: /gnu/store\n"
+            b"WantMassQuery: 1\n"
+            b"Priority: 50\n"
+            b"FutureField: supported\n"
+        )
+        second_cache, _, _ = self.make_cache(
+            "cache-info-two", nix_cache_info=newest_cache_info
+        )
+
+        second = self.prepare(
+            second_cache,
+            "cache-info-two",
+            "2026-07-25T10:00:00Z",
+            prior=[self.metadata_path(first)],
+        )
+
+        self.assertEqual(
+            (second / "pages" / "nix-cache-info").read_bytes(), newest_cache_info
+        )
 
     def test_inventory_must_contain_referenced_asset_with_recorded_size(self):
         first_cache, _, _ = self.make_cache("inventory-first")
@@ -1298,7 +1328,7 @@ class SubstituteReleaseStateTests(unittest.TestCase):
         second_cache, _, _ = self.make_cache(
             "conflict-two", payload=b"two", nar_hash=b"sha256:different"
         )
-        with self.assertRaisesRegex(HELPER.StateError, "conflicting normative"):
+        with self.assertRaisesRegex(HELPER.StateError, "conflicting narinfo content"):
             self.prepare(
                 second_cache,
                 "conflict-two",

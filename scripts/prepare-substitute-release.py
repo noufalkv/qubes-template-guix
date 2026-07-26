@@ -160,6 +160,16 @@ class Narinfo:
 
 
 @dataclass(frozen=True)
+class NarinfoContentIdentity:
+    """Stable signed fields that identify one store item's contents."""
+
+    store_path: bytes
+    nar_hash: bytes
+    nar_size: bytes
+    references: bytes
+
+
+@dataclass(frozen=True)
 class Generation:
     """One validated immutable cache generation."""
 
@@ -668,8 +678,15 @@ def rewrite_narinfo_url(content: bytes, path: str, new_url: str) -> bytes:
     return rewritten
 
 
-def narinfo_normative_prefix(content: bytes, path: str) -> bytes:
-    """Return the exact normative byte prefix before the one Signature field."""
+def narinfo_content_identity(content: bytes, path: str) -> NarinfoContentIdentity:
+    """Return the stable signed fields that identify a narinfo's contents.
+
+    ``guix publish`` also signs metadata such as ``Deriver``.  That metadata,
+    the publisher signature, and transport fields may legitimately change for
+    one store path across generations.  StorePath, NarHash, NarSize, and
+    References are the stable content identity that retained generations must
+    agree on.
+    """
 
     narinfo_fields(content, path, allow_absolute_url=True)
     lines = content.splitlines(keepends=True)
@@ -683,7 +700,41 @@ def narinfo_normative_prefix(content: bytes, path: str) -> bytes:
     )
     if signature_index is None:  # Defensive; narinfo_fields rejects this.
         fail(f"narinfo has no Signature field: {path}")
-    return b"".join(lines[:signature_index])
+
+    values: dict[bytes, list[tuple[int, bytes]]] = {
+        b"StorePath": [],
+        b"NarHash": [],
+        b"NarSize": [],
+        b"References": [],
+    }
+    for index, line in enumerate(lines):
+        body = line.rstrip(b"\r\n")
+        for field_name in values:
+            prefix = field_name + b": "
+            if body.startswith(prefix):
+                values[field_name].append((index, body[len(prefix) :]))
+
+    identity: dict[bytes, bytes] = {}
+    for field_name, occurrences in values.items():
+        display_name = field_name.decode("ascii")
+        if len(occurrences) != 1:
+            fail(
+                f"narinfo must contain exactly one {display_name} field: {path}"
+            )
+        index, value = occurrences[0]
+        if index >= signature_index:
+            fail(
+                f"narinfo {display_name} is outside its normative signed fields: "
+                f"{path}"
+            )
+        identity[field_name] = value
+
+    return NarinfoContentIdentity(
+        store_path=identity[b"StorePath"],
+        nar_hash=identity[b"NarHash"],
+        nar_size=identity[b"NarSize"],
+        references=identity[b"References"],
+    )
 
 
 def validate_nix_cache_info(content: bytes, context: str) -> None:
@@ -1704,18 +1755,22 @@ def copy_verified(source: Path, destination: Path, expected: Asset) -> None:
 
 
 def write_pages(pages_dir: Path, retained: Iterable[Generation]) -> None:
-    generations = list(retained)
-    cache_contents = {item.nix_cache_info for item in generations}
-    if len(cache_contents) != 1:
-        fail("retained generations have conflicting nix-cache-info content")
+    generations = sorted(
+        retained,
+        key=lambda item: (item.generated_at, item.release_tag),
+        reverse=True,
+    )
+    if not generations:
+        fail("cannot write Pages without a retained generation")
     pages_dir.mkdir()
+    # nix-cache-info describes the cache endpoint, not a historical generation.
+    # Publish the newest validated form so harmless Guix metadata evolution does
+    # not make older retained generations block a refresh.
     (pages_dir / "nix-cache-info").write_bytes(generations[0].nix_cache_info)
 
-    # Generations arrive newest-first.  Guix includes the publisher hostname
-    # in Signature, so otherwise equivalent runs have different final lines.
-    # Keep the newest transport fields and signature after proving all signed
-    # fields before Signature are identical.  The compressed transport object
-    # may legitimately differ while its signed, uncompressed NarHash is equal.
+    # Keep the newest valid representation.  Deriver, publisher signature, and
+    # transport fields may legitimately change while the stable content identity
+    # remains equal.
     union: dict[str, Narinfo] = {}
     for generation in generations:
         for narinfo in generation.narinfos:
@@ -1723,12 +1778,12 @@ def write_pages(pages_dir: Path, retained: Iterable[Generation]) -> None:
             if previous is None:
                 union[narinfo.path] = narinfo
                 continue
-            if narinfo_normative_prefix(
+            if narinfo_content_identity(
                 previous.content, previous.path
-            ) != narinfo_normative_prefix(narinfo.content, narinfo.path):
+            ) != narinfo_content_identity(narinfo.content, narinfo.path):
                 fail(
-                    "retained generations have conflicting normative "
-                    f"narinfo fields: {narinfo.path}"
+                    "retained generations have conflicting narinfo content "
+                    f"identity fields: {narinfo.path}"
                 )
     for path, narinfo in sorted(union.items()):
         (pages_dir / path).write_bytes(narinfo.content)
