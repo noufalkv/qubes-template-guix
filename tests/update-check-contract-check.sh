@@ -11,6 +11,8 @@ patch="$repo_root/modules/qubes/patches/should-upstream/qubes-vm-core-upgrades-i
 builder="$repo_root/scripts/build-native-rootfs.sh"
 substitute_builder="$repo_root/scripts/build-substitute-cache.sh"
 substitute_workflow="$repo_root/.github/workflows/substitute-cache.yml"
+build_channels="$repo_root/config/channels.scm"
+installed_channels="$repo_root/config/guix-channels.scm"
 
 require_text() {
     local text="$1"
@@ -20,6 +22,16 @@ require_text() {
         exit 1
     }
 }
+
+# Both template construction and the installed pull/reconfigure path must
+# resolve authenticated branch heads rather than freezing a Guix revision.
+for channels_file in "$build_channels" "$installed_channels"; do
+    if grep -Eq '\(commit([[:space:]]|\))' "$channels_file"; then
+        printf 'Guix channel is unexpectedly pinned in %s\n' \
+            "$channels_file" >&2
+        exit 1
+    fi
+done
 
 # Match the standard Qubes timer exactly: OnBootSec=5min and
 # OnUnitActiveSec=2d.  A wall-clock cron schedule is not equivalent.
