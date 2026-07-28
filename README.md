@@ -56,8 +56,9 @@ sudo guix system reconfigure /etc/config.scm
 ```
 
 `guix pull` reads the installed `/etc/guix/channels.scm`, which adds this Qubes
-channel (and tracks upstream Guix via `%default-channels`), so `(qubes vm)`
-resolves with no `-L`.  The image also ships the channel modules under
+channel and tracks the authenticated, unpinned Guix `master` branch at its
+official Codeberg repository, so `(qubes vm)` resolves with no `-L`.  The image
+also ships the channel modules under
 `/etc/qubes-guix-channel/modules` as an offline fallback:
 
 ```sh

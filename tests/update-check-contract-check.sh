@@ -42,12 +42,19 @@ for channels_file in "$build_channels" "$installed_channels"; do
             "$channels_file" >&2
         exit 1
     fi
+    if [ "$(grep -Fc \
+            '(url "https://codeberg.org/guix/guix.git")' \
+            "$channels_file")" -ne 1 ]; then
+        printf 'Guix channel does not use the authenticated Codeberg upstream in %s\n' \
+            "$channels_file" >&2
+        exit 1
+    fi
+    require_text '(branch "master")' "$channels_file"
+    require_text '"9edb3f66fd807b096b48283debdcddccfea34bad"' \
+        "$channels_file"
+    require_text '"BBB0 2DDF 2CEA F6A8 0D1D  E643 A2A0 6DF2 A33A 54FA"' \
+        "$channels_file"
 done
-if ! sed '/^[[:space:]]*;/d' "$installed_channels" |
-        grep -Eq '^[[:space:]]*%default-channels\)[[:space:]]*$'; then
-    printf 'installed Guix channels do not track %%default-channels\n' >&2
-    exit 1
-fi
 
 # Match the standard Qubes timer exactly: OnBootSec=5min and
 # OnUnitActiveSec=2d.  A wall-clock cron schedule is not equivalent.

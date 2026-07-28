@@ -37,10 +37,11 @@ AppVM behavior.  Local maintenance commands are not runtime evidence.
   branch-only fallback, custom channel-file override, custom checkout toggle,
   and custom pull-profile toggle are removed.
 - The installed template retains `/etc/guix/channels.scm`, sourced from
-  `config/guix-channels.scm`, so users can update Guix and this Qubes channel.
-  The builder's temporary pull profile is not copied into the image; root/user
-  `current-guix` and per-user `current-guix-*` links created during image
-  initialization are removed.
+  `config/guix-channels.scm`, with the same authenticated, unpinned Codeberg
+  Guix `master`, so users can update Guix and this Qubes channel.  The builder's
+  temporary pull profile is not copied into the image; root/user `current-guix`
+  and per-user `current-guix-*` links created during image initialization are
+  removed.
 - `make check-qubes-pins` passed on July 22, 2026 after refreshing
   `qubes-linux-utils` to `v4.3.18`, `qubes-core-qubesdb` to `v4.3.3`,
   `qubes-core-agent-linux` to `v4.3.46`, and `qubes-gui-agent-linux` to

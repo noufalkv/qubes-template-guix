@@ -245,7 +245,7 @@ case "${1:-} ${2:-}" in
         if [ "${FAKE_GUIX_MODE:?}" = pull-commit-mismatch ]; then
             qubes_commit=0000000000000000000000000000000000000000
         fi
-        guix_url="${FAKE_GUIX_URL:-https://git.guix.gnu.org/guix.git}"
+        guix_url="${FAKE_GUIX_URL:-https://codeberg.org/guix/guix.git}"
         guix_branch=master
         guix_commit="${FAKE_GUIX_COMMIT:?}"
         extra_guix_channel=""
@@ -767,13 +767,15 @@ grep -Fq 'could not determine upstream status for 1 paths after 4 rounds' \
 
 # Prepare succeeds before either externally supplied signing-key file exists.
 # It realizes and records all inputs, but cannot reach guix publish.
+# Report the legacy official URL here to retain migration compatibility while
+# all other happy paths model the installed Codeberg channel.
 split_manifest="$work_dir/prepared-paths.json"
 split_prepare_log="$work_dir/split-prepare.log"
 split_digest="$(
     env \
         FAKE_GUIX_LOG="$fake_guix_log" \
         FAKE_GUIX_MODE=publisher-success \
-        FAKE_GUIX_URL=https://codeberg.org/guix/guix.git \
+        FAKE_GUIX_URL=https://git.guix.gnu.org/guix.git \
         FAKE_STORE_PATH="$fake_store_path" \
         FAKE_PULL_TARGET="$fake_pull_target" \
         FAKE_DERIVER="$fake_deriver" \
