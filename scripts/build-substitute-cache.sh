@@ -695,6 +695,139 @@ SCHEME
     sed '$d' "$derivation_outputs"
 }
 
+select_channel_specific_paths() {
+    local closure_file="$1"
+    local output_file="$2"
+    local -r upstream=https://ci.guix.gnu.org
+    local -r record_regex='^(https://ci\.guix\.gnu\.org/([0-9abcdfghijklmnpqrsvwxyz]{32})\.narinfo)'$'\t''([0-9]{3})'$'\t''(0|[1-9][0-9]{0,2})$'
+    local pending="$work_dir/upstream-pending.tsv"
+    local next_pending="$work_dir/upstream-next-pending.tsv"
+    local config="$work_dir/upstream-curl.conf"
+    local results="$work_dir/upstream-results.tsv"
+    local hash path store_name line url code exit_code
+    local round curl_status indeterminate count sample_count status
+    local -A closure_paths=()
+    local -A requested_paths=()
+    local -A response_codes=()
+    local -A response_exits=()
+    local -A last_status=()
+
+    : > "$pending"
+    while IFS= read -r path; do
+        [ -n "$path" ] || continue
+        validate_concrete_store_path "$path" "system closure path"
+        store_name="$(basename -- "$path")"
+        hash="${store_name%%-*}"
+        [[ "$hash" =~ ^[0-9abcdfghijklmnpqrsvwxyz]{32}$ ]] ||
+            die "system closure path has an invalid store hash: $path"
+        [[ ! -v closure_paths["$hash"] ]] ||
+            die "system closure contains duplicate store hash $hash"
+        closure_paths["$hash"]="$path"
+        printf '%s\t%s\n' "$hash" "$path" >> "$pending"
+    done < "$closure_file"
+    LC_ALL=C sort -o "$pending" "$pending"
+    [ -s "$pending" ] || die "system closure has no paths to query"
+    : > "$output_file"
+
+    # A single curl process reuses connections and avoids amplifying a brief
+    # upstream outage into thousands of independent requests.  Only definitive
+    # responses are classified; transport errors and all other HTTP statuses
+    # remain pending for the next bounded round.
+    for round in 1 2 3 4; do
+        if [ "$round" -gt 1 ]; then
+            sleep "$((1 << (round - 1)))"
+        fi
+
+        requested_paths=()
+        response_codes=()
+        response_exits=()
+        : > "$config"
+        while IFS=$'\t' read -r hash path; do
+            [ -n "$hash" ] && [ -n "$path" ] ||
+                die "invalid pending upstream probe record"
+            [[ ! -v requested_paths["$hash"] ]] ||
+                die "duplicate pending upstream probe for $hash"
+            requested_paths["$hash"]="$path"
+            printf 'url = "%s/%s.narinfo"\n' "$upstream" "$hash" \
+                >> "$config"
+            printf 'output = "/dev/null"\n' >> "$config"
+        done < "$pending"
+
+        curl_status=0
+        curl --disable --globoff --silent --show-error \
+            --location --max-redirs 3 \
+            --proto '=https' --proto-redir '=https' \
+            --tlsv1.2 \
+            --connect-timeout 10 --max-time 30 \
+            --parallel --parallel-max 16 \
+            --write-out $'%{url}\t%{http_code}\t%{exitcode}\n' \
+            --config "$config" > "$results" || curl_status=$?
+
+        while IFS= read -r line || [ -n "$line" ]; do
+            [[ "$line" =~ $record_regex ]] ||
+                die "curl returned a malformed upstream probe record"
+            url="${BASH_REMATCH[1]}"
+            hash="${BASH_REMATCH[2]}"
+            code="${BASH_REMATCH[3]}"
+            exit_code="${BASH_REMATCH[4]}"
+            [[ -v requested_paths["$hash"] ]] ||
+                die "curl returned an unrequested upstream probe: $url"
+            [ "$url" = "$upstream/$hash.narinfo" ] ||
+                die "curl returned an invalid upstream probe URL: $url"
+            [[ ! -v response_codes["$hash"] ]] ||
+                die "curl returned a duplicate upstream probe for $hash"
+            (( 10#$exit_code <= 255 )) ||
+                die "curl returned an invalid exit code for $hash"
+            response_codes["$hash"]="$code"
+            response_exits["$hash"]="$exit_code"
+        done < "$results"
+
+        : > "$next_pending"
+        indeterminate=0
+        while IFS=$'\t' read -r hash path; do
+            if [[ ! -v response_codes["$hash"] ]]; then
+                last_status["$hash"]="no result; curl batch exited $curl_status"
+                printf '%s\t%s\n' "$hash" "$path" >> "$next_pending"
+                indeterminate=1
+                continue
+            fi
+            code="${response_codes[$hash]}"
+            exit_code="${response_exits[$hash]}"
+            if [ "$exit_code" = 0 ] && [ "$code" = 200 ]; then
+                continue
+            fi
+            if [ "$exit_code" = 0 ] && [ "$code" = 404 ]; then
+                printf '%s\n' "$path" >> "$output_file"
+                continue
+            fi
+            last_status["$hash"]="curl exit $exit_code, HTTP $code"
+            printf '%s\t%s\n' "$hash" "$path" >> "$next_pending"
+            indeterminate=1
+        done < "$pending"
+
+        if [ "$curl_status" -ne 0 ] && [ "$indeterminate" -eq 0 ]; then
+            die "curl batch exited $curl_status without a failed transfer"
+        fi
+        mv -- "$next_pending" "$pending"
+        [ -s "$pending" ] || break
+    done
+
+    if [ -s "$pending" ]; then
+        count="$(wc -l < "$pending" | tr -d ' ')"
+        printf 'unresolved upstream probes (showing up to 8):\n' >&2
+        sample_count=0
+        while [ "$sample_count" -lt 8 ] &&
+                IFS=$'\t' read -r hash path; do
+            status="${last_status[$hash]:-no result}"
+            printf '  %s (%s)\n' "$hash" "$status" >&2
+            sample_count=$((sample_count + 1))
+        done < "$pending"
+        die "could not determine upstream status for $count paths after 4 rounds"
+    fi
+
+    LC_ALL=C sort -u -o "$output_file" "$output_file"
+}
+
 resolve_authenticated_pull_profile
 validate_concrete_store_path "$pull_profile_store" "guix pull profile"
 [ -d "$pull_profile_store" ] ||
@@ -740,29 +873,7 @@ done
 sort -u "$closure" -o "$closure"
 [ -s "$closure" ] || die "built systems produced an empty store closure"
 
-: > "$ours"
-upstream="https://ci.guix.gnu.org"
-while IFS= read -r path; do
-    [ -n "$path" ] || continue
-    validate_concrete_store_path "$path" "system closure path"
-    hash="$(basename -- "$path" | cut -d- -f1)"
-    # This read-only probe runs once per closure path.  Tolerate bounded
-    # transient CI/TLS stalls, but never classify an indeterminate response as
-    # a missing substitute.
-    code="$(
-        curl --disable --globoff --silent --show-error --location \
-            --connect-timeout 10 --max-time 30 \
-            --retry 5 --retry-all-errors --retry-delay 2 \
-            --retry-max-time 180 \
-            --output /dev/null --write-out '%{http_code}' \
-            "$upstream/$hash.narinfo"
-    )" || die "failed to query upstream narinfo for $path"
-    case "$code" in
-        200) ;;
-        404) printf '%s\n' "$path" >> "$ours" ;;
-        *) die "upstream narinfo query for $path returned HTTP $code" ;;
-    esac
-done < "$closure"
+select_channel_specific_paths "$closure" "$ours"
 
 count="$(wc -l < "$ours" | tr -d ' ')"
 printf 'channel-specific paths to publish: %s\n' "$count" >&2

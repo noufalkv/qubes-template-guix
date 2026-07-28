@@ -105,6 +105,8 @@ fake_curl_log="$work_dir/curl.log"
 fake_stat="$work_dir/stat"
 fake_narinfo_attempts="$work_dir/narinfo-attempts"
 fake_bake_started="$work_dir/bake-started"
+fake_upstream_round="$work_dir/upstream-round"
+fake_upstream_requests="$work_dir/upstream-requests"
 fake_store_hash=00000000000000000000000000000000
 fake_store_path="$work_dir/store/$fake_store_hash-system"
 fake_pull_target="$work_dir/store/11111111111111111111111111111111-pull-profile"
@@ -113,6 +115,11 @@ fake_modules_deriver="$work_dir/store/33333333333333333333333333333333-guix-modu
 fake_modules_output="$work_dir/store/44444444444444444444444444444444-guix-modules"
 fake_modules_runtime="$work_dir/store/55555555555555555555555555555555-module-runtime"
 fake_derivation_source="$work_dir/store/66666666666666666666666666666666-channel-source"
+fake_upstream_present="$work_dir/store/77777777777777777777777777777777-present"
+fake_upstream_missing="$work_dir/store/88888888888888888888888888888888-missing"
+fake_upstream_http_retry="$work_dir/store/99999999999999999999999999999999-http-retry"
+fake_upstream_curl_retry="$work_dir/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-curl-retry"
+fake_upstream_no_result="$work_dir/store/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb-no-result"
 public_key="$work_dir/signing-key.pub"
 private_key="$work_dir/signing-key.sec"
 output="$work_dir/site"
@@ -134,6 +141,11 @@ mkdir -p \
     "$fake_modules_output" \
     "$fake_modules_runtime" \
     "$fake_derivation_source" \
+    "$fake_upstream_present" \
+    "$fake_upstream_missing" \
+    "$fake_upstream_http_retry" \
+    "$fake_upstream_curl_retry" \
+    "$fake_upstream_no_result" \
     "$output" \
     "$unsafe_output" \
     "$late_output" \
@@ -186,7 +198,11 @@ case "${1:-} ${2:-}" in
         if [ "${FAKE_GUIX_MODE:?}" = system-failure ]; then
             exit 23
         fi
-        printf '%s\n' "${FAKE_STORE_PATH:?}"
+        if [ "$FAKE_GUIX_MODE" = upstream-probe-mixed ]; then
+            printf '%s\n' "${FAKE_UPSTREAM_MISSING:?}"
+        else
+            printf '%s\n' "${FAKE_STORE_PATH:?}"
+        fi
         ;;
     'pull -C')
         case "${3:-}" in
@@ -236,7 +252,15 @@ case "${1:-} ${2:-}" in
         printf '%s\n' "${FAKE_DERIVER:?}"
         ;;
     'gc -R')
-        if [ "${FAKE_GUIX_MODE:?}" = pull-closure-fixture ]; then
+        if [ "${FAKE_GUIX_MODE:?}" = upstream-probe-mixed ] &&
+                [[ "${3:-}" != *.drv ]]; then
+            printf '%s\n' \
+                "${FAKE_UPSTREAM_PRESENT:?}" \
+                "${FAKE_UPSTREAM_MISSING:?}" \
+                "${FAKE_UPSTREAM_HTTP_RETRY:?}" \
+                "${FAKE_UPSTREAM_CURL_RETRY:?}" \
+                "${FAKE_UPSTREAM_NO_RESULT:?}"
+        elif [ "${FAKE_GUIX_MODE:?}" = pull-closure-fixture ]; then
             case "${3:-}" in
                 "${FAKE_DERIVER:?}")
                     printf '%s\n' \
@@ -351,13 +375,95 @@ printf '\n' >> "${FAKE_CURL_LOG:?}"
 
 output_file=""
 header_file=""
+config_file=""
 arguments=("$@")
 for ((index = 0; index < ${#arguments[@]}; index++)); do
     case "${arguments[index]}" in
         --output) output_file="${arguments[index + 1]:?}" ;;
         --dump-header) header_file="${arguments[index + 1]:?}" ;;
+        --config) config_file="${arguments[index + 1]:?}" ;;
     esac
 done
+
+if [ -n "$config_file" ]; then
+    [ -r "$config_file" ]
+    round=1
+    if [ -n "${FAKE_UPSTREAM_ROUND_FILE:-}" ]; then
+        if [ -r "$FAKE_UPSTREAM_ROUND_FILE" ]; then
+            read -r round < "$FAKE_UPSTREAM_ROUND_FILE"
+            round=$((round + 1))
+        fi
+        printf '%s\n' "$round" > "$FAKE_UPSTREAM_ROUND_FILE"
+    fi
+    batch_status=0
+    request_count=0
+    request_url=""
+    while IFS= read -r config_line; do
+        case "$config_line" in
+            'url = "'*)
+                [ -z "$request_url" ]
+                request_url="${config_line#url = \"}"
+                request_url="${request_url%\"}"
+                ;;
+            'output = "/dev/null"')
+                [ -n "$request_url" ]
+                request_count=$((request_count + 1))
+                printf 'upstream-url %s\n' "$request_url" \
+                    >> "${FAKE_CURL_LOG:?}"
+                if [ -n "${FAKE_UPSTREAM_REQUESTS_FILE:-}" ]; then
+                    printf '%s\t%s\n' "$round" "$request_url" \
+                        >> "$FAKE_UPSTREAM_REQUESTS_FILE"
+                fi
+                hash="${request_url##*/}"
+                hash="${hash%.narinfo}"
+                if [ "${FAKE_GUIX_MODE:?}" = upstream-probe-mixed ]; then
+                    present_hash="${FAKE_UPSTREAM_PRESENT##*/}"
+                    present_hash="${present_hash%%-*}"
+                    missing_hash="${FAKE_UPSTREAM_MISSING##*/}"
+                    missing_hash="${missing_hash%%-*}"
+                    http_retry_hash="${FAKE_UPSTREAM_HTTP_RETRY##*/}"
+                    http_retry_hash="${http_retry_hash%%-*}"
+                    curl_retry_hash="${FAKE_UPSTREAM_CURL_RETRY##*/}"
+                    curl_retry_hash="${curl_retry_hash%%-*}"
+                    no_result_hash="${FAKE_UPSTREAM_NO_RESULT##*/}"
+                    no_result_hash="${no_result_hash%%-*}"
+                    case "$hash:$round" in
+                        "$present_hash":*) code=200; transfer_status=0 ;;
+                        "$missing_hash":*) code=404; transfer_status=0 ;;
+                        "$http_retry_hash":1) code=503; transfer_status=0 ;;
+                        "$http_retry_hash":*) code=200; transfer_status=0 ;;
+                        "$curl_retry_hash":1) code=000; transfer_status=28 ;;
+                        "$curl_retry_hash":*) code=404; transfer_status=0 ;;
+                        "$no_result_hash":1)
+                            batch_status=28
+                            request_url=""
+                            continue
+                            ;;
+                        "$no_result_hash":*) code=200; transfer_status=0 ;;
+                        *) exit 58 ;;
+                    esac
+                elif [ "$FAKE_GUIX_MODE" = upstream-probe-unresolved ]; then
+                    code=503
+                    transfer_status=0
+                else
+                    code=404
+                    transfer_status=0
+                fi
+                printf '%s\t%s\t%s\n' \
+                    "$request_url" "$code" "$transfer_status"
+                if [ "$transfer_status" -ne 0 ]; then
+                    batch_status="$transfer_status"
+                fi
+                request_url=""
+                ;;
+            *) exit 59 ;;
+        esac
+    done < "$config_file"
+    [ -z "$request_url" ]
+    [ "$request_count" -gt 0 ]
+    exit "$batch_status"
+fi
+
 request_url="${arguments[${#arguments[@]} - 1]}"
 
 case "$request_url" in
@@ -511,6 +617,140 @@ missing = set(sys.argv[2:]) - paths
 if missing:
     raise SystemExit(f"prepared manifest omits pull closure paths: {missing}")
 PY
+
+# Probe all pending paths in one curl process, retain exact 200/404 results,
+# and retry only transfers whose outcome was indeterminate.
+mixed_manifest="$work_dir/upstream-mixed-paths.json"
+mixed_log="$work_dir/upstream-mixed.log"
+: > "$fake_curl_log"
+rm -f -- "$fake_upstream_round" "$fake_upstream_requests"
+mixed_digest="$(
+    env \
+        FAKE_GUIX_LOG="$fake_guix_log" \
+        FAKE_GUIX_MODE=upstream-probe-mixed \
+        FAKE_STORE_PATH="$fake_store_path" \
+        FAKE_PULL_TARGET="$fake_pull_target" \
+        FAKE_DERIVER="$fake_deriver" \
+        FAKE_CURL_LOG="$fake_curl_log" \
+        FAKE_UPSTREAM_ROUND_FILE="$fake_upstream_round" \
+        FAKE_UPSTREAM_REQUESTS_FILE="$fake_upstream_requests" \
+        FAKE_UPSTREAM_PRESENT="$fake_upstream_present" \
+        FAKE_UPSTREAM_MISSING="$fake_upstream_missing" \
+        FAKE_UPSTREAM_HTTP_RETRY="$fake_upstream_http_retry" \
+        FAKE_UPSTREAM_CURL_RETRY="$fake_upstream_curl_retry" \
+        FAKE_UPSTREAM_NO_RESULT="$fake_upstream_no_result" \
+        GUIX="$fake_guix" \
+        PATH="$work_dir:$PATH" \
+        TMPDIR="$work_dir" \
+        "$build_script" prepare \
+            --manifest "$mixed_manifest" \
+            "${security_options[@]}" \
+            --variant normal 2> "$mixed_log"
+)" || {
+    sed 's/^/mixed upstream probe: /' "$mixed_log" >&2
+    exit 1
+}
+[[ "$mixed_digest" =~ ^[0-9a-f]{64}$ ]] || {
+    printf 'mixed upstream probe returned an invalid manifest digest\n' >&2
+    exit 1
+}
+[ "$(< "$fake_upstream_round")" -eq 2 ] || {
+    printf 'mixed upstream probe did not stop after resolving round two\n' >&2
+    exit 1
+}
+python3 - \
+    "$mixed_manifest" \
+    "$fake_upstream_missing" \
+    "$fake_upstream_curl_retry" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as source:
+    paths = set(json.load(source)["store_paths"])
+expected = set(sys.argv[2:])
+if paths != expected:
+    raise SystemExit(f"wrong channel-specific paths: {paths} != {expected}")
+PY
+for path in \
+        "$fake_upstream_present" \
+        "$fake_upstream_missing"; do
+    hash="${path##*/}"
+    hash="${hash%%-*}"
+    [ "$(grep -Fc "$hash.narinfo" "$fake_upstream_requests")" -eq 1 ] || {
+        printf 'definitive upstream result was queried again: %s\n' "$hash" >&2
+        exit 1
+    }
+done
+for path in \
+        "$fake_upstream_http_retry" \
+        "$fake_upstream_curl_retry" \
+        "$fake_upstream_no_result"; do
+    hash="${path##*/}"
+    hash="${hash%%-*}"
+    [ "$(grep -Fc "$hash.narinfo" "$fake_upstream_requests")" -eq 2 ] || {
+        printf 'indeterminate upstream result was not retried once: %s\n' \
+            "$hash" >&2
+        exit 1
+    }
+done
+upstream_batch="$(grep -F -- '--config' "$fake_curl_log" | head -n 1)"
+for expected in \
+        '--proto =https' \
+        '--proto-redir =https' \
+        '--tlsv1.2' \
+        '--connect-timeout 10' \
+        '--max-time 30' \
+        '--parallel ' \
+        '--parallel-max 16'; do
+    grep -Fq -- "$expected" <<< "$upstream_batch" || {
+        printf 'batched upstream probe lost option: %s\n' "$expected" >&2
+        exit 1
+    }
+done
+
+# An upstream failure that never becomes definitive must exhaust the bounded
+# rounds and fail before a path manifest can be published.
+unresolved_manifest="$work_dir/upstream-unresolved-paths.json"
+unresolved_log="$work_dir/upstream-unresolved.log"
+: > "$fake_curl_log"
+rm -f -- "$fake_upstream_round" "$fake_upstream_requests" \
+    "$unresolved_manifest"
+if env \
+    FAKE_GUIX_LOG="$fake_guix_log" \
+    FAKE_GUIX_MODE=upstream-probe-unresolved \
+    FAKE_STORE_PATH="$fake_store_path" \
+    FAKE_PULL_TARGET="$fake_pull_target" \
+    FAKE_DERIVER="$fake_deriver" \
+    FAKE_CURL_LOG="$fake_curl_log" \
+    FAKE_UPSTREAM_ROUND_FILE="$fake_upstream_round" \
+    FAKE_UPSTREAM_REQUESTS_FILE="$fake_upstream_requests" \
+    GUIX="$fake_guix" \
+    PATH="$work_dir:$PATH" \
+    TMPDIR="$work_dir" \
+    "$build_script" prepare \
+        --manifest "$unresolved_manifest" \
+        "${security_options[@]}" \
+        --variant normal > /dev/null 2> "$unresolved_log"; then
+    printf 'unresolved upstream probe unexpectedly succeeded\n' >&2
+    exit 1
+fi
+[ "$(< "$fake_upstream_round")" -eq 4 ] || {
+    printf 'unresolved upstream probe did not run four bounded rounds\n' >&2
+    exit 1
+}
+[ "$(wc -l < "$fake_upstream_requests" | tr -d ' ')" -eq 4 ] || {
+    printf 'unresolved upstream path was not queried once per round\n' >&2
+    exit 1
+}
+grep -Fq 'could not determine upstream status for 1 paths after 4 rounds' \
+    "$unresolved_log" || {
+    printf 'unresolved upstream failure was misdiagnosed\n' >&2
+    exit 1
+}
+[ ! -e "$unresolved_manifest" ] || {
+    printf 'unresolved upstream probe published a path manifest\n' >&2
+    exit 1
+}
 
 # Prepare succeeds before either externally supplied signing-key file exists.
 # It realizes and records all inputs, but cannot reach guix publish.
@@ -1325,25 +1565,11 @@ env \
     exit 1
 }
 
-upstream_probe="$(
-    grep -F 'https://ci.guix.gnu.org/' "$fake_curl_log" | head -n 1
-)"
-[ -n "$upstream_probe" ] || {
+grep -Fq "upstream-url https://ci.guix.gnu.org/$fake_store_hash.narinfo" \
+        "$fake_curl_log" || {
     printf 'successful publication did not query the upstream cache\n' >&2
     exit 1
 }
-for expected in \
-        '--connect-timeout 10' \
-        '--max-time 30' \
-        '--retry 5' \
-        '--retry-all-errors' \
-        '--retry-delay 2' \
-        '--retry-max-time 180'; do
-    grep -Fq -- "$expected" <<< "$upstream_probe" || {
-        printf 'upstream probe lost retry policy option: %s\n' "$expected" >&2
-        exit 1
-    }
-done
 
 [ ! -e "$output/sentinel" ] || {
     printf 'atomic cache exchange retained the previous payload\n' >&2
