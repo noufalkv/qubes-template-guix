@@ -194,6 +194,8 @@ final_xdg_cache="$work_dir/final-xdg-cache"
 final_xdg_config="$work_dir/final-xdg-config"
 native_xdg_cache="$work_dir/native-xdg-cache"
 native_xdg_config="$work_dir/native-xdg-config"
+fixed_xdg_cache="$work_dir/fixed-xdg-cache"
+fixed_xdg_config="$work_dir/fixed-xdg-config"
 host_build_xdg_cache="$work_dir/host-build-xdg-cache"
 host_build_xdg_config="$work_dir/host-build-xdg-config"
 native_prefix="$work_dir/native-guix"
@@ -206,6 +208,7 @@ mkdir -m 700 -- \
     "$bootstrap_xdg_cache" "$bootstrap_xdg_config" \
     "$final_xdg_cache" "$final_xdg_config" \
     "$native_xdg_cache" "$native_xdg_config" \
+    "$fixed_xdg_cache" "$fixed_xdg_config" \
     "$host_build_xdg_cache" "$host_build_xdg_config" \
     "$guile_git_gnupg" "$empty_git_template"
 
@@ -581,12 +584,24 @@ chmod 600 "$advisory_checker"
 
 check_advisory() {
     local phase=$1
+    local prerequisite_output="$work_dir/advisory-$phase-prerequisite.out"
     local output="$work_dir/advisory-$phase.out"
     local results="$work_dir/advisory-$phase.results"
     local LC_ALL=C
     shift
 
     export LC_ALL
+
+    # The authenticated security floor permits this request to the reviewed
+    # official servers.  The restore-file probe deletes cfunge itself, but its
+    # temporary server deliberately serves no references, so realize the
+    # closure first and ensure the probe reaches its invalid NAR.
+    if ! "$@" build --no-grafts \
+            --substitute-urls="$official_substitute_urls" \
+            cfunge > "$prerequisite_output" 2>&1; then
+        cat "$prerequisite_output" >&2
+        die "$phase Guix vulnerability checker prerequisite failed"
+    fi
 
     if ! "$@" repl -- "$advisory_checker" > "$output" 2>&1; then
         cat "$output" >&2
@@ -613,6 +628,8 @@ start_daemon \
     native-safe "$env_command" "$work_dir/daemon-native-safe.log" \
     GUILE_LOAD_PATH="$guile_load_path" \
     GUILE_LOAD_COMPILED_PATH="$guile_compiled_path" \
+    XDG_CACHE_HOME="$native_xdg_cache" \
+    XDG_CONFIG_HOME="$native_xdg_config" \
     "$native_pre_inst" "$native_daemon" \
     --build-users-group="$build_users_group" \
     --listen="$daemon_socket" \
@@ -627,6 +644,8 @@ for key_name in ci.guix.gnu.org.pub bordeaux.guix.gnu.org.pub; do
         -u GUIX_SUBSTITUTE_URLS \
         GUILE_LOAD_PATH="$guile_load_path" \
         GUILE_LOAD_COMPILED_PATH="$guile_compiled_path" \
+        XDG_CACHE_HOME="$native_xdg_cache" \
+        XDG_CONFIG_HOME="$native_xdg_config" \
         GUIX_DAEMON_SOCKET="$daemon_socket" \
         "$native_pre_inst" "$native_guix" archive --authorize < "$key_file"
 done
@@ -636,6 +655,8 @@ start_daemon \
     native "$env_command" "$work_dir/daemon-native.log" \
     GUILE_LOAD_PATH="$guile_load_path" \
     GUILE_LOAD_COMPILED_PATH="$guile_compiled_path" \
+    XDG_CACHE_HOME="$native_xdg_cache" \
+    XDG_CONFIG_HOME="$native_xdg_config" \
     "$native_pre_inst" "$native_daemon" \
     --build-users-group="$build_users_group" \
     --listen="$daemon_socket" \
@@ -705,6 +726,8 @@ git -C "$source_checkout" checkout --quiet --detach "$resolved_commit"
 start_daemon \
     fixed "$env_command" "$work_dir/daemon-fixed.log" \
     -u GUILE_LOAD_PATH -u GUILE_LOAD_COMPILED_PATH -u GUIX \
+    XDG_CACHE_HOME="$fixed_xdg_cache" \
+    XDG_CONFIG_HOME="$fixed_xdg_config" \
     "$fixed_daemon" \
     --build-users-group="$build_users_group" \
     --listen="$daemon_socket" \
@@ -714,6 +737,8 @@ check_advisory fixed env \
     -u GUILE_LOAD_PATH -u GUILE_LOAD_COMPILED_PATH \
     -u GUIX_BUILD_OPTIONS -u GUIX_DOWNLOAD_METHODS \
     -u GUIX_SUBSTITUTE_URLS \
+    XDG_CACHE_HOME="$fixed_xdg_cache" \
+    XDG_CONFIG_HOME="$fixed_xdg_config" \
     GUIX_DAEMON_SOCKET="$daemon_socket" \
     "$fixed_guix"
 

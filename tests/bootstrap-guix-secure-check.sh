@@ -142,9 +142,32 @@ case "${1:-} ${2:-}" in
         IFS= read -r key
         printf 'gate:authorized:%s\n' "$key" >> "$EVENT_LOG"
         ;;
+    'build --no-grafts')
+        [ "${3:-}" = '--substitute-urls=https://ci.guix.gnu.org https://bordeaux.guix.gnu.org' ]
+        [ "${4:-}" = cfunge ]
+        [ "$#" -eq 4 ]
+        case "$role" in
+            native) xdg_phase=native ;;
+            fixed) xdg_phase=fixed ;;
+            *) exit 32 ;;
+        esac
+        [ "${XDG_CACHE_HOME:-}" = "${FAKE_RUN_DIR:?}/$xdg_phase-xdg-cache" ]
+        [ "${XDG_CONFIG_HOME:-}" = "$FAKE_RUN_DIR/$xdg_phase-xdg-config" ]
+        printf 'gate:advisory-prerequisite:%s\n' "$role" >> "$EVENT_LOG"
+        if [ "${FAKE_MODE:?}" = "$role-prerequisite-failure" ]; then
+            exit 1
+        fi
+        ;;
     'repl --')
         [ -s "${3:?}" ]
         [ "${LC_ALL:-}" = C ]
+        case "$role" in
+            native) xdg_phase=native ;;
+            fixed) xdg_phase=fixed ;;
+            *) exit 33 ;;
+        esac
+        [ "${XDG_CACHE_HOME:-}" = "${FAKE_RUN_DIR:?}/$xdg_phase-xdg-cache" ]
+        [ "${XDG_CONFIG_HOME:-}" = "$FAKE_RUN_DIR/$xdg_phase-xdg-config" ]
         printf 'gate:advisory-check:%s\n' "$role" >> "$EVENT_LOG"
         vulnerable=0
         if [ "${FAKE_MODE:?}" = native-checker-failure ] &&
@@ -231,6 +254,15 @@ elif "/current-guix/" in sys.argv[0]:
     phase = "fixed"
 else:
     raise SystemExit("unexpected daemon path")
+xdg_phase = "native" if phase.startswith("native") else "fixed"
+expected_cache = os.path.join(os.environ["FAKE_RUN_DIR"],
+                              f"{xdg_phase}-xdg-cache")
+expected_config = os.path.join(os.environ["FAKE_RUN_DIR"],
+                               f"{xdg_phase}-xdg-config")
+if os.environ.get("XDG_CACHE_HOME") != expected_cache:
+    raise SystemExit("daemon has unexpected XDG cache")
+if os.environ.get("XDG_CONFIG_HOME") != expected_config:
+    raise SystemExit("daemon has unexpected XDG config")
 with open(os.environ["EVENT_LOG"], "a", encoding="utf-8") as events:
     events.write(f"daemon:start:{phase}: {' '.join(arguments)}\n")
 
@@ -601,6 +633,7 @@ safe_start="$(event_line '^daemon:start:native-safe:.*--no-substitutes')"
 ci_key="$(event_line '^gate:authorized:ci-key$')"
 bordeaux_key="$(event_line '^gate:authorized:bordeaux-key$')"
 native_start="$(event_line '^daemon:start:native:.*--substitute-urls=https://ci\.guix\.gnu\.org https://bordeaux\.guix\.gnu\.org')"
+native_prerequisite="$(event_line '^gate:advisory-prerequisite:native$')"
 native_checker="$(event_line '^gate:advisory-check:native$')"
 pull="$(event_line '^gate:unpinned-pull$')"
 final_auth="$(event_line '^gate:authenticated-final$')"
@@ -609,6 +642,7 @@ extension="$(event_line '^gate:authenticated-extension$')"
 final_floor="$(event_line '^gate:security-floor-final$')"
 final_checkout="$(event_line '^gate:checkout-final-guix$')"
 fixed_start="$(event_line '^daemon:start:fixed:.*--substitute-urls=https://ci\.guix\.gnu\.org https://bordeaux\.guix\.gnu\.org')"
+fixed_prerequisite="$(event_line '^gate:advisory-prerequisite:fixed$')"
 fixed_checker="$(event_line '^gate:advisory-check:fixed$')"
 
 [ "$initial_fetch" -lt "$local_head" ] || fail "local Guix head preceded fetch"
@@ -623,7 +657,10 @@ fixed_checker="$(event_line '^gate:advisory-check:fixed$')"
 [ "$safe_start" -lt "$ci_key" ] || fail "key authorization preceded safe daemon"
 [ "$ci_key" -lt "$bordeaux_key" ] || fail "official key order changed"
 [ "$bordeaux_key" -lt "$native_start" ] || fail "substitutes preceded authorization"
-[ "$native_start" -lt "$native_checker" ] || fail "native checker preceded daemon"
+[ "$native_start" -lt "$native_prerequisite" ] ||
+    fail "native checker prerequisite preceded daemon"
+[ "$native_prerequisite" -lt "$native_checker" ] ||
+    fail "native checker preceded its prerequisite"
 [ "$native_checker" -lt "$pull" ] || fail "pull preceded native checker"
 [ "$pull" -lt "$final_auth" ] || fail "final authentication preceded pull"
 [ "$final_auth" -lt "$branch_membership" ] ||
@@ -633,7 +670,10 @@ fixed_checker="$(event_line '^gate:advisory-check:fixed$')"
 [ "$extension" -lt "$final_floor" ] || fail "final floor preceded extension check"
 [ "$final_floor" -lt "$final_checkout" ] || fail "final checkout preceded authentication"
 [ "$final_checkout" -lt "$fixed_start" ] || fail "fixed daemon preceded final checkout"
-[ "$fixed_start" -lt "$fixed_checker" ] || fail "final checker preceded fixed daemon"
+[ "$fixed_start" -lt "$fixed_prerequisite" ] ||
+    fail "final checker prerequisite preceded fixed daemon"
+[ "$fixed_prerequisite" -lt "$fixed_checker" ] ||
+    fail "final checker preceded its prerequisite"
 if head -n "$initial_floor" "$event_log" | grep -q -- '--substitute-urls'; then
     fail "a substitute URL was enabled before the initial authenticated floor"
 fi
@@ -685,6 +725,17 @@ event_line '^daemon:stop:native$' >/dev/null
 assert_absent '^gate:unpinned-pull$'
 assert_absent '^daemon:start:fixed:'
 
+if run_case native-prerequisite-failure native-prerequisite-failure; then
+    fail "native checker prerequisite failure unexpectedly succeeded"
+fi
+event_line '^gate:advisory-prerequisite:native$' >/dev/null
+event_line '^daemon:stop:native$' >/dev/null
+assert_absent '^gate:advisory-check:native$'
+assert_absent '^gate:unpinned-pull$'
+assert_absent '^daemon:start:fixed:'
+[ ! -s "$test_root/output-native-prerequisite-failure" ] ||
+    fail "native checker prerequisite failure emitted trusted outputs"
+
 for mode in final-auth-failure branch-membership-failure extension-failure; do
     if run_case "$mode" "$mode"; then
         fail "$mode unexpectedly succeeded"
@@ -704,6 +755,15 @@ for mode in final-checker-failure final-checker-inconclusive; do
     [ ! -s "$test_root/output-$mode" ] ||
         fail "$mode emitted trusted outputs"
 done
+
+if run_case fixed-prerequisite-failure fixed-prerequisite-failure; then
+    fail "fixed checker prerequisite failure unexpectedly succeeded"
+fi
+event_line '^gate:advisory-prerequisite:fixed$' >/dev/null
+event_line '^daemon:stop:fixed$' >/dev/null
+assert_absent '^gate:advisory-check:fixed$'
+[ ! -s "$test_root/output-fixed-prerequisite-failure" ] ||
+    fail "fixed checker prerequisite failure emitted trusted outputs"
 
 # Pinning the channel is rejected before any external command is launched.
 pinned_channels="$test_root/channels-pinned.scm"
