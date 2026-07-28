@@ -3,7 +3,7 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-helper="$repo_root/modules/qubes/files/guix-updates-installed-check.scm"
+helper="$repo_root/modules/qubes/files/guix-updates-installed-check"
 guix_bin="${GUIX:-guix}"
 work=""
 

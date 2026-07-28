@@ -2,6 +2,9 @@
 ;;;
 ;;; Resolve the configured Guix channels with Guix itself, then compare the
 ;;; authenticated revisions with the revisions used for the running system.
+;;; This source intentionally has no .scm suffix: `guix pull` treats every
+;;; .scm file below the channel's module directory as an importable module,
+;;; whereas this file is a command-line program.
 
 (use-modules (guix channels)
              (guix scripts pull)

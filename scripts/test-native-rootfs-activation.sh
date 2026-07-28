@@ -109,7 +109,7 @@ verify_activation_paths() {
     test -r /etc/qubes-guix-channel/.guix-channel
     test -r /etc/qubes-guix-channel/modules/qubes/packages.scm
     test -r /etc/qubes-guix-channel/modules/qubes/files/qvm-template-repo-query-guix.py
-    test -r /etc/qubes-guix-channel/modules/qubes/files/guix-updates-installed-check.scm
+    test -r /etc/qubes-guix-channel/modules/qubes/files/guix-updates-installed-check
     grep -Eq "^[0-9a-f]{40}$" \
         /etc/qubes-guix-channel/modules/qubes/.qubes-channel-commit
     test -r /etc/qubes-guix-channel/config/substitute-cache/signing-key.pub

@@ -6,13 +6,24 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 services="$repo_root/modules/qubes/services.scm"
 system="$repo_root/modules/qubes/system.scm"
 packages="$repo_root/modules/qubes/packages.scm"
-helper="$repo_root/modules/qubes/files/guix-updates-installed-check.scm"
+helper="$repo_root/modules/qubes/files/guix-updates-installed-check"
 patch="$repo_root/modules/qubes/patches/should-upstream/qubes-vm-core-upgrades-installed-check-guix.patch"
 builder="$repo_root/scripts/build-native-rootfs.sh"
 substitute_builder="$repo_root/scripts/build-substitute-cache.sh"
 substitute_workflow="$repo_root/.github/workflows/substitute-cache.yml"
 build_channels="$repo_root/config/channels.scm"
 installed_channels="$repo_root/config/guix-channels.scm"
+
+# Guix recursively imports every .scm file below the channel module root.
+# Standalone programs in files/ must therefore remain extensionless in source
+# and receive their user-facing suffix only when packaged.
+if find "$repo_root/modules" \( -type f -o -type l \) \
+        -path '*/files/*.scm' \
+        -print -quit | grep -q .; then
+    printf '%s\n' 'standalone .scm program found inside the channel module tree' \
+        >&2
+    exit 1
+fi
 
 require_text() {
     local text="$1"

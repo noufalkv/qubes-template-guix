@@ -173,8 +173,10 @@ and the generated helper both do) and import (ice-9 ftw) for `scandir'."
 (define %guix-updates-installed-check
   ;; Run through `guix repl` by upgrades-installed-check so the helper uses
   ;; the Guix modules and authenticated channel implementation from the
-  ;; running system.
-  (local-file "files/guix-updates-installed-check.scm"))
+  ;; running system.  Keep the source extensionless so Guix's recursive
+  ;; channel compiler does not mistake this command-line program for a module;
+  ;; it is installed with its conventional .scm suffix below.
+  (local-file "files/guix-updates-installed-check"))
 
 ;;; Qubes VM package definitions
 

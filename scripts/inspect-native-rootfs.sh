@@ -249,7 +249,7 @@ verify_installed_channel_sources() {
         die "missing installed Qubes Guix channel module"
     [ -r "$mount_dir/etc/qubes-guix-channel/modules/qubes/files/qvm-template-repo-query-guix.py" ] ||
         die "missing installed Qubes Guix channel files asset"
-    [ -r "$mount_dir/etc/qubes-guix-channel/modules/qubes/files/guix-updates-installed-check.scm" ] ||
+    [ -r "$mount_dir/etc/qubes-guix-channel/modules/qubes/files/guix-updates-installed-check" ] ||
         die "missing installed Guix update-check helper source"
     grep -Eq '^[0-9a-f]{40}$' "$channel_commit_file" ||
         die "missing or invalid installed Qubes channel revision"
