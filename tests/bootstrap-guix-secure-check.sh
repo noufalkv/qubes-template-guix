@@ -183,7 +183,7 @@ case "${1:-} ${2:-}" in
         fi
         if [ "$vulnerable" -eq 1 ]; then
             if [ "$role" = native ]; then
-                printf '\033[K'
+                printf '\r\033[K'
             fi
             printf '%s\n' \
                 'restore-file: vulnerable' \
@@ -201,6 +201,8 @@ case "${1:-} ${2:-}" in
             exit 0
         fi
         if [ "$role" = native ]; then
+            printf '\r\033[K'
+        else
             printf '\033[K'
         fi
         printf '%s\n' \
