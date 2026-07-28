@@ -40,6 +40,26 @@ channels_file="$work/channels.scm"
 cache_file="$work/latest.scm"
 error_file="$work/check.stderr"
 
+# Guix's channel compiler imports modules before an applied Qubes revision is
+# available.  Poison current-channels so this probe fails if provenance is ever
+# resolved eagerly during `(qubes system)` import again.  Keep the resolve and
+# marker in one form: the REPL catches module exceptions and may still exit 0.
+if ! module_probe="$(
+    "$guix_bin" repl -q -L "$repo_root/modules" 2> "$error_file" <<'EOF'
+(use-modules (guix describe))
+(begin
+  (module-set! (resolve-module '(guix describe))
+               'current-channels
+               (lambda () (error "eager applied-channel provenance lookup")))
+  (resolve-interface '(qubes system))
+  (display "qubes system module import: PASS\n"))
+EOF
+)" || ! grep -qx 'qubes system module import: PASS' <<< "$module_probe"; then
+    printf 'error: Qubes system module performs import-time work\n' >&2
+    sed 's/^/  /' "$error_file" >&2
+    exit 1
+fi
+
 # Quote a shell string for use as a Scheme string literal.  The mktemp path is
 # normally simple, but escaping it keeps the fixture correct for arbitrary
 # TMPDIR values too.

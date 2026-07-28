@@ -101,15 +101,25 @@
             (string<? (symbol->string (car left))
                       (symbol->string (car right)))))))
 
-(define %qubes-applied-channel-state-file
-  (plain-file "qubes-applied-guix-channels.scm"
-              (format #f "~s~%" (applied-channel-revisions))))
+(define (qubes-applied-channel-state-etc _)
+  ;; Defer provenance discovery until the operating-system service graph is
+  ;; lowered.  Channel module compilation imports this module without a Qubes
+  ;; channel instance, source marker, or explicit build revision.
+  `(("qubes-applied-guix-channels.scm"
+     ,(plain-file "qubes-applied-guix-channels.scm"
+                  (format #f "~s~%" (applied-channel-revisions))))))
+
+(define qubes-applied-channel-state-service-type
+  (service-type
+    (name 'qubes-applied-guix-channels)
+    (extensions
+     (list (service-extension etc-service-type
+                              qubes-applied-channel-state-etc)))
+    (default-value #f)
+    (description "Record the exact channels applied to the running system.")))
 
 (define %qubes-applied-channel-state-service
-  (simple-service 'qubes-applied-guix-channels
-                  etc-service-type
-                  `(("qubes-applied-guix-channels.scm"
-                     ,%qubes-applied-channel-state-file))))
+  (service qubes-applied-channel-state-service-type))
 
 (define %qubes-system-services
   ;; The full service stack a Qubes Guix TemplateVM runs.  It is the same for

@@ -170,7 +170,7 @@ fi
 # Guix.  Its baked marker, then its explicit build provenance, must override a
 # possibly older/newer Qubes revision in that profile.
 precedence_body="$(
-    sed -n '/^(define (applied-channel-revisions)/,/^(define %qubes-applied-channel-state-file/p' \
+    sed -n '/^(define (applied-channel-revisions)/,/^(define (qubes-applied-channel-state-etc/p' \
         "$system"
 )"
 marker_line="$(grep -nF '(or source-revision' <<< "$precedence_body" | cut -d: -f1)"
@@ -181,6 +181,17 @@ if [ -z "$marker_line" ] || [ -z "$environment_line" ] || [ -z "$profile_line" ]
         [ "$marker_line" -ge "$environment_line" ] ||
         [ "$environment_line" -ge "$profile_line" ]; then
     printf 'Qubes channel revision precedence is not marker > environment > profile\n' >&2
+    exit 1
+fi
+
+# Provenance depends on the OS instantiation context.  The channel compiler
+# imports every module without that context, so state-file construction must
+# remain deferred behind a service extension.
+require_text '(define (qubes-applied-channel-state-etc _)' "$system"
+require_text '(service-extension etc-service-type' "$system"
+require_text '(service qubes-applied-channel-state-service-type)' "$system"
+if grep -Fq '(define %qubes-applied-channel-state-file' "$system"; then
+    printf 'applied channel state is constructed eagerly at module import\n' >&2
     exit 1
 fi
 
