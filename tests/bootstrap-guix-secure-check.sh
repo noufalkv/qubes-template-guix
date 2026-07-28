@@ -79,6 +79,8 @@ cat > "$guile_git_fixture/configure" <<'EOF'
 set -euo pipefail
 [ -z "${GUILE_LOAD_PATH:-}" ]
 [ -z "${GUILE_LOAD_COMPILED_PATH:-}" ]
+[ -z "${GUILE_SYSTEM_PATH:-}" ]
+[ -z "${GUILE_SYSTEM_COMPILED_PATH:-}" ]
 [ -n "${XDG_CACHE_HOME:-}" ] && [ -n "${XDG_CONFIG_HOME:-}" ]
 printf 'build:guile-git-configure:' >> "${EVENT_LOG:?}"
 printf ' %s' "$@" >> "$EVENT_LOG"
@@ -86,9 +88,14 @@ printf '\n' >> "$EVENT_LOG"
 for argument in "$@"; do
     case "$argument" in
         --prefix=*) printf '%s\n' "${argument#--prefix=}" > .fake-prefix ;;
+        --libdir=*) printf '%s\n' "${argument#--libdir=}" > .fake-libdir ;;
     esac
 done
 [ -s .fake-prefix ]
+[ -s .fake-libdir ]
+read -r prefix < .fake-prefix
+read -r libdir < .fake-libdir
+[ "$libdir" = "$prefix/lib" ]
 EOF
 
 chmod +x \
@@ -107,6 +114,8 @@ case "$0" in
     */current-guix/bin/guix) role=fixed ;;
 esac
 [ "$role" != unknown ]
+[ -z "${GUILE_SYSTEM_PATH:-}" ]
+[ -z "${GUILE_SYSTEM_COMPILED_PATH:-}" ]
 [ -z "${GUIX:-}" ]
 [ -z "${GUIX_ALLOW_UNAUTHENTICATED_SUBSTITUTES:-}" ]
 [ -z "${GUIX_PACKAGE_PATH:-}" ]
@@ -269,6 +278,8 @@ for name in (
     "GUIX_PACKAGE_PATH",
     "GUIX_EXTENSIONS_PATH",
     "GUIX_PULL_URL",
+    "GUILE_SYSTEM_PATH",
+    "GUILE_SYSTEM_COMPILED_PATH",
     "NIX_STORE_DIR",
 ):
     if os.environ.get(name):
@@ -601,6 +612,8 @@ export GUIX_EXTENSIONS_PATH=/untrusted/extensions
 export GUIX_PULL_URL=https://example.invalid/untrusted-guix.git
 export GUILE_LOAD_PATH=/untrusted/guile-source
 export GUILE_LOAD_COMPILED_PATH=/untrusted/guile-compiled
+export GUILE_SYSTEM_PATH=/untrusted/guile-system-source
+export GUILE_SYSTEM_COMPILED_PATH=/untrusted/guile-system-compiled
 export NIX_STORE_DIR=/untrusted/store
 export GIT_CONFIG_GLOBAL=/untrusted/gitconfig
 export GIT_CONFIG_SYSTEM=/untrusted/system-gitconfig

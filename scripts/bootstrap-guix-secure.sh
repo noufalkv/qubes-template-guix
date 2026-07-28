@@ -169,6 +169,8 @@ export CURL_CA_BUNDLE="$system_ca_bundle"
 # These variables can replace Guix modules, redirect the pull, move state and
 # authorization files, or explicitly disable substitute authentication.  None
 # is a valid caller override for this trust bootstrap.
+unset GUILE_LOAD_PATH GUILE_LOAD_COMPILED_PATH
+unset GUILE_SYSTEM_PATH GUILE_SYSTEM_COMPILED_PATH
 unset GUIX GUIX_ALLOW_UNAUTHENTICATED_SUBSTITUTES GUIX_BUILD_OPTIONS
 unset GUIX_CONFIGURATION_DIRECTORY GUIX_DAEMON_SOCKET GUIX_DATABASE_DIRECTORY
 unset GUIX_DOWNLOAD_METHODS GUIX_EXTENSIONS_PATH GUIX_LOG_DIRECTORY
@@ -507,7 +509,9 @@ run_host_build() {
 (
     cd -- "$guile_git_checkout"
     run_host_build autoreconf -vfi
-    run_host_build ./configure --prefix="$guile_git_prefix"
+    run_host_build ./configure \
+        --prefix="$guile_git_prefix" \
+        --libdir="$guile_git_prefix/lib"
     run_host_build make -j"$(nproc)"
     run_host_build make install
 )
