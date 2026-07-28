@@ -182,6 +182,7 @@ case "${1:-} ${2:-}" in
             *) exit 34 ;;
         esac
         [ -r "${3:?}" ] || exit 35
+        [ "${5:-}" = --verbosity=3 ] || exit 39
         if [ "${FAKE_GUIX_MODE:?}" = pull-failure ]; then
             exit 24
         fi
