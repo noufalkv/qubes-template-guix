@@ -173,6 +173,16 @@ case "${1:-} ${2:-}" in
         [ "${XDG_CACHE_HOME:-}" = "${FAKE_RUN_DIR:?}/$xdg_phase-xdg-cache" ]
         [ "${XDG_CONFIG_HOME:-}" = "$FAKE_RUN_DIR/$xdg_phase-xdg-config" ]
         printf 'gate:advisory-check:%s\n' "$role" >> "$EVENT_LOG"
+        if [ "${FAKE_MODE:?}" = overwritten-checker-failure ] &&
+                [ "$role" = native ]; then
+            printf '\033[Krestore-file: vulnerable\r'
+            printf '\033[K%s\n' 'restore-file: not vulnerable'
+            printf '%s\n' \
+                'fetch-narinfos: not vulnerable' \
+                'file-uris: not vulnerable' \
+                'cache-key: not vulnerable'
+            exit 0
+        fi
         vulnerable=0
         if [ "${FAKE_MODE:?}" = native-checker-failure ] &&
                 [ "$role" = native ]; then
@@ -183,7 +193,7 @@ case "${1:-} ${2:-}" in
         fi
         if [ "$vulnerable" -eq 1 ]; then
             if [ "$role" = native ]; then
-                printf '\r\033[K'
+                printf '\r\033[Kprogress\r\033[K'
             fi
             printf '%s\n' \
                 'restore-file: vulnerable' \
@@ -201,7 +211,7 @@ case "${1:-} ${2:-}" in
             exit 0
         fi
         if [ "$role" = native ]; then
-            printf '\r\033[K'
+            printf '\r\033[Kprogress\r\033[K'
         else
             printf '\033[K'
         fi
@@ -731,6 +741,14 @@ done
 # the native/final daemon and emit no handoff outputs.
 if run_case native-checker-failure native-checker-failure; then
     fail "native checker failure unexpectedly succeeded"
+fi
+event_line '^gate:advisory-check:native$' >/dev/null
+event_line '^daemon:stop:native$' >/dev/null
+assert_absent '^gate:unpinned-pull$'
+assert_absent '^daemon:start:fixed:'
+
+if run_case overwritten-checker-failure overwritten-checker-failure; then
+    fail "overwritten vulnerable checker result unexpectedly succeeded"
 fi
 event_line '^gate:advisory-check:native$' >/dev/null
 event_line '^daemon:stop:native$' >/dev/null

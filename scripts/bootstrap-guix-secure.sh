@@ -615,21 +615,26 @@ check_advisory() {
         cat "$output" >&2
         die "$phase Guix vulnerability checker did not pass"
     fi
-    # Guix can prefix the first redirected result with its progress display's
-    # carriage return and ANSI erase-line sequence.  Remove only the two exact
-    # forms produced with and without the carriage return.
+    # Guix redraws progress with CR + ANSI erase-line, so redirected output can
+    # leave a progress bar and the first result in one newline-delimited record.
+    # Inspect every terminal segment and remove its exact erase code.  Keeping
+    # all result-bearing segments makes overwritten or duplicate results fail
+    # the exact comparison below.
     awk '
         BEGIN {
+            carriage_return = sprintf("%c", 13)
             clear_line = sprintf("%c[K", 27)
-            progress_prefix = sprintf("%c%s", 13, clear_line)
         }
         {
-            if (index($0, progress_prefix) == 1)
-                $0 = substr($0, length(progress_prefix) + 1)
-            else if (index($0, clear_line) == 1)
-                $0 = substr($0, length(clear_line) + 1)
+            count = split($0, terminal_segments, carriage_return)
+            for (segment_index = 1; segment_index <= count; segment_index++) {
+                result = terminal_segments[segment_index]
+                if (index(result, clear_line) == 1)
+                    result = substr(result, length(clear_line) + 1)
+                if (result ~ /^(restore-file|fetch-narinfos|file-uris|cache-key):/)
+                    print result
+            }
         }
-        /^(restore-file|fetch-narinfos|file-uris|cache-key):/ { print }
     ' "$output" > "$results"
     printf '%s\n' \
         'restore-file: not vulnerable' \
