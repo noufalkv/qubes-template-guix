@@ -626,13 +626,22 @@ build_pull_closure() {
     # channel set, and return its store paths.  Adding a custom channel changes
     # the Guix derivation hash, so ci.guix has no substitute for it and an
     # in-template "guix pull" would otherwise rebuild Guix from source on every
-    # update.  Realize the profile AND its full build-time closure (so the
-    # compiled-modules derivation guix pull needs is published too, not just the
-    # runtime profile), then emit every resulting store path.
+    # update.  Include the profile's runtime closure and every already-realized
+    # output in its derivation closure.  The latter contains the compiled-module
+    # output needed by a subsequent pull even though that output is not a
+    # runtime reference of the profile.
     printf 'collecting channel-composed guix pull closure...\n' >&2
     local derivers drv drv_closure closure_path
-    # The runtime closure of the profile, plus the build closure of its deriver
-    # (which contains the guix-<commit>-modules output guix pull realizes).
+    local derivations derivation_outputs derivation_outputs_helper
+
+    derivations="$work_dir/pull-derivations.txt"
+    derivation_outputs="$work_dir/pull-derivation-outputs.txt"
+    derivation_outputs_helper="$work_dir/realized-derivation-outputs"
+    : > "$derivations"
+
+    # Preserve the ordinary runtime closure first.  A derivation's references
+    # contain its input derivations and sources, but not those derivations'
+    # outputs, so gc -R alone cannot find the compiled-module output.
     "$guix_bin" gc -R "$pull_profile_store" ||
         die "failed to resolve the guix pull runtime closure"
     derivers="$("$guix_bin" gc --derivers "$pull_profile_store")" ||
@@ -646,11 +655,44 @@ build_pull_closure() {
         while IFS= read -r closure_path; do
             [ -n "$closure_path" ] || continue
             case "$closure_path" in
-                *.drv) ;;
+                *.drv) printf '%s\n' "$closure_path" >> "$derivations" ;;
                 *) printf '%s\n' "$closure_path" ;;
             esac
         done <<< "$drv_closure"
     done <<< "$derivers"
+
+    sort -u "$derivations" -o "$derivations"
+    [ -s "$derivations" ] ||
+        die "guix pull derivation closure contains no derivations"
+    cat > "$derivation_outputs_helper" <<'SCHEME'
+(use-modules (guix derivations)
+             (ice-9 rdelim))
+
+(let ((derivations (cadr (command-line))))
+  (call-with-input-file derivations
+    (lambda (port)
+      (let loop ()
+        (let ((drv (read-line port)))
+          (unless (eof-object? drv)
+            (for-each (lambda (output)
+                        (let ((path (cdr output)))
+                          (when (file-exists? path)
+                            (display path)
+                            (newline))))
+                      (derivation-path->output-paths drv))
+            (loop))))))
+  ;; Emit the marker only after traversing every derivation; the caller rejects
+  ;; truncated output.
+  (display "qubes-realized-derivation-outputs-complete\n"))
+SCHEME
+    "$guix_bin" repl -q -- \
+        "$derivation_outputs_helper" "$derivations" \
+        > "$derivation_outputs" ||
+        die "failed to resolve realized guix pull derivation outputs"
+    [ "$(tail -n 1 -- "$derivation_outputs")" = \
+        qubes-realized-derivation-outputs-complete ] ||
+        die "guix pull derivation output resolution did not complete"
+    sed '$d' "$derivation_outputs"
 }
 
 resolve_authenticated_pull_profile
@@ -845,7 +887,8 @@ printf '%s\n' "$cache_marker_value" > "$staged_output/$cache_marker_name"
 "$guix_bin" publish -p "$publish_port" -C "$compression" -c "$publish_cache" \
     --listen=127.0.0.1 \
     --public-key="$public_key" --private-key="$private_key" \
-    --ttl=30d >"$work_dir/guix-publish.log" 2>&1 &
+    --cache-bypass-threshold=0 --ttl=30d \
+    >"$work_dir/guix-publish.log" 2>&1 &
 publish_pid="$!"
 
 base="http://127.0.0.1:$publish_port"
@@ -1003,7 +1046,7 @@ while IFS= read -r path; do
     esac
     file_size="$(printf '%s' "$narinfo" | sed -n 's/^FileSize: //p')"
     case "$file_size" in
-        '') ;;
+        '') die "cached narinfo has no FileSize for $path" ;;
         *[!0-9]*) die "narinfo has invalid FileSize for $path: $file_size" ;;
     esac
 

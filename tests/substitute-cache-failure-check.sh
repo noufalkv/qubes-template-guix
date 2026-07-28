@@ -109,6 +109,10 @@ fake_store_hash=00000000000000000000000000000000
 fake_store_path="$work_dir/store/$fake_store_hash-system"
 fake_pull_target="$work_dir/store/11111111111111111111111111111111-pull-profile"
 fake_deriver="$work_dir/store/22222222222222222222222222222222-pull-profile.drv"
+fake_modules_deriver="$work_dir/store/33333333333333333333333333333333-guix-modules.drv"
+fake_modules_output="$work_dir/store/44444444444444444444444444444444-guix-modules"
+fake_modules_runtime="$work_dir/store/55555555555555555555555555555555-module-runtime"
+fake_derivation_source="$work_dir/store/66666666666666666666666666666666-channel-source"
 public_key="$work_dir/signing-key.pub"
 private_key="$work_dir/signing-key.sec"
 output="$work_dir/site"
@@ -127,6 +131,9 @@ gap_stat_counter="$work_dir/gap-stat-counter"
 mkdir -p \
     "$fake_store_path" \
     "$fake_pull_target" \
+    "$fake_modules_output" \
+    "$fake_modules_runtime" \
+    "$fake_derivation_source" \
     "$output" \
     "$unsafe_output" \
     "$late_output" \
@@ -134,6 +141,11 @@ mkdir -p \
     "$gap_output" \
     "$gap_replacement/nested"
 : > "$fake_deriver"
+: > "$fake_modules_deriver"
+export FAKE_MODULES_DERIVER="$fake_modules_deriver"
+export FAKE_MODULES_OUTPUT="$fake_modules_output"
+export FAKE_MODULES_RUNTIME="$fake_modules_runtime"
+export FAKE_DERIVATION_SOURCE="$fake_derivation_source"
 printf '%s\n' 'qubes-template-guix static cache v1' > \
     "$output/.qubes-template-guix-cache"
 printf '%s\n' 'qubes-template-guix static cache v1' > \
@@ -224,9 +236,59 @@ case "${1:-} ${2:-}" in
         printf '%s\n' "${FAKE_DERIVER:?}"
         ;;
     'gc -R')
-        printf '%s\n' "${FAKE_STORE_PATH:?}"
+        if [ "${FAKE_GUIX_MODE:?}" = pull-closure-fixture ]; then
+            case "${3:-}" in
+                "${FAKE_DERIVER:?}")
+                    printf '%s\n' \
+                        "$FAKE_DERIVER" \
+                        "${FAKE_MODULES_DERIVER:?}" \
+                        "${FAKE_DERIVATION_SOURCE:?}"
+                    ;;
+                "${FAKE_MODULES_OUTPUT:?}")
+                    printf '%s\n' \
+                        "$FAKE_MODULES_OUTPUT" \
+                        "${FAKE_MODULES_RUNTIME:?}"
+                    ;;
+                *) printf '%s\n' "${3:?}" ;;
+            esac
+        else
+            case "${3:-}" in
+                *.drv)
+                    printf '%s\n' "${3:?}" "${FAKE_STORE_PATH:?}"
+                    ;;
+                *) printf '%s\n' "${FAKE_STORE_PATH:?}" ;;
+            esac
+        fi
+        ;;
+    'repl -q')
+        [ "${3:-}" = -- ] || exit 40
+        [ -s "${4:?}" ] || exit 41
+        [ -s "${5:?}" ] || exit 42
+        if [ "${FAKE_GUIX_MODE:?}" = repl-incomplete ]; then
+            printf '%s\n' "${FAKE_STORE_PATH:?}"
+            exit 0
+        fi
+        if [ "$FAKE_GUIX_MODE" = pull-closure-fixture ]; then
+            grep -Fxq -- "${FAKE_DERIVER:?}" "$5" || exit 43
+            grep -Fxq -- "${FAKE_MODULES_DERIVER:?}" "$5" || exit 44
+            [ "$(wc -l < "$5" | tr -d '[:space:]')" -eq 2 ] || exit 45
+            printf '%s\n' "${FAKE_MODULES_OUTPUT:?}"
+        else
+            printf '%s\n' "${FAKE_STORE_PATH:?}"
+        fi
+        printf '%s\n' qubes-realized-derivation-outputs-complete
         ;;
     'publish -p')
+        bypass_options=0
+        for argument in "$@"; do
+            case "$argument" in
+                --cache-bypass-threshold=0)
+                    bypass_options=$((bypass_options + 1))
+                    ;;
+                --cache-bypass-threshold=*) exit 46 ;;
+            esac
+        done
+        [ "$bypass_options" -eq 1 ] || exit 47
         if [ "${FAKE_GUIX_MODE:?}" = publisher-collision ]; then
             exit 98
         fi
@@ -339,7 +401,10 @@ case "$request_url" in
         printf '%s\r\n\r\n' 'HTTP/1.1 200 OK' > "$header_file"
         {
             printf 'StorePath: %s\n' "${FAKE_STORE_PATH:?}"
-            printf '%s\n' 'URL: nar/fake.nar.zst' 'FileSize: 4'
+            printf '%s\n' 'URL: nar/fake.nar.zst'
+            if [ "${FAKE_GUIX_MODE:?}" != narinfo-missing-size ]; then
+                printf '%s\n' 'FileSize: 4'
+            fi
         } > "$output_file"
         printf '200'
         ;;
@@ -397,6 +462,55 @@ chmod +x "$fake_stat"
 : > "$fake_curl_log"
 : > "$fake_git_log"
 export FAKE_GIT_LOG="$fake_git_log"
+
+# A derivation reference closure contains .drv files, not their outputs.  Model
+# the channel-composed modules output as a realized output of a nested
+# derivation, with one runtime requisite that only the later gc -R can find.
+closure_manifest="$work_dir/pull-closure-paths.json"
+closure_log="$work_dir/pull-closure.log"
+: > "$fake_guix_log"
+closure_digest="$(
+    env \
+        FAKE_GUIX_LOG="$fake_guix_log" \
+        FAKE_GUIX_MODE=pull-closure-fixture \
+        FAKE_STORE_PATH="$fake_store_path" \
+        FAKE_PULL_TARGET="$fake_pull_target" \
+        FAKE_DERIVER="$fake_deriver" \
+        FAKE_CURL_LOG="$fake_curl_log" \
+        GUIX="$fake_guix" \
+        PATH="$work_dir:$PATH" \
+        TMPDIR="$work_dir" \
+        "$build_script" prepare \
+            --manifest "$closure_manifest" \
+            "${security_options[@]}" \
+            --variant normal 2> "$closure_log"
+)" || {
+    sed 's/^/pull closure: /' "$closure_log" >&2
+    exit 1
+}
+[[ "$closure_digest" =~ ^[0-9a-f]{64}$ ]] || {
+    printf 'pull closure prepare returned an invalid manifest digest\n' >&2
+    exit 1
+}
+grep -q '^repl -q$' "$fake_guix_log" || {
+    printf 'pull closure preparation did not enumerate derivation outputs\n' >&2
+    exit 1
+}
+python3 - \
+    "$closure_manifest" \
+    "$fake_modules_output" \
+    "$fake_modules_runtime" \
+    "$fake_derivation_source" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as source:
+    paths = set(json.load(source)["store_paths"])
+
+missing = set(sys.argv[2:]) - paths
+if missing:
+    raise SystemExit(f"prepared manifest omits pull closure paths: {missing}")
+PY
 
 # Prepare succeeds before either externally supplied signing-key file exists.
 # It realizes and records all inputs, but cannot reach guix publish.
@@ -830,14 +944,32 @@ assert_preserved_after_failure() {
         printf 'guix pull was not reached in %s mode\n' "$mode" >&2
         return 1
     }
-    if [ "$mode" = system-failure ]; then
-        grep -q '^system build$' "$fake_guix_log" || {
-            printf 'system build was not reached in %s mode\n' "$mode" >&2
+    case "$mode" in
+        pull-failure)
+            if grep -q '^system build$' "$fake_guix_log"; then
+                printf 'system build was reached after %s\n' "$mode" >&2
+                return 1
+            fi
+            ;;
+        *)
+            grep -q '^system build$' "$fake_guix_log" || {
+                printf 'system build was not reached in %s mode\n' \
+                    "$mode" >&2
+                return 1
+            }
+            ;;
+    esac
+    if [ "$mode" = repl-incomplete ]; then
+        grep -q '^repl -q$' "$fake_guix_log" || {
+            printf 'derivation enumeration was not reached in %s mode\n' \
+                "$mode" >&2
             return 1
         }
-    elif grep -q '^system build$' "$fake_guix_log"; then
-        printf 'system build was reached after %s\n' "$mode" >&2
-        return 1
+        grep -q 'derivation output resolution did not complete' \
+            "$failure_log" || {
+            printf 'incomplete derivation output was misdiagnosed\n' >&2
+            return 1
+        }
     fi
 
     [ "$(< "$output/sentinel")" = sentinel ] || {
@@ -858,6 +990,7 @@ assert_preserved_after_failure() {
 
 assert_preserved_after_failure system-failure
 assert_preserved_after_failure pull-failure
+assert_preserved_after_failure repl-incomplete
 
 : > "$fake_guix_log"
 : > "$fake_curl_log"
@@ -968,6 +1101,9 @@ assert_bake_failure_preserved \
 assert_bake_failure_preserved \
     publisher-dies-during-bake 18186 10 \
     'guix publish exited while baking narinfo'
+assert_bake_failure_preserved \
+    narinfo-missing-size 18191 10 \
+    'cached narinfo has no FileSize'
 if ! grep -Fq 'timeout 2s' "$work_dir/narinfo-bake-timeout.log" ||
         ! grep -Fq 'last result HTTP 404' \
             "$work_dir/narinfo-bake-timeout.log"; then
