@@ -615,7 +615,13 @@ check_advisory() {
         cat "$output" >&2
         die "$phase Guix vulnerability checker did not pass"
     fi
+    # Guix can prefix the first redirected result with its progress display's
+    # ANSI erase-line sequence.  Remove only that exact leading sequence.
     awk '
+        BEGIN { clear_line = sprintf("%c[K", 27) }
+        index($0, clear_line) == 1 {
+            $0 = substr($0, length(clear_line) + 1)
+        }
         /^(restore-file|fetch-narinfos|file-uris|cache-key):/ { print }
     ' "$output" > "$results"
     printf '%s\n' \

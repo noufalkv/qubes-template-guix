@@ -182,6 +182,9 @@ case "${1:-} ${2:-}" in
             vulnerable=1
         fi
         if [ "$vulnerable" -eq 1 ]; then
+            if [ "$role" = native ]; then
+                printf '\033[K'
+            fi
             printf '%s\n' \
                 'restore-file: vulnerable' \
                 'fetch-narinfos: not vulnerable' \
@@ -191,11 +194,14 @@ case "${1:-} ${2:-}" in
         fi
         if [ "$FAKE_MODE" = final-checker-inconclusive ] &&
                 [ "$role" = fixed ]; then
+            printf '\033[K%s\n' 'restore-file: not vulnerable'
             printf '%s\n' \
-                'restore-file: not vulnerable' \
                 'fetch-narinfos: not vulnerable' \
                 'file-uris: not vulnerable'
             exit 0
+        fi
+        if [ "$role" = native ]; then
+            printf '\033[K'
         fi
         printf '%s\n' \
             'restore-file: not vulnerable' \
