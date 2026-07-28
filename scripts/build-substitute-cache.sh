@@ -60,6 +60,10 @@ source_tree=""
 pulled_channels_json=""
 guix_repository=https://codeberg.org/guix/guix.git
 guix_branch=master
+guix_channel_urls=(
+    "$guix_repository"
+    https://git.guix.gnu.org/guix.git
+)
 source_paths=(
     .guix-channel
     config/guix-channels.scm
@@ -503,13 +507,13 @@ resolve_authenticated_pull_profile() {
         "$python_bin" - \
             "$pulled_channels_json" \
             "$source_commit" \
-            "$guix_repository" \
-            "$guix_branch" <<'PY'
+            "$guix_branch" \
+            "${guix_channel_urls[@]}" <<'PY'
 import json
 import re
 import sys
 
-manifest_path, expected_qubes_commit, expected_url, expected_branch = sys.argv[1:]
+manifest_path, expected_qubes_commit, expected_branch, *expected_urls = sys.argv[1:]
 try:
     with open(manifest_path, encoding="utf-8") as manifest_file:
         channels = json.load(manifest_file)
@@ -545,10 +549,10 @@ if actual_commit != expected_qubes_commit:
         f"expected {expected_qubes_commit}, got {actual_commit!r}"
     )
 guix_channel = guix_channels[0]
-if (guix_channel.get("url") != expected_url or
+if (guix_channel.get("url") not in expected_urls or
         guix_channel.get("branch") != expected_branch):
     raise SystemExit(
-        "pulled Guix channel is not the expected Codeberg master channel"
+        "pulled Guix channel is not an approved official master channel"
     )
 guix_commit = guix_channel.get("commit", "")
 if not re.fullmatch(r"[0-9a-f]{40}", guix_commit):

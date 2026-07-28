@@ -43,6 +43,11 @@ for channels_file in "$build_channels" "$installed_channels"; do
         exit 1
     fi
 done
+if ! sed '/^[[:space:]]*;/d' "$installed_channels" |
+        grep -Eq '^[[:space:]]*%default-channels\)[[:space:]]*$'; then
+    printf 'installed Guix channels do not track %%default-channels\n' >&2
+    exit 1
+fi
 
 # Match the standard Qubes timer exactly: OnBootSec=5min and
 # OnUnitActiveSec=2d.  A wall-clock cron schedule is not equivalent.
@@ -157,7 +162,7 @@ require_text "guix_bin=\"\$profile_guix\"" "$substitute_builder"
 require_text '--authenticated-guix-checkout' "$substitute_builder"
 require_text '--guix-security-floor' "$substitute_builder"
 require_text 'len(guix_channels) != 1' "$substitute_builder"
-require_text 'guix_channel.get("url") != expected_url' "$substitute_builder"
+require_text 'guix_channel.get("url") not in expected_urls' "$substitute_builder"
 require_text 'merge-base --is-ancestor' "$substitute_builder"
 if grep -Fq "\"\$repo_root/config/qubes-os-\$v.scm\"" "$substitute_builder" ||
         grep -Fq "pull -C \"\$repo_root/config/guix-channels.scm\"" \

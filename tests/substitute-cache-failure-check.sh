@@ -204,7 +204,7 @@ case "${1:-} ${2:-}" in
         if [ "${FAKE_GUIX_MODE:?}" = pull-commit-mismatch ]; then
             qubes_commit=0000000000000000000000000000000000000000
         fi
-        guix_url=https://codeberg.org/guix/guix.git
+        guix_url="${FAKE_GUIX_URL:-https://git.guix.gnu.org/guix.git}"
         guix_branch=master
         guix_commit="${FAKE_GUIX_COMMIT:?}"
         extra_guix_channel=""
@@ -406,6 +406,7 @@ split_digest="$(
     env \
         FAKE_GUIX_LOG="$fake_guix_log" \
         FAKE_GUIX_MODE=publisher-success \
+        FAKE_GUIX_URL=https://codeberg.org/guix/guix.git \
         FAKE_STORE_PATH="$fake_store_path" \
         FAKE_PULL_TARGET="$fake_pull_target" \
         FAKE_DERIVER="$fake_deriver" \
@@ -758,10 +759,10 @@ assert_guix_provenance_rejected \
     'pulled channel manifest must contain exactly one Guix channel'
 assert_guix_provenance_rejected \
     guix-url-mismatch \
-    'pulled Guix channel is not the expected Codeberg master channel'
+    'pulled Guix channel is not an approved official master channel'
 assert_guix_provenance_rejected \
     guix-branch-mismatch \
-    'pulled Guix channel is not the expected Codeberg master channel'
+    'pulled Guix channel is not an approved official master channel'
 assert_guix_provenance_rejected \
     guix-commit-malformed \
     'pulled Guix channel commit is not a full lowercase object ID'
