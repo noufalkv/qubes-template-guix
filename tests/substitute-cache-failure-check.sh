@@ -105,6 +105,7 @@ fake_curl_log="$work_dir/curl.log"
 fake_stat="$work_dir/stat"
 fake_narinfo_attempts="$work_dir/narinfo-attempts"
 fake_bake_started="$work_dir/bake-started"
+fake_pull_attempts="$work_dir/pull-attempts"
 fake_upstream_round="$work_dir/upstream-round"
 fake_upstream_requests="$work_dir/upstream-requests"
 fake_store_hash=00000000000000000000000000000000
@@ -211,9 +212,6 @@ case "${1:-} ${2:-}" in
         esac
         [ -r "${3:?}" ] || exit 35
         [ "${5:-}" = --verbosity=3 ] || exit 39
-        if [ "${FAKE_GUIX_MODE:?}" = pull-failure ]; then
-            exit 24
-        fi
         profile=""
         while [ "$#" -gt 0 ]; do
             if [ "$1" = -p ]; then
@@ -223,6 +221,21 @@ case "${1:-} ${2:-}" in
             shift
         done
         [ -n "$profile" ]
+        pull_attempt=1
+        if [ -n "${FAKE_PULL_ATTEMPTS_FILE:-}" ]; then
+            if [ -r "$FAKE_PULL_ATTEMPTS_FILE" ]; then
+                pull_attempt="$(wc -l < "$FAKE_PULL_ATTEMPTS_FILE")"
+                pull_attempt=$((pull_attempt + 1))
+            fi
+            printf '%s\n' "$profile" >> "$FAKE_PULL_ATTEMPTS_FILE"
+        fi
+        case "${FAKE_GUIX_MODE:?}" in
+            pull-failure) exit 24 ;;
+            pull-transient)
+                [ -n "${FAKE_PULL_ATTEMPTS_FILE:-}" ] || exit 48
+                [ "$pull_attempt" -gt 1 ] || exit 24
+                ;;
+        esac
         ln -s "${FAKE_PULL_TARGET:?}" "$profile"
         ;;
     'describe --format=json')
@@ -1153,15 +1166,67 @@ fi
     exit 1
 }
 
+assert_pull_attempt_paths() {
+    local expected="$1"
+    local index
+    local -a profiles=()
+
+    mapfile -t profiles < "$fake_pull_attempts"
+    [ "${#profiles[@]}" -eq "$expected" ] || return 1
+    [ "$(printf '%s\n' "${profiles[@]}" | sort -u | wc -l)" -eq \
+        "$expected" ] || return 1
+    for ((index = 0; index < expected; index++)); do
+        [[ "${profiles[index]}" == */pull-profile-$((index + 1)) ]] || return 1
+    done
+}
+
+# A failed pull is retried into a fresh profile and a later success continues
+# through ordinary realization.
+transient_pull_manifest="$work_dir/transient-pull-paths.json"
+transient_pull_log="$work_dir/transient-pull.log"
+: > "$fake_guix_log"
+rm -f -- "$fake_pull_attempts"
+transient_pull_digest="$(
+    env \
+        FAKE_GUIX_LOG="$fake_guix_log" \
+        FAKE_GUIX_MODE=pull-transient \
+        FAKE_PULL_ATTEMPTS_FILE="$fake_pull_attempts" \
+        FAKE_STORE_PATH="$fake_store_path" \
+        FAKE_PULL_TARGET="$fake_pull_target" \
+        FAKE_DERIVER="$fake_deriver" \
+        FAKE_CURL_LOG="$fake_curl_log" \
+        GUIX="$fake_guix" \
+        PATH="$work_dir:$PATH" \
+        TMPDIR="$work_dir" \
+        "$build_script" prepare \
+            --manifest "$transient_pull_manifest" \
+            "${security_options[@]}" \
+            --variant normal 2> "$transient_pull_log"
+)" || {
+    sed 's/^/transient pull: /' "$transient_pull_log" >&2
+    exit 1
+}
+if [[ ! "$transient_pull_digest" =~ ^[0-9a-f]{64}$ ]] ||
+        ! assert_pull_attempt_paths 2 ||
+        [ "$(grep -c '^pull -C$' "$fake_guix_log")" -ne 2 ] ||
+        ! grep -q '^system build$' "$fake_guix_log" ||
+        ! grep -q 'guix pull attempt 1 failed; retrying in 2 seconds' \
+            "$transient_pull_log"; then
+    printf 'transient guix pull did not recover on a fresh second profile\n' >&2
+    exit 1
+fi
+
 assert_preserved_after_failure() {
     local mode="$1"
     local failure_log="$work_dir/$mode-preserved.log"
 
     : > "$fake_guix_log"
+    rm -f -- "$fake_pull_attempts"
 
     if env \
         FAKE_GUIX_LOG="$fake_guix_log" \
         FAKE_GUIX_MODE="$mode" \
+        FAKE_PULL_ATTEMPTS_FILE="$fake_pull_attempts" \
         FAKE_STORE_PATH="$fake_store_path" \
         FAKE_PULL_TARGET="$fake_pull_target" \
         FAKE_DERIVER="$fake_deriver" \
@@ -1186,6 +1251,15 @@ assert_preserved_after_failure() {
     }
     case "$mode" in
         pull-failure)
+            if [ "$(grep -c '^pull -C$' "$fake_guix_log")" -ne 4 ] ||
+                    ! assert_pull_attempt_paths 4 ||
+                    ! grep -q \
+                        'failed to build the guix pull profile after 4 attempts' \
+                        "$failure_log"; then
+                printf 'guix pull failure did not exhaust four fresh profiles\n' \
+                    >&2
+                return 1
+            fi
             if grep -q '^system build$' "$fake_guix_log"; then
                 printf 'system build was reached after %s\n' "$mode" >&2
                 return 1

@@ -479,16 +479,29 @@ tar --extract \
     die "Qubes channel revision marker is reserved for installed snapshots"
 
 resolve_authenticated_pull_profile() {
-    local profile="$work_dir/pull-profile"
+    local profile=""
     local profile_guix resolved_guix_commit
+    local attempt delay
 
     pulled_channels_json="$work_dir/pull-profile-channels.json"
 
     printf 'building authenticated channel-composed guix profile...\n' >&2
-    "$guix_bin" pull -C "$source_tree/config/guix-channels.scm" --fallback \
-        --verbosity=3 \
-        -p "$profile" >&2 ||
-        die "failed to build the guix pull profile"
+    for attempt in 1 2 3 4; do
+        # A new profile path for each attempt prevents an interrupted pull from
+        # leaving state that a later attempt could mistake for its own output.
+        profile="$work_dir/pull-profile-$attempt"
+        if "$guix_bin" pull -C "$source_tree/config/guix-channels.scm" \
+                --fallback \
+                --verbosity=3 -p "$profile" >&2; then
+            break
+        fi
+        [ "$attempt" -lt 4 ] ||
+            die "failed to build the guix pull profile after 4 attempts"
+        delay="$((1 << attempt))"
+        printf 'guix pull attempt %s failed; retrying in %s seconds...\n' \
+            "$attempt" "$delay" >&2
+        sleep "$delay"
+    done
 
     pull_profile_store="$(readlink -f -- "$profile")" ||
         die "guix pull did not create a readable profile"
