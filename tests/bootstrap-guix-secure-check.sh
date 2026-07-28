@@ -113,6 +113,11 @@ esac
 [ -z "${GUIX_EXTENSIONS_PATH:-}" ]
 [ -z "${GUIX_PULL_URL:-}" ]
 [ -z "${NIX_STORE_DIR:-}" ]
+[ "${SSL_CERT_DIR:-}" = /etc/ssl/certs ]
+[ "${SSL_CERT_FILE:-}" = /etc/ssl/certs/ca-certificates.crt ]
+[ "${GIT_SSL_CAINFO:-}" = /etc/ssl/certs/ca-certificates.crt ]
+[ "${CURL_CA_BUNDLE:-}" = /etc/ssl/certs/ca-certificates.crt ]
+[ -z "${GIT_SSL_NO_VERIFY:-}" ]
 printf 'guix:%s:' "$role" >> "${EVENT_LOG:?}"
 printf ' %s' "$@" >> "$EVENT_LOG"
 printf '\n' >> "$EVENT_LOG"
@@ -317,6 +322,11 @@ set -euo pipefail
 [ "${GIT_CONFIG_NOSYSTEM:-}" = 1 ]
 [ "${GIT_TERMINAL_PROMPT:-}" = 0 ]
 [ -z "${GIT_DIR:-}" ] && [ -z "${GIT_WORK_TREE:-}" ]
+[ "${SSL_CERT_DIR:-}" = /etc/ssl/certs ]
+[ "${SSL_CERT_FILE:-}" = /etc/ssl/certs/ca-certificates.crt ]
+[ "${GIT_SSL_CAINFO:-}" = /etc/ssl/certs/ca-certificates.crt ]
+[ "${CURL_CA_BUNDLE:-}" = /etc/ssl/certs/ca-certificates.crt ]
+[ -z "${GIT_SSL_NO_VERIFY:-}" ]
 
 directory=$PWD
 if [ "${1:-}" = -C ]; then
@@ -511,6 +521,11 @@ EOF
 cat > "$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+[ "${SSL_CERT_DIR:-}" = /etc/ssl/certs ]
+[ "${SSL_CERT_FILE:-}" = /etc/ssl/certs/ca-certificates.crt ]
+[ "${GIT_SSL_CAINFO:-}" = /etc/ssl/certs/ca-certificates.crt ]
+[ "${CURL_CA_BUNDLE:-}" = /etc/ssl/certs/ca-certificates.crt ]
+[ -z "${GIT_SSL_NO_VERIFY:-}" ]
 output=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -592,6 +607,11 @@ export GIT_CONFIG_SYSTEM=/untrusted/system-gitconfig
 export GIT_CONFIG_PARAMETERS="'core.hooksPath'='/untrusted/hooks'"
 export GIT_DIR=/untrusted/git-dir
 export GIT_WORK_TREE=/untrusted/git-work-tree
+export SSL_CERT_DIR=/untrusted/certificates
+export SSL_CERT_FILE=/untrusted/ca-bundle.crt
+export GIT_SSL_CAINFO=/untrusted/git-ca-bundle.crt
+export CURL_CA_BUNDLE=/untrusted/curl-ca-bundle.crt
+export GIT_SSL_NO_VERIFY=true
 
 run_case() {
     local name=$1

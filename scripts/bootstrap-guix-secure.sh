@@ -17,6 +17,8 @@ readonly guix_branch=master
 readonly guix_introduction=9edb3f66fd807b096b48283debdcddccfea34bad
 readonly guix_introduction_signer='BBB0 2DDF 2CEA F6A8 0D1D  E643 A2A0 6DF2 A33A 54FA'
 readonly official_substitute_urls='https://ci.guix.gnu.org https://bordeaux.guix.gnu.org'
+readonly system_certificate_directory=/etc/ssl/certs
+readonly system_ca_bundle=/etc/ssl/certs/ca-certificates.crt
 
 # Current Guix needs a newer Guile-Git than Ubuntu 24.04 ships.  Pin both the
 # signed annotated tag object and its peeled commit, and verify the signature
@@ -151,6 +153,18 @@ export GIT_TERMINAL_PROMPT=0
 unset GIT_ASKPASS SSH_ASKPASS GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 unset GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_INDEX_FILE
+
+# Use the host's root-managed trust store explicitly.  The Git packaged with
+# Guix has no compiled-in CA location and expects GIT_SSL_CAINFO, while host
+# Git and curl may otherwise accept caller-controlled certificate variables.
+[ -d "$system_certificate_directory" ] && [ -f "$system_ca_bundle" ] &&
+    [ -r "$system_ca_bundle" ] ||
+    die "system CA bundle is not readable: $system_ca_bundle"
+unset GIT_SSL_NO_VERIFY GIT_SSL_CAPATH GIT_SSL_CERT GIT_SSL_KEY
+export SSL_CERT_DIR="$system_certificate_directory"
+export SSL_CERT_FILE="$system_ca_bundle"
+export GIT_SSL_CAINFO="$system_ca_bundle"
+export CURL_CA_BUNDLE="$system_ca_bundle"
 
 # These variables can replace Guix modules, redirect the pull, move state and
 # authorization files, or explicitly disable substitute authentication.  None
