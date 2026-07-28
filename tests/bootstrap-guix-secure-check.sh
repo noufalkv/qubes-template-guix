@@ -139,6 +139,10 @@ case "${1:-} ${2:-}" in
         ;;
     'archive --authorize')
         [ "$role" = native ]
+        [ "${XDG_CACHE_HOME:-}" = \
+            "${FAKE_RUN_DIR:?}/native-daemon-xdg-cache" ]
+        [ "${XDG_CONFIG_HOME:-}" = \
+            "$FAKE_RUN_DIR/native-daemon-xdg-config" ]
         IFS= read -r key
         printf 'gate:authorized:%s\n' "$key" >> "$EVENT_LOG"
         ;;
@@ -256,9 +260,9 @@ else:
     raise SystemExit("unexpected daemon path")
 xdg_phase = "native" if phase.startswith("native") else "fixed"
 expected_cache = os.path.join(os.environ["FAKE_RUN_DIR"],
-                              f"{xdg_phase}-xdg-cache")
+                              f"{xdg_phase}-daemon-xdg-cache")
 expected_config = os.path.join(os.environ["FAKE_RUN_DIR"],
-                               f"{xdg_phase}-xdg-config")
+                               f"{xdg_phase}-daemon-xdg-config")
 if os.environ.get("XDG_CACHE_HOME") != expected_cache:
     raise SystemExit("daemon has unexpected XDG cache")
 if os.environ.get("XDG_CONFIG_HOME") != expected_config:
