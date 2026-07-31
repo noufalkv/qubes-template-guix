@@ -118,6 +118,13 @@ MAX_FILE_SIZE = (1 << 63) - 1
 STORE_HASH_RE = re.compile(r"[0-9abcdfghijklmnpqrsvwxyz]{32}")
 NARINFO_NAME_RE = re.compile(STORE_HASH_RE.pattern + r"\.narinfo")
 SAFE_NAR_SEGMENT_RE = re.compile(r"[A-Za-z0-9._+-]+")
+# ``guix publish`` URI-encodes each path component canonically.  Of the
+# punctuation allowed in a Guix store name, '+', '?', and '=' therefore occur
+# only as these uppercase escapes; accepting arbitrary escapes would also
+# admit encoded separators and non-canonical aliases.
+SAFE_NAR_URL_SEGMENT_RE = re.compile(
+    r"(?:[A-Za-z0-9._-]|%(?:2B|3D|3F))+"
+)
 SAFE_TAG_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,254}")
 SAFE_REPOSITORY_PART_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,99}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
@@ -527,7 +534,7 @@ def validate_nar_relative_url(value: bytes, context: str) -> str:
         text = value.decode("ascii")
     except UnicodeDecodeError:
         fail(f"{context} URL is not ASCII")
-    if any(character in text for character in "\\?#%"):
+    if any(character in text for character in "\\?#"):
         fail(f"{context} has an unsafe URL: {text!r}")
     path = PurePosixPath(text)
     if (
@@ -535,7 +542,8 @@ def validate_nar_relative_url(value: bytes, context: str) -> str:
         or len(path.parts) < 2
         or path.parts[0] != "nar"
         or any(
-            part in {"", ".", ".."} or not SAFE_NAR_SEGMENT_RE.fullmatch(part)
+            part in {"", ".", ".."}
+            or not SAFE_NAR_URL_SEGMENT_RE.fullmatch(part)
             for part in path.parts
         )
     ):

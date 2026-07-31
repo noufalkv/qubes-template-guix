@@ -1268,12 +1268,41 @@ class SubstituteReleaseStateTests(unittest.TestCase):
             [{"release_tag": marker_tag, "repository": REPOSITORY}],
         )
 
+    def test_guix_percent_encoded_store_name_is_accepted(self):
+        encoded_cache, _, encoded_narinfo = self.make_cache(
+            "encoded-store-name",
+            relative_url="nar/zstd/example-gtk%2B-3.24.51%3Fbin%3D1",
+        )
+        encoded_output = self.prepare(
+            encoded_cache, "encoded-store-name", "2026-07-25T10:00:00Z"
+        )
+        self.assertTrue((encoded_output / "pages" / encoded_narinfo).is_file())
+
     def test_unsafe_or_inconsistent_fresh_cache_is_rejected(self):
         traversal_cache, _, _ = self.make_cache(
             "traversal", relative_url="nar/object?outside"
         )
         with self.assertRaisesRegex(HELPER.StateError, "unsafe"):
             self.prepare(traversal_cache, "traversal", "2026-07-25T10:00:00Z")
+
+        for index, relative_url in enumerate(
+            (
+                "nar/zstd/object%2foutside",
+                "nar/zstd/object%2Foutside",
+                "nar/zstd/object%2E%2Eoutside",
+                "nar/zstd/object%",
+                "nar/zstd/object+outside",
+            )
+        ):
+            unsafe_cache, _, _ = self.make_cache(
+                f"unsafe-encoding-{index}", relative_url=relative_url
+            )
+            with self.assertRaisesRegex(HELPER.StateError, "unsafe"):
+                self.prepare(
+                    unsafe_cache,
+                    f"unsafe-encoding-{index}",
+                    "2026-07-25T10:00:00Z",
+                )
 
         wrong_size_cache, _, _ = self.make_cache("wrong-size", file_size=999)
         with self.assertRaisesRegex(HELPER.StateError, "size mismatch"):
