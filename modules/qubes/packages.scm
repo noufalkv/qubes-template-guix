@@ -184,12 +184,12 @@ and the generated helper both do) and import (ice-9 ftw) for `scandir'."
   '(("qubes-core-vchan-xen" "v4.2.8"
      "a1337c282ffefcfc13a570683c57bc04813038db"
      "0nb5ky69w0v6xy7dkriagyi8fa2zpq2dnibr90pkf7asi0cib77j")
-    ("qubes-linux-utils" "v4.3.18" "2151d1009f3a91557622d5c5e310456226c588c5"
-     "009sc14rp4vqa1fbv381qy6qahhqgrifq0x21jikp5wq0b6z7z09")
+    ("qubes-linux-utils" "v4.3.19" "2c79ddbf9d9f9024d1881215d8441b3f0f6058fa"
+     "1vzssg29wjxpzrkvfppsp021r3ngw76dgryb1in3080k241kyshr")
     ("qubes-core-qubesdb" "v4.3.3" "aeb3c8d8486673636964bc3beb4819d981dd3920"
      "0p1x87x5i47bqwg5gikfkk9rl4kzpnxjc92h3pvq2bzpwnvq9ar8")
-    ("qubes-core-qrexec" "v4.3.12" "cc801b8f630a65dfb2855b829bfc070f6e82f26a"
-     "1lbz435sjs3d7pc9ymnwxqi14sc83xdnny5pzwp8c580rraysvd4")
+    ("qubes-core-qrexec" "v4.3.13" "25efde86724d5555ca47a1ef5fb984b407a6baee"
+     "09j84wdn2v03aa0dgaz7578rfhgkzijbibn3sz0nl00g8yzi5w2r")
     ("qubes-core-agent-linux" "v4.3.46"
      "35a5720b480026778884397e0eb81f607d3d7365"
      "1g1naqzjx8sr6vyw34l76l1j96m64vsa297kzqs5bp0hfrlyisfy")

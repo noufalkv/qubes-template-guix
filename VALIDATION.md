@@ -42,10 +42,9 @@ AppVM behavior.  Local maintenance commands are not runtime evidence.
   temporary pull profile is not copied into the image; root/user `current-guix`
   and per-user `current-guix-*` links created during image initialization are
   removed.
-- `make check-qubes-pins` passed on July 22, 2026 after refreshing
-  `qubes-linux-utils` to `v4.3.18`, `qubes-core-qubesdb` to `v4.3.3`,
-  `qubes-core-agent-linux` to `v4.3.46`, and `qubes-gui-agent-linux` to
-  `v4.3.18`.
+- `make check-qubes-pins` passed on July 31, 2026 after refreshing
+  `qubes-linux-utils` to `v4.3.19` and `qubes-core-qrexec` to `v4.3.13`.
+  The other R4.3 pins remain current.
 - Normal appmenus are sourced from
   `builder-v2-template/appmenus_guix/whitelisted-appmenus.list`.
 - Minimal appmenus are sourced from
