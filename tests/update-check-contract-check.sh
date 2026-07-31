@@ -102,14 +102,49 @@ require_text "printf 'snapshot-sha256:%s\\n'" "$substitute_workflow"
 require_text \
     "substitute-cache-snapshot?run=\$GITHUB_RUN_ID-\$GITHUB_RUN_ATTEMPT" \
     "$substitute_workflow"
-require_text 'for attempt in $(seq 1 8); do' "$substitute_workflow"
-require_text 'retry_delay=$((5 << (attempt - 1)))' "$substitute_workflow"
+require_text 'for attempt in $(seq 1 6); do' "$substitute_workflow"
+require_text 'test "$attempt" -lt 6' "$substitute_workflow"
+require_text 'sleep 5' "$substitute_workflow"
 if [ "$(grep -Fc \
         "gh api --header 'Cache-Control: no-cache' --paginate --slurp" \
         "$substitute_workflow")" -ne 3 ]; then
     printf '%s\n' 'not every managed Release snapshot forces revalidation' >&2
     exit 1
 fi
+
+# Execute the workflow's argument-assembly block.  Each metadata ZIP expands
+# to an option/value pair, so the number of array elements is not the number
+# of generations.
+recovery_prior_block="$(
+    awk '
+        /- name: Recover Pages and cleanup plan from public Releases/ {
+            recovery = 1
+        }
+        recovery && /^[[:space:]]+prior=\(\)$/ { capture = 1 }
+        capture && /^[[:space:]]+if test "\$publish_needed"/ { exit }
+        capture {
+            sub(/^[[:space:]]+/, "")
+            print
+        }
+    ' "$substitute_workflow"
+)"
+if ! grep -Fq 'prior+=(--prior-metadata "$metadata")' \
+        <<< "$recovery_prior_block"; then
+    printf '%s\n' 'recovery metadata argument block was not extracted' >&2
+    exit 1
+fi
+recovery_count_dir="$(mktemp -d)"
+touch -- "$recovery_count_dir/one.zip" "$recovery_count_dir/two.zip"
+if ! metadata_dir="$recovery_count_dir" generation_count=2 \
+        bash -euo pipefail -c "$recovery_prior_block"; then
+    rm -f -- "$recovery_count_dir/one.zip" "$recovery_count_dir/two.zip"
+    rmdir -- "$recovery_count_dir"
+    printf '%s\n' 'recovery metadata argument count rejects valid ZIPs' >&2
+    exit 1
+fi
+rm -f -- "$recovery_count_dir/one.zip" "$recovery_count_dir/two.zip"
+rmdir -- "$recovery_count_dir"
+
 require_text "cmp -- \"\$local_snapshot\" \"\$downloaded_snapshot\"" \
     "$substitute_workflow"
 require_text \

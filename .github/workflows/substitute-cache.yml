@@ -589,7 +589,7 @@ jobs:
           test "$publish_needed" = true || test "$publish_needed" = false
 
           recovered=false
-          for attempt in $(seq 1 8); do
+          for attempt in $(seq 1 6); do
             snapshot="$RUNNER_TEMP/substitute-public-snapshot-$attempt"
             metadata_dir="$snapshot/metadata"
             releases="$snapshot/releases.json"
@@ -690,11 +690,13 @@ jobs:
               done < "$metadata_assets"
 
               prior=()
+              metadata_count=0
               shopt -s nullglob
               for metadata in "$metadata_dir"/*.zip; do
                 prior+=(--prior-metadata "$metadata")
+                metadata_count=$((metadata_count + 1))
               done
-              test "${#prior[@]}" -eq "$generation_count"
+              test "$metadata_count" -eq "$generation_count"
               if test "$publish_needed" = true; then
                 current_metadata='${{ steps.prepare_release.outputs.output }}/release-assets/substitute-cache-v2-metadata.zip'
                 test -f "$current_metadata"
@@ -716,10 +718,8 @@ jobs:
               recovered=true
               break
             fi
-            test "$attempt" -lt 8
-            retry_delay=$((5 << (attempt - 1)))
-            test "$retry_delay" -le 30 || retry_delay=30
-            sleep "$retry_delay"
+            test "$attempt" -lt 6
+            sleep 5
           done
           test "$recovered" = true
           printf 'output=%s\n' "$output" >> "$GITHUB_OUTPUT"
