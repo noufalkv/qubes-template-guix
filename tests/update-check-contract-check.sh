@@ -118,6 +118,12 @@ if [ "$(grep -Fc '_NIX_OPTIONS="substitute-urls=' \
         >&2
     exit 1
 fi
+if [ "$(grep -Fc "XDG_CACHE_HOME=\"\$RUNNER_TEMP/" \
+        "$substitute_workflow")" -ne 2 ]; then
+    printf '%s\n' \
+        'substitute checks do not use private writable narinfo caches' >&2
+    exit 1
+fi
 if [ "$(grep -Fc \
         "gh api --header 'Cache-Control: no-cache' --paginate --slurp" \
         "$substitute_workflow")" -ne 3 ]; then

@@ -815,7 +815,10 @@ jobs:
           done
 
           actual="$RUNNER_TEMP/staged-substitute-query-result"
-          _NIX_OPTIONS="substitute-urls=http://127.0.0.1:$port/v2" \
+          # _NIX_OPTIONS selects daemon mode.  Keep the unprivileged
+          # validation process out of the root-owned /var/guix cache.
+          XDG_CACHE_HOME="$RUNNER_TEMP/staged-substitute-cache" \
+            _NIX_OPTIONS="substitute-urls=http://127.0.0.1:$port/v2" \
             "$GUIX" substitute --query \
             < "$query" | sed '/^$/d' | sort -u > "$actual"
           cmp -- "$expected" "$actual"
@@ -918,7 +921,8 @@ jobs:
             --max-time 60 "$nar_url" >/dev/null
           query_result="$(
             printf 'have %s\n' "$store_path" |
-              _NIX_OPTIONS="substitute-urls=$cache_url" \
+              XDG_CACHE_HOME="$RUNNER_TEMP/published-substitute-cache" \
+                _NIX_OPTIONS="substitute-urls=$cache_url" \
                 "$GUIX" substitute --query
           )"
           grep -Fx -- "$store_path" <<< "$query_result"
