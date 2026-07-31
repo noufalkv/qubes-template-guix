@@ -102,8 +102,8 @@ require_text "printf 'snapshot-sha256:%s\\n'" "$substitute_workflow"
 require_text \
     "substitute-cache-snapshot?run=\$GITHUB_RUN_ID-\$GITHUB_RUN_ATTEMPT" \
     "$substitute_workflow"
-require_text 'for attempt in $(seq 1 6); do' "$substitute_workflow"
-require_text 'test "$attempt" -lt 6' "$substitute_workflow"
+require_text "for attempt in \$(seq 1 6); do" "$substitute_workflow"
+require_text "test \"\$attempt\" -lt 6" "$substitute_workflow"
 require_text 'sleep 5' "$substitute_workflow"
 if [ "$(grep -Fc \
         "gh api --header 'Cache-Control: no-cache' --paginate --slurp" \
@@ -128,7 +128,7 @@ recovery_prior_block="$(
         }
     ' "$substitute_workflow"
 )"
-if ! grep -Fq 'prior+=(--prior-metadata "$metadata")' \
+if ! grep -Fq "prior+=(--prior-metadata \"\$metadata\")" \
         <<< "$recovery_prior_block"; then
     printf '%s\n' 'recovery metadata argument block was not extracted' >&2
     exit 1

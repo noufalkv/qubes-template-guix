@@ -14,7 +14,6 @@ import unittest
 import zipfile
 from unittest import mock
 
-
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 HELPER_PATH = REPO_ROOT / "scripts" / "prepare-substitute-release.py"
 SPEC = importlib.util.spec_from_file_location("prepare_substitute_release", HELPER_PATH)
@@ -1062,13 +1061,12 @@ class SubstituteReleaseStateTests(unittest.TestCase):
 
         with mock.patch.object(
             HELPER, "write_deterministic_zip", side_effect=write_oversized
-        ):
-            with self.assertRaisesRegex(HELPER.StateError, "exceeds"):
-                self.prepare(
-                    cache,
-                    "self-validation-oversized",
-                    "2026-07-25T10:00:00Z",
-                )
+        ), self.assertRaisesRegex(HELPER.StateError, "exceeds"):
+            self.prepare(
+                cache,
+                "self-validation-oversized",
+                "2026-07-25T10:00:00Z",
+            )
         self.assertFalse((self.work_dir / "output-self-validation-oversized").exists())
 
         original_writer = HELPER.write_deterministic_zip
@@ -1088,13 +1086,12 @@ class SubstituteReleaseStateTests(unittest.TestCase):
             HELPER,
             "write_deterministic_zip",
             side_effect=write_different_generation,
-        ):
-            with self.assertRaisesRegex(HELPER.StateError, "does not reproduce"):
-                self.prepare(
-                    cache,
-                    "self-validation-different",
-                    "2026-07-25T10:00:00Z",
-                )
+        ), self.assertRaisesRegex(HELPER.StateError, "does not reproduce"):
+            self.prepare(
+                cache,
+                "self-validation-different",
+                "2026-07-25T10:00:00Z",
+            )
         self.assertFalse((self.work_dir / "output-self-validation-different").exists())
 
     def test_retention_excludes_old_pages_and_requests_gc_marker(self):

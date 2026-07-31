@@ -83,10 +83,10 @@ import stat
 import sys
 import tempfile
 import zipfile
+from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable, NoReturn
-
+from typing import Any, NoReturn
 
 SCHEMA = "org.qubes-os.qubes-template-guix.substitute-cache-generation"
 PLAN_SCHEMA = "org.qubes-os.qubes-template-guix.substitute-cache-release-plan"
@@ -209,7 +209,7 @@ class ReleaseInventory:
     """Published GitHub Releases and their API-reported assets."""
 
     repository: str
-    releases: dict[str, "InventoryRelease"]
+    releases: dict[str, InventoryRelease]
 
 
 @dataclass(frozen=True)
@@ -217,7 +217,7 @@ class InventoryRelease:
     """One public GitHub Release observed through the API."""
 
     published_at: dt.datetime
-    assets: dict[str, "InventoryAsset"]
+    assets: dict[str, InventoryAsset]
 
 
 @dataclass(frozen=True)
@@ -349,10 +349,10 @@ def parse_timestamp(value: Any, field: str) -> dt.datetime:
     if not isinstance(value, str) or not TIMESTAMP_RE.fullmatch(value):
         fail(f"{field} must use canonical UTC form YYYY-MM-DDTHH:MM:SSZ")
     try:
-        parsed = dt.datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+        parsed = dt.datetime.strptime(value, "%Y-%m-%dT%H:%M:%S%z")
     except ValueError as error:
         fail(f"invalid {field}: {error}")
-    return parsed.replace(tzinfo=dt.timezone.utc)
+    return parsed
 
 
 def require_exact_keys(value: Any, expected: set[str], field: str) -> dict[str, Any]:
@@ -716,10 +716,10 @@ def narinfo_content_identity(content: bytes, path: str) -> NarinfoContentIdentit
     }
     for index, line in enumerate(lines):
         body = line.rstrip(b"\r\n")
-        for field_name in values:
+        for field_name, occurrences in values.items():
             prefix = field_name + b": "
             if body.startswith(prefix):
-                values[field_name].append((index, body[len(prefix) :]))
+                occurrences.append((index, body[len(prefix) :]))
 
     identity: dict[bytes, bytes] = {}
     for field_name, occurrences in values.items():
@@ -1259,8 +1259,7 @@ def parse_manifest(
             fail(f"narinfo digest or size mismatch: {member_name}")
         _, file_size, url = narinfo_fields(content, path, allow_absolute_url=True)
         if (
-            file_size is not None
-            and file_size != asset.size
+            (file_size is not None and file_size != asset.size)
             or url.decode("ascii") != asset.url
         ):
             fail(f"narinfo does not match its NAR object: {member_name}")
@@ -1895,8 +1894,7 @@ def prepare_release(
             rewritten, item.path, allow_absolute_url=True
         )
         if (
-            rewritten_size is not None
-            and rewritten_size != asset.size
+            (rewritten_size is not None and rewritten_size != asset.size)
             or rewritten_url.decode("ascii") != asset.url
         ):
             fail(f"rewritten narinfo does not name its immutable asset: {item.path}")

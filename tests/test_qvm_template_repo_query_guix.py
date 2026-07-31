@@ -12,7 +12,6 @@ import types
 import unittest
 from unittest import mock
 
-
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 HELPER_PATH = (
     REPO_ROOT
@@ -80,15 +79,12 @@ PRIMARY = f"""\
 
 class PayloadTests(unittest.TestCase):
     def test_parse_payload(self):
-        payload = "\n".join(
-            (
-                "--refresh",
-                "--releasever=4.3",
-                "--enablerepo=qubes-*",
-                "qubes-template-guix*",
-                "---",
-                REPO_CONFIG,
-            )
+        payload = (
+            "--refresh\n"
+            "--releasever=4.3\n"
+            "--enablerepo=qubes-*\n"
+            "qubes-template-guix*\n"
+            f"---\n{REPO_CONFIG}"
         )
 
         options, package_spec, repo_text = HELPER.parse_payload(payload)
@@ -115,9 +111,10 @@ class PayloadTests(unittest.TestCase):
             "ok\n---\n[repo]\nbaseurl=https://example.test/\0",
         )
         for payload in invalid_payloads:
-            with self.subTest(payload=payload):
-                with self.assertRaises(HELPER.PayloadError):
-                    HELPER.parse_payload(payload)
+            with self.subTest(payload=payload), self.assertRaises(
+                HELPER.PayloadError
+            ):
+                HELPER.parse_payload(payload)
 
     def test_read_payload_is_bounded(self):
         with mock.patch.object(HELPER, "MAX_PAYLOAD_SIZE", 4):
@@ -286,9 +283,10 @@ class RepositoryTests(unittest.TestCase):
             "https:///missing-host",
             "https://[invalid-ipv6/repo",
         ):
-            with self.subTest(url=url):
-                with self.assertRaises(HELPER.RepositoryError):
-                    HELPER.validate_url(url)
+            with self.subTest(url=url), self.assertRaises(
+                HELPER.RepositoryError
+            ):
+                HELPER.validate_url(url)
 
     def test_metadata_deadline_stops_further_fetches(self):
         HELPER._metadata_deadline = HELPER.time.monotonic() - 1
@@ -334,11 +332,13 @@ class RepositoryTests(unittest.TestCase):
         )
 
     def test_repository_config_and_baseurl_counts_are_bounded(self):
-        with mock.patch.object(HELPER, "MAX_REPOSITORIES", 1):
-            with self.assertRaisesRegex(HELPER.PayloadError, "sections"):
-                HELPER.parse_repo_config(
-                    "[one]\nenabled=0\n[two]\nenabled=0\n"
-                )
+        with (
+            mock.patch.object(HELPER, "MAX_REPOSITORIES", 1),
+            self.assertRaisesRegex(HELPER.PayloadError, "sections"),
+        ):
+            HELPER.parse_repo_config(
+                "[one]\nenabled=0\n[two]\nenabled=0\n"
+            )
 
         config = HELPER.parse_repo_config(
             "[repo]\nbaseurl=https://one.test/ https://two.test/\n"
@@ -470,12 +470,14 @@ class RepositoryTests(unittest.TestCase):
                 self.assertFalse(HELPER.valid_package_fields(candidate))
 
     def test_decompression_rejects_expansion_beyond_limit(self):
-        with mock.patch.object(HELPER, "MAX_UNCOMPRESSED_METADATA_SIZE", 4):
-            with self.assertRaisesRegex(HELPER.RepositoryError, "exceeds"):
-                HELPER.decompress_metadata(
-                    "https://example.test/primary.xml.gz",
-                    gzip.compress(b"12345"),
-                )
+        with (
+            mock.patch.object(HELPER, "MAX_UNCOMPRESSED_METADATA_SIZE", 4),
+            self.assertRaisesRegex(HELPER.RepositoryError, "exceeds"),
+        ):
+            HELPER.decompress_metadata(
+                "https://example.test/primary.xml.gz",
+                gzip.compress(b"12345"),
+            )
 
     def test_decompression_rejects_corrupt_gzip_as_repository_error(self):
         truncated = gzip.compress(b"metadata")[:-4]
@@ -497,11 +499,13 @@ class RepositoryTests(unittest.TestCase):
         unknown_encoding = (
             b'<?xml version="1.0" encoding="x-unknown"?><metadata/>'
         )
-        with self.assertRaisesRegex(HELPER.RepositoryError, "repository index"):
-            with mock.patch.object(
+        with (
+            self.assertRaisesRegex(HELPER.RepositoryError, "repository index"),
+            mock.patch.object(
                 HELPER, "curl_bytes", return_value=unknown_encoding
-            ):
-                HELPER.primary_metadata_url("https://example.test/repository")
+            ),
+        ):
+            HELPER.primary_metadata_url("https://example.test/repository")
 
         with self.assertRaisesRegex(HELPER.RepositoryError, "primary repository"):
             list(HELPER.iter_package_elements(unknown_encoding))

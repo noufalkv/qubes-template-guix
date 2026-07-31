@@ -21,7 +21,6 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 import zlib
 
-
 REPO_NS = "http://linux.duke.edu/metadata/repo"
 COMMON_NS = "http://linux.duke.edu/metadata/common"
 RPM_NS = "http://linux.duke.edu/metadata/rpm"
@@ -642,9 +641,7 @@ def valid_package_fields(package):
         return False
     if int(package["buildtime"]) > MAX_BUILD_TIMESTAMP:
         return False
-    if not LICENSE_RE.fullmatch(package["license"]):
-        return False
-    return True
+    return LICENSE_RE.fullmatch(package["license"]) is not None
 
 
 def parse_packages(repoid, baseurl):
@@ -654,9 +651,9 @@ def parse_packages(repoid, baseurl):
     # Validate the complete document and cap its relevant record count before
     # yielding anything.  This preserves all-or-nothing base-URL fallback while
     # avoiding a list of every template package in memory.
-    package_count = 0
-    for package in iter_package_elements(metadata):
-        package_count += 1
+    for package_count, package in enumerate(
+        iter_package_elements(metadata), start=1
+    ):
         if package_count > MAX_REPOSITORY_PACKAGES:
             raise RepositoryError(
                 "repository contains too many package records"

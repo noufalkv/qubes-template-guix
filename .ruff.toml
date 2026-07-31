@@ -1,0 +1,27 @@
+# Keep the lint target independent of Ruff's host-specific default rule set.
+target-version = "py310"
+
+[lint]
+select = [
+    "B",
+    "BLE",
+    "DTZ",
+    "E4",
+    "E7",
+    "E9",
+    "EXE",
+    "F",
+    "FLY002",
+    "I",
+    "PERF",
+    "PIE",
+    "PLC0206",
+    "PLE",
+    "RET",
+    "RUF021",
+    "S102",
+    "S110",
+    "S112",
+    "SIM",
+    "UP",
+]

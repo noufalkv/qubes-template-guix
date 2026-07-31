@@ -3,6 +3,7 @@
 """Create and validate the realized-path handoff for cache publication."""
 
 import argparse
+import contextlib
 import hashlib
 import hmac
 import json
@@ -270,10 +271,8 @@ def publish_no_clobber(output_path, payload):
         if temporary_fd is not None:
             os.close(temporary_fd)
         if temporary_path is not None:
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 os.unlink(temporary_path)
-            except FileNotFoundError:
-                pass
 
 
 def create_manifest(arguments):
