@@ -1288,10 +1288,18 @@ class SubstituteReleaseStateTests(unittest.TestCase):
         for index, relative_url in enumerate(
             (
                 "nar/zstd/object%2foutside",
+                "nar/zstd/object%2boutside",
+                "nar/zstd/object%3doutside",
+                "nar/zstd/object%3foutside",
                 "nar/zstd/object%2Foutside",
                 "nar/zstd/object%2E%2Eoutside",
                 "nar/zstd/object%",
                 "nar/zstd/object+outside",
+                "nar//zstd/object",
+                "nar/./zstd/object",
+                "./nar/zstd/object",
+                "nar/zstd/object/",
+                "nar/zstd/object/.",
             )
         ):
             unsafe_cache, _, _ = self.make_cache(

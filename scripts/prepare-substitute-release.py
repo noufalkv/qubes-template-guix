@@ -536,15 +536,14 @@ def validate_nar_relative_url(value: bytes, context: str) -> str:
         fail(f"{context} URL is not ASCII")
     if any(character in text for character in "\\?#"):
         fail(f"{context} has an unsafe URL: {text!r}")
-    path = PurePosixPath(text)
+    parts = text.split("/")
     if (
-        path.is_absolute()
-        or len(path.parts) < 2
-        or path.parts[0] != "nar"
+        len(parts) < 2
+        or parts[0] != "nar"
         or any(
             part in {"", ".", ".."}
             or not SAFE_NAR_URL_SEGMENT_RE.fullmatch(part)
-            for part in path.parts
+            for part in parts
         )
     ):
         fail(f"{context} has an unsafe relative NAR URL: {text!r}")
