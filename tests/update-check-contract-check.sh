@@ -102,9 +102,22 @@ require_text "printf 'snapshot-sha256:%s\\n'" "$substitute_workflow"
 require_text \
     "substitute-cache-snapshot?run=\$GITHUB_RUN_ID-\$GITHUB_RUN_ATTEMPT" \
     "$substitute_workflow"
-require_text "for attempt in \$(seq 1 6); do" "$substitute_workflow"
-require_text "test \"\$attempt\" -lt 6" "$substitute_workflow"
-require_text 'sleep 5' "$substitute_workflow"
+require_text "for attempt in \$(seq 1 8); do" "$substitute_workflow"
+require_text "test \"\$attempt\" -lt 8" "$substitute_workflow"
+require_text "retry_delay=\$((5 << (attempt - 1)))" "$substitute_workflow"
+require_text "test \"\$retry_delay\" -le 30 || retry_delay=30" \
+    "$substitute_workflow"
+require_text "sleep \"\$retry_delay\"" "$substitute_workflow"
+if grep -Fq -- '--substitute-urls=' "$substitute_workflow"; then
+    printf '%s\n' 'substituter URL is incorrectly passed as a CLI option' >&2
+    exit 1
+fi
+if [ "$(grep -Fc '_NIX_OPTIONS="substitute-urls=' \
+        "$substitute_workflow")" -ne 2 ]; then
+    printf '%s\n' 'substitute checks do not scope both cache URLs via _NIX_OPTIONS' \
+        >&2
+    exit 1
+fi
 if [ "$(grep -Fc \
         "gh api --header 'Cache-Control: no-cache' --paginate --slurp" \
         "$substitute_workflow")" -ne 3 ]; then

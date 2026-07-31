@@ -589,7 +589,7 @@ jobs:
           test "$publish_needed" = true || test "$publish_needed" = false
 
           recovered=false
-          for attempt in $(seq 1 6); do
+          for attempt in $(seq 1 8); do
             snapshot="$RUNNER_TEMP/substitute-public-snapshot-$attempt"
             metadata_dir="$snapshot/metadata"
             releases="$snapshot/releases.json"
@@ -718,8 +718,10 @@ jobs:
               recovered=true
               break
             fi
-            test "$attempt" -lt 6
-            sleep 5
+            test "$attempt" -lt 8
+            retry_delay=$((5 << (attempt - 1)))
+            test "$retry_delay" -le 30 || retry_delay=30
+            sleep "$retry_delay"
           done
           test "$recovered" = true
           printf 'output=%s\n' "$output" >> "$GITHUB_OUTPUT"
@@ -813,8 +815,8 @@ jobs:
           done
 
           actual="$RUNNER_TEMP/staged-substitute-query-result"
-          "$GUIX" substitute --query \
-            --substitute-urls="http://127.0.0.1:$port/v2" \
+          _NIX_OPTIONS="substitute-urls=http://127.0.0.1:$port/v2" \
+            "$GUIX" substitute --query \
             < "$query" | sed '/^$/d' | sort -u > "$actual"
           cmp -- "$expected" "$actual"
           stop_server
@@ -916,7 +918,8 @@ jobs:
             --max-time 60 "$nar_url" >/dev/null
           query_result="$(
             printf 'have %s\n' "$store_path" |
-              "$GUIX" substitute --query --substitute-urls="$cache_url"
+              _NIX_OPTIONS="substitute-urls=$cache_url" \
+                "$GUIX" substitute --query
           )"
           grep -Fx -- "$store_path" <<< "$query_result"
 
