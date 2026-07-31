@@ -102,6 +102,14 @@ require_text "printf 'snapshot-sha256:%s\\n'" "$substitute_workflow"
 require_text \
     "substitute-cache-snapshot?run=\$GITHUB_RUN_ID-\$GITHUB_RUN_ATTEMPT" \
     "$substitute_workflow"
+require_text 'for attempt in $(seq 1 8); do' "$substitute_workflow"
+require_text 'retry_delay=$((5 << (attempt - 1)))' "$substitute_workflow"
+if [ "$(grep -Fc \
+        "gh api --header 'Cache-Control: no-cache' --paginate --slurp" \
+        "$substitute_workflow")" -ne 3 ]; then
+    printf '%s\n' 'not every managed Release snapshot forces revalidation' >&2
+    exit 1
+fi
 require_text "cmp -- \"\$local_snapshot\" \"\$downloaded_snapshot\"" \
     "$substitute_workflow"
 require_text \

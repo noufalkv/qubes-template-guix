@@ -156,7 +156,7 @@ jobs:
           shard_regex='^substitute-cache-nars-v2-[0-9a-f]{40}-[0-9a-f]{40}-[0-9]{4}-[0-9a-f]{64}$'
           marker_regex='^substitute-cache-gc-v2-[0-9a-f]{40}-[0-9a-f]{40}$'
           releases="$RUNNER_TEMP/substitute-releases.json"
-          gh api --paginate --slurp \
+          gh api --header 'Cache-Control: no-cache' --paginate --slurp \
             "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$releases"
 
           # A draft is never part of the public graph.  With runs serialized,
@@ -179,7 +179,7 @@ jobs:
               --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
           done
           if test "${#draft_tags[@]}" -gt 0; then
-            gh api --paginate --slurp \
+            gh api --header 'Cache-Control: no-cache' --paginate --slurp \
               "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$releases"
           fi
           test "$(
@@ -589,7 +589,7 @@ jobs:
           test "$publish_needed" = true || test "$publish_needed" = false
 
           recovered=false
-          for attempt in $(seq 1 6); do
+          for attempt in $(seq 1 8); do
             snapshot="$RUNNER_TEMP/substitute-public-snapshot-$attempt"
             metadata_dir="$snapshot/metadata"
             releases="$snapshot/releases.json"
@@ -604,7 +604,7 @@ jobs:
             set +e
             (
               set -euo pipefail
-              gh api --paginate --slurp \
+              gh api --header 'Cache-Control: no-cache' --paginate --slurp \
                 "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$releases"
               test "$(
                 jq --arg tag "$tag" '
@@ -716,8 +716,10 @@ jobs:
               recovered=true
               break
             fi
-            test "$attempt" -lt 6
-            sleep 5
+            test "$attempt" -lt 8
+            retry_delay=$((5 << (attempt - 1)))
+            test "$retry_delay" -le 30 || retry_delay=30
+            sleep "$retry_delay"
           done
           test "$recovered" = true
           printf 'output=%s\n' "$output" >> "$GITHUB_OUTPUT"
