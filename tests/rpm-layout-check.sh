@@ -37,6 +37,9 @@ check_template_rpm() {
     local rpm_path
 
     rpm_path="$(
+        # Some distributions configure GNU tar to default to POSIX/PAX.  The
+        # packager must still emit the 512-byte GNU header qvm-template keeps.
+        TAR_OPTIONS=--format=posix \
         "$repo_root/scripts/package-native-template-rpm.sh" \
             --root-image "$image" \
             --name "$template_name" \

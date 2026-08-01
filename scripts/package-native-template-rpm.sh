@@ -114,12 +114,32 @@ check_requirements() {
     validate_version_field "$version" "version"
     validate_version_field "$release" "release"
 
+    need awk
     need cp
+    need dd
     need rpmbuild
     need split
+    need stat
     need tar
 
     [ -r "$root_image" ] || die "root image not readable: $root_image"
+}
+
+verify_qvm_template_header() {
+    local first_part="$template_dir/root.img.part.00"
+    local header="$workdir/root.img.header"
+    local archived_size
+    local expected_size
+
+    # qvm-template retains only these 512 bytes before post-install asks tar
+    # for the image size.  A POSIX/PAX archive starts with an extended header,
+    # leaving qvm-template with no root.img entry to inspect.  Keep this check
+    # aligned with qvm_template_postprocess.get_root_img_size().
+    archived_size="$(qvm_template_root_header_size "$first_part" "$header")"
+    expected_size="$(stat -c '%s' "$root_image")"
+
+    [ "$archived_size" = "$expected_size" ] ||
+        die "root image header size differs from the source image"
 }
 
 prepare_workdir() {
@@ -140,8 +160,12 @@ stage_payload() {
     [ -r "$template_conf" ] || die "missing template metadata: $template_conf"
 
     cp --reflink=auto --sparse=always "$root_image" "$image_dir/root.img"
-    tar -C "$image_dir" -Scf - root.img |
+    # GNU format places the sparse root.img header in the first 512 bytes.
+    # qvm-template truncates part 00 to that header before post-processing.
+    tar --format=gnu --sparse --create --file=- \
+        --directory="$image_dir" root.img |
         split -d -a 2 -b "$split_size" - "$template_dir/root.img.part."
+    verify_qvm_template_header
 
     cp "$template_conf" "$template_dir/template.conf"
     mkdir -p "$template_dir/apps" "$template_dir/apps.templates" "$template_dir/apps.tempicons"

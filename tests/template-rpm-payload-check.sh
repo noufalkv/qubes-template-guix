@@ -77,11 +77,14 @@ check_requirements() {
     [ -n "$source_image" ] || die "missing --source-image"
     [ -r "$source_image" ] || die "source image not readable: $source_image"
 
+    need awk
     need cmp
     need cpio
+    need dd
     need readlink
     need rpm
     need rpm2cpio
+    need stat
     need tar
 
     rpm_file="$(readlink -f "$rpm_file")"
@@ -201,11 +204,24 @@ verify_ghost_images() {
 
 verify_split_root_image() {
     local root_parts=()
+    local header="$work_dir/root.img.header"
+    local archived_size
+    local expected_size
 
     shopt -s nullglob
     root_parts=("$template_dir"/root.img.part.*)
     shopt -u nullglob
     [ "${#root_parts[@]}" -ge 1 ] || die "missing split root image payload"
+
+    # qvm-template keeps only the first tar block from part 00 and parses the
+    # third field of `tar -tvf` as the volume size.  Exercise that exact
+    # install-time contract in addition to reassembling the complete archive.
+    archived_size="$(
+        qvm_template_root_header_size "${root_parts[0]}" "$header"
+    )"
+    expected_size="$(stat -c '%s' "$source_image")"
+    [ "$archived_size" = "$expected_size" ] ||
+        die "root image header size differs from source image"
 
     mkdir -p "$image_dir"
     cat "${root_parts[@]}" | tar -C "$image_dir" -xf -
