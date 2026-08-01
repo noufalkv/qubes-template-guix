@@ -42,6 +42,12 @@ new generation reuses existing content-addressed assets, splits new NARs across
 bounded, content-identified Release shards, then publishes the retained narinfo
 index atomically through Pages.
 
+If a nondeterministic rebuild produces different signed contents for the same
+input-addressed store path, Pages serves the newest narinfo without merging its
+fields.  The older immutable NAR remains available with its retained generation
+and for the cleanup grace period, so clients with cached older metadata can
+still fetch it.
+
 The [ci.guix.gnu.org configuration][guix-publisher] sets `guix publish`'s TTL
 to 180 days, while [Bordeaux's cleanup][guix-bordeaux] protects new objects for
 six months.  Guix does not guarantee availability for the full TTL: an

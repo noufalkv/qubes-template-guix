@@ -117,6 +117,8 @@ class SubstituteReleaseStateTests(unittest.TestCase):
         file_size=None,
         signature=b"Signature: cache.example:unchanged-signature\n",
         nar_hash=b"sha256:fixture",
+        nar_size=b"1234",
+        references=b"",
         deriver=b"unknown-deriver",
         nix_cache_info=NIX_CACHE_INFO,
     ):
@@ -130,8 +132,12 @@ class SubstituteReleaseStateTests(unittest.TestCase):
             + b"NarHash: "
             + nar_hash
             + b"\n"
-            + b"NarSize: 1234\n"
-            + b"References: \n"
+            + b"NarSize: "
+            + nar_size
+            + b"\n"
+            + b"References: "
+            + references
+            + b"\n"
             + b"Deriver: "
             + deriver
             + b"\n"
@@ -1351,23 +1357,94 @@ class SubstituteReleaseStateTests(unittest.TestCase):
         with self.assertRaisesRegex(HELPER.StateError, "digest or size mismatch"):
             HELPER.load_prior_metadata(corrupt_zip)
 
-    def test_pre_v2_zip_is_ignored_but_retained_conflicts_fail(self):
+    def test_pre_v2_zip_is_ignored(self):
         legacy = self.work_dir / "legacy.zip"
         with zipfile.ZipFile(legacy, "w") as archive:
             archive.writestr("old-manifest.json", b"{}")
         self.assertIsNone(HELPER.load_prior_metadata(legacy))
 
+    def test_newest_narinfo_wins_for_nondeterministic_store_output(self):
         first_cache, _, _ = self.make_cache("conflict-one", payload=b"one")
         first = self.prepare(first_cache, "conflict-one", "2026-07-24T10:00:00Z")
         second_cache, _, _ = self.make_cache(
-            "conflict-two", payload=b"two", nar_hash=b"sha256:different"
+            "conflict-two",
+            payload=b"two",
+            nar_hash=b"sha256:different",
+            nar_size=b"1786",
+            references=f"{store_hash(1)}-dependency".encode(),
+            deriver=b"different-deriver",
+            signature=b"Signature: cache.example:new-signature\n",
         )
-        with self.assertRaisesRegex(HELPER.StateError, "conflicting narinfo content"):
+        second = self.prepare(
+            second_cache,
+            "conflict-two",
+            "2026-07-25T10:00:00Z",
+            prior=[self.metadata_path(first)],
+        )
+
+        narinfo_name = f"{store_hash(0)}.narinfo"
+        published = (second / "pages" / narinfo_name).read_text()
+        self.assertIn("NarHash: sha256:different", published)
+        self.assertIn("NarSize: 1786", published)
+        self.assertIn(f"References: {store_hash(1)}-dependency", published)
+        self.assertIn("Deriver: different-deriver", published)
+        self.assertIn("Signature: cache.example:new-signature", published)
+        self.assertIn(f"/{self.shard_tag('conflict-two')}/", published)
+        self.assertNotIn(self.shard_tag("conflict-one"), published)
+
+        current = HELPER.load_prior_metadata(self.metadata_path(second))
+        self.assertIsNotNone(current)
+        current_narinfo = next(
+            item for item in current.narinfos if item.path == narinfo_name
+        )
+        self.assertEqual(published.encode(), current_narinfo.content)
+
+        referenced_shards = {
+            item["release_tag"]
+            for item in self.read_plan(second)["referenced_nar_shard_releases"]
+        }
+        self.assertEqual(
+            referenced_shards,
+            {
+                self.shard_tag("conflict-one"),
+                self.shard_tag("conflict-two"),
+            },
+        )
+
+        recovered = self.work_dir / "nondeterministic-recovery"
+        HELPER.recover_release_state(
+            output_dir=recovered,
+            repository=REPOSITORY,
+            as_of_text="2026-07-25T11:00:00Z",
+            prior_metadata=[self.metadata_path(second), self.metadata_path(first)],
+            release_inventory=self.write_inventory(),
+            retention_days=180,
+            minimum_generations=8,
+        )
+        self.assertEqual(
+            (recovered / "pages" / narinfo_name).read_bytes(),
+            (second / "pages" / narinfo_name).read_bytes(),
+        )
+
+    def test_same_narinfo_filename_cannot_name_different_store_paths(self):
+        first_cache, _, _ = self.make_cache("path-collision-one")
+        first = self.prepare(
+            first_cache, "path-collision-one", "2026-07-24T10:00:00Z"
+        )
+        second_cache, _, narinfo_name = self.make_cache("path-collision-two")
+        narinfo_path = second_cache / narinfo_name
+        narinfo_path.write_bytes(
+            narinfo_path.read_bytes().replace(b"-fixture\n", b"-other-name\n", 1)
+        )
+
+        with self.assertRaisesRegex(
+            HELPER.StateError, "one narinfo filename to different store paths"
+        ):
             self.prepare(
                 second_cache,
-                "conflict-two",
+                "path-collision-two",
                 "2026-07-25T10:00:00Z",
-                prior=[self.metadata_path(first), legacy],
+                prior=[self.metadata_path(first)],
             )
 
     def test_commits_are_full_and_release_tag_is_revision_derived(self):
