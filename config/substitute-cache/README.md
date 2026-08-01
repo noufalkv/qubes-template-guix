@@ -7,7 +7,8 @@ asset-count-bounded Releases serve the immutable NAR payloads.
 
 The v2 URL and key form a clean epoch.  Nothing from the retired cache produced
 before the [July 2 substitute/pull advisory][advisory] is imported.  Template
-consumption remains disabled only until the first v2 workflow run is verified.
+consumption was enabled only after the first v2 publication was independently
+verified.
 
 [advisory]: https://guix.gnu.org/en/blog/2026/guix-substitute-pull-vulnerabilities/
 
@@ -20,8 +21,8 @@ rejects a key file that contains comments ("Bad character in S-expression").
 
 Clients authenticate cache contents with this key rather than GitHub's
 transport identity.  GitHub Actions remains trusted to build the cache and
-protect the private key.  When enabled, the template authorizes the public key
-and adds the Pages URL to `guix-daemon` (see
+protect the private key.  The template authorizes the public key and adds the
+Pages URL to `guix-daemon` (see
 `%qubes-substitute-cache-url`, `%qubes-substitute-cache-key-file`, and the
 `%qubes-substitute-cache-enabled?` flag in `(qubes services)`).  The current,
 advisory-checked Guix daemon verifies the signed narinfo and NAR hash before

@@ -849,12 +849,23 @@ jobs:
           cache_url='${{ steps.deploy.outputs.page_url }}v2'
           local_index='${{ steps.pages.outputs.site }}/v2'
           local_snapshot="$local_index/substitute-cache-snapshot"
+          snapshot_manifest="$RUNNER_TEMP/substitute-pages-snapshot-manifest"
           downloaded_snapshot="$RUNNER_TEMP/published-substitute-cache-snapshot"
           test -s "$local_snapshot"
+          test -s "$snapshot_manifest"
+          expected_snapshot="$RUNNER_TEMP/expected-substitute-cache-snapshot"
+          {
+            printf 'snapshot-sha256:%s\n' \
+              "$(sha256sum "$snapshot_manifest" | cut -d ' ' -f 1)"
+            printf 'github-run-id:%s\n' "$GITHUB_RUN_ID"
+            printf 'github-run-attempt:%s\n' "$GITHUB_RUN_ATTEMPT"
+          } > "$expected_snapshot"
+          cmp -- "$expected_snapshot" "$local_snapshot"
           snapshot_url="$cache_url/substitute-cache-snapshot?run=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           for attempt in $(seq 1 12); do
             if curl --fail --silent --show-error --location \
                 --header 'Cache-Control: no-cache' \
+                --connect-timeout 15 --max-time 60 \
                 --output "$downloaded_snapshot" "$snapshot_url" &&
                 cmp -s -- "$local_snapshot" "$downloaded_snapshot"; then
               break
@@ -864,25 +875,76 @@ jobs:
           done
           cmp -- "$local_snapshot" "$downloaded_snapshot"
 
-          narinfo="$(find "$local_index" -maxdepth 1 -type f -name '*.narinfo' | sort | head -n 1)"
-          test -n "$narinfo"
-          name="$(basename -- "$narinfo")"
-          downloaded="$RUNNER_TEMP/published.narinfo"
-          for attempt in $(seq 1 12); do
-            if curl --fail --silent --show-error --location \
-                --output "$downloaded" "$cache_url/$name" &&
-                cmp -s -- "$narinfo" "$downloaded"; then
-              break
+          published_index="$RUNNER_TEMP/published-substitute-index"
+          mkdir -- "$published_index"
+          download_pids=()
+          download_failed=0
+          download_published_file() {
+            local digest="$1"
+            local name="$2"
+            local destination="$published_index/$name"
+            local attempt
+            for attempt in $(seq 1 12); do
+              if curl --fail --silent --show-error --location \
+                  --header 'Cache-Control: no-cache' \
+                  --connect-timeout 15 --max-time 60 \
+                  --output "$destination.part" \
+                  "$cache_url/$name?run=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$attempt" &&
+                  printf '%s  %s\n' "$digest" "$destination.part" |
+                    sha256sum --check --status; then
+                mv -- "$destination.part" "$destination"
+                return 0
+              fi
+              test "$attempt" -lt 12 || return 1
+              sleep 10
+            done
+          }
+          wait_for_downloads() {
+            local pid
+            for pid in "${download_pids[@]}"; do
+              if ! wait "$pid"; then
+                download_failed=1
+              fi
+            done
+            download_pids=()
+          }
+
+          published_file_count=0
+          while IFS= read -r entry; do
+            digest="${entry%% *}"
+            relative="${entry#"$digest  "}"
+            test "$entry" = "$digest  $relative"
+            [[ "$digest" =~ ^[0-9a-f]{64}$ ]]
+            [[ "$relative" == './nix-cache-info' ||
+               "$relative" =~ ^\./[0-9abcdfghijklmnpqrsvwxyz]{32}\.narinfo$ ]]
+            name="${relative#./}"
+            download_published_file "$digest" "$name" &
+            download_pids+=("$!")
+            published_file_count=$((published_file_count + 1))
+            if test "${#download_pids[@]}" -eq 16; then
+              wait_for_downloads
             fi
-            test "$attempt" -lt 12
-            sleep 10
-          done
+          done < "$snapshot_manifest"
+          wait_for_downloads
+          test "$download_failed" -eq 0
+          test "$published_file_count" -gt 1
+          (
+            cd "$published_index"
+            sha256sum --check --strict --status "$snapshot_manifest"
+          )
+          printf 'Verified %s published index files.\n' "$published_file_count"
+
+          shopt -s nullglob
+          narinfos=("$local_index"/*.narinfo)
+          shopt -u nullglob
+          test "${#narinfos[@]}" -gt 0
+          narinfo="${narinfos[0]}"
           store_path="$(sed -n 's/^StorePath: //p' "$narinfo")"
           nar_url="$(sed -n 's/^URL: //p' "$narinfo")"
           test -n "$store_path"
           [[ "$nar_url" =~ ^https://github.com/${GITHUB_REPOSITORY}/releases/download/substitute-cache-nars-v2-[0-9a-f]{40}-[0-9a-f]{40}-[0-9]{4}-[0-9a-f]{64}/nar-v2-sha256-[0-9a-f]{64}$ ]]
           curl --fail --silent --show-error --location --head \
-            --max-time 60 "$nar_url" >/dev/null
+            --connect-timeout 15 --max-time 60 "$nar_url" >/dev/null
           query_result="$(
             printf 'have %s\n' "$store_path" |
               GUIX_CONFIGURATION_DIRECTORY="$SUBSTITUTE_VALIDATION_CONFIG" \

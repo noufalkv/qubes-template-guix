@@ -97,6 +97,93 @@ require_text './scripts/build-substitute-cache.sh prepare' "$substitute_workflow
 require_text 'cancel-in-progress: false' "$substitute_workflow"
 require_text "cron: '17 4 * * *'" "$substitute_workflow"
 require_text "CACHE_GC_GRACE_DAYS: '2'" "$substitute_workflow"
+
+# Cache enablement must preserve the Guix service inherited from %base-services:
+# official substitutes stay first, and the channel key supplements existing
+# authorization instead of replacing it.
+if [ "$(grep -Fc '(define %qubes-substitute-cache-enabled?' "$services")" -ne 1 ]; then
+    printf '%s\n' 'substitute-cache toggle is not defined exactly once' >&2
+    exit 1
+fi
+cache_toggle="$(
+    awk '
+        /^\(define %qubes-substitute-cache-enabled\?/ { in_toggle = 1; next }
+        in_toggle && /^[[:space:]]*#[tf]\)$/ {
+            sub(/^[[:space:]]*/, "")
+            print
+            exit
+        }
+    ' "$services"
+)"
+if [ "$cache_toggle" != '#t)' ]; then
+    printf '%s\n' 'verified substitute cache is not enabled' >&2
+    exit 1
+fi
+cache_service_block="$(
+    sed -n \
+        '/^(define %qubes-base-services/,/^[[:space:]]*%base-services))$/p' \
+        "$services"
+)"
+cache_service_compact="$(tr -d '[:space:]' <<< "$cache_service_block")"
+for contract in \
+        '(guix-configuration(inheritconfig)(substitute-urls' \
+        '(substitute-urls(append(guix-configuration-substitute-urlsconfig)(list%qubes-substitute-cache-url)))' \
+        '(authorized-keys(cons%qubes-substitute-cache-key-file(guix-configuration-authorized-keysconfig)))'; do
+    if ! grep -Fq -- "$contract" <<< "$cache_service_compact"; then
+        printf 'missing substitute-cache service contract: %s\n' "$contract" >&2
+        exit 1
+    fi
+done
+
+require_text "narinfo_list=\"\$work_dir/narinfos\"" "$substitute_validator"
+require_text "mapfile -d '' -t narinfos < \"\$narinfo_list\"" \
+    "$substitute_validator"
+if grep -Fq "mapfile -d '' -t narinfos < <(" "$substitute_validator"; then
+    printf '%s\n' 'narinfo enumeration can hide a producer failure' >&2
+    exit 1
+fi
+
+# A producer may emit a plausible partial list before failing.  The validator
+# must stop at that pipeline and never query Guix with the incomplete index.
+enumeration_fixture="$(mktemp -d)"
+trap 'rm -rf -- "$enumeration_fixture"' EXIT
+mkdir -p -- "$enumeration_fixture/bin" "$enumeration_fixture/index" \
+    "$enumeration_fixture/config" "$enumeration_fixture/cache"
+printf '%s\n' 'StoreDir: /gnu/store' \
+    > "$enumeration_fixture/index/nix-cache-info"
+touch -- \
+    "$enumeration_fixture/index/0123456789abcdfghijklmnpqrsvwxyz.narinfo" \
+    "$enumeration_fixture/config/acl"
+cat > "$enumeration_fixture/bin/sort" <<'EOF'
+#!/bin/sh
+cat
+exit 9
+EOF
+cat > "$enumeration_fixture/bin/guix" <<'EOF'
+#!/bin/sh
+: > "$GUIX_CALLED"
+exit 99
+EOF
+chmod +x -- "$enumeration_fixture/bin/sort" "$enumeration_fixture/bin/guix"
+if PATH="$enumeration_fixture/bin:$PATH" \
+        GUIX_CALLED="$enumeration_fixture/guix-called" \
+        GUIX_CONFIGURATION_DIRECTORY="$enumeration_fixture/config" \
+        XDG_CACHE_HOME="$enumeration_fixture/cache" \
+        "$substitute_validator" \
+            --guix "$enumeration_fixture/bin/guix" \
+            --index "$enumeration_fixture/index" \
+            --repository example/cache \
+            --work-dir "$enumeration_fixture/work"; then
+    printf '%s\n' 'validator accepted a partial narinfo enumeration' >&2
+    exit 1
+fi
+if [ -e "$enumeration_fixture/guix-called" ]; then
+    printf '%s\n' 'validator queried Guix after narinfo enumeration failed' >&2
+    exit 1
+fi
+rm -rf -- "$enumeration_fixture"
+trap - EXIT
+
 require_text \
     "shard_regex='^substitute-cache-nars-v2-[0-9a-f]{40}-[0-9a-f]{40}-[0-9]{4}-[0-9a-f]{64}\$'" \
     "$substitute_workflow"
@@ -194,6 +281,19 @@ rmdir -- "$recovery_count_dir"
 
 require_text "cmp -- \"\$local_snapshot\" \"\$downloaded_snapshot\"" \
     "$substitute_workflow"
+require_text "cmp -- \"\$expected_snapshot\" \"\$local_snapshot\"" \
+    "$substitute_workflow"
+require_text "done < \"\$snapshot_manifest\"" \
+    "$substitute_workflow"
+require_text 'sha256sum --check --strict' "$substitute_workflow"
+require_text "\"\$relative\" == './nix-cache-info' ||" "$substitute_workflow"
+require_text \
+    "\"\$relative\" =~ ^\\./[0-9abcdfghijklmnpqrsvwxyz]{32}\\.narinfo\$" \
+    "$substitute_workflow"
+if grep -Fq 'sort | head -n 1' "$substitute_workflow"; then
+    printf '%s\n' 'published-index selection can fail on an expected SIGPIPE' >&2
+    exit 1
+fi
 require_text \
     '.revoke_gc_marker_releases[] | [.repository, .release_tag] | @tsv' \
     "$substitute_workflow"

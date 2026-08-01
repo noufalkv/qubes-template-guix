@@ -2465,9 +2465,9 @@ the ignored service value."
   "https://noufalkv.github.io/qubes-template-guix/v2")
 
 (define %qubes-substitute-cache-enabled?
-  ;; Enable only after the first clean v2 publication has passed the advisory
-  ;; checks.  The retired pre-advisory cache is outside this URL/key epoch.
-  #f)
+  ;; The first clean v2 publication passed the advisory and public-state checks.
+  ;; Keep this switch as an emergency rollback for the independent cache service.
+  #t)
 
 (define %qubes-substitute-cache-key-file
   ;; PUBLIC signing key the daemon authorizes for the cache.  A relative
@@ -2481,11 +2481,11 @@ the ignored service value."
   ;; guix-daemon through 127.0.0.1:8082 here breaks substitute downloads when
   ;; that flag is absent.
   ;;
-  ;; When the cache is enabled, layer the channel's GitHub Pages substitute
-  ;; cache onto the daemon AFTER the official servers, so Qubes channel store
-  ;; paths (which official CI does not build) download from the cache instead of
-  ;; rebuilding locally, while everything else still comes from
-  ;; ci.guix/bordeaux.  Guix stays unpinned, so security updates are unaffected.
+  ;; Layer the channel's GitHub Pages substitute cache onto the daemon AFTER the
+  ;; official servers, so Qubes channel store paths (which official CI does not
+  ;; build) download from the cache instead of rebuilding locally, while
+  ;; everything else still comes from ci.guix/bordeaux.  Guix stays unpinned,
+  ;; so security updates are unaffected.
   (if %qubes-substitute-cache-enabled?
       (modify-services %base-services
         (guix-service-type

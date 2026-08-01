@@ -35,10 +35,10 @@ index="$(realpath -e -- "$index")"
 mkdir -m 700 -- "$work_dir"
 test -s "$index/nix-cache-info"
 
-mapfile -d '' -t narinfos < <(
-    find "$index" -maxdepth 1 -type f -name '*.narinfo' \
-        -print0 | LC_ALL=C sort -z
-)
+narinfo_list="$work_dir/narinfos"
+find "$index" -maxdepth 1 -type f -name '*.narinfo' -print0 |
+    LC_ALL=C sort -z > "$narinfo_list"
+mapfile -d '' -t narinfos < "$narinfo_list"
 test "${#narinfos[@]}" -gt 0
 
 expected="$work_dir/expected-paths"
