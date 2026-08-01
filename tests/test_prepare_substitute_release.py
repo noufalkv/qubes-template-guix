@@ -295,7 +295,7 @@ class SubstituteReleaseStateTests(unittest.TestCase):
         plan = self.read_plan(first)
         self.assertEqual(plan["policy"]["retention_days"], 180)
         self.assertEqual(plan["policy"]["minimum_generations"], 8)
-        self.assertEqual(plan["policy"]["gc_grace_days"], 1)
+        self.assertEqual(plan["policy"]["gc_grace_days"], 2)
         self.assertEqual(len(plan["retained_releases"]), 1)
         self.assertEqual(plan["delete_releases"], [])
 

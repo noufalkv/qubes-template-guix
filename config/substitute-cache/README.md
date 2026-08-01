@@ -48,11 +48,12 @@ unaccessed publisher-cache entry can become removable after that period when
 its store item is gone.  GitHub exposes neither access times nor store
 references, so this cache uses a deterministic policy: retain generations for
 180 days and always keep at least eight.  After an expired generation leaves
-Pages, a marker made only after the deployment is verified starts a one-day
-cleanup grace period for its metadata and NAR shards.  This preserves the
-channel-specific narinfos and NARs exported by this cache; dependencies omitted
-because an official server already supplied them remain subject to that
-server's retention policy.
+Pages, a marker made only after the deployment is verified starts a two-day
+cleanup grace period for its metadata and NAR shards.  This exceeds Guix's
+36-hour fallback TTL for cached positive narinfo lookups, so a client can still
+download a NAR referenced by its cached metadata.  Dependencies omitted because
+an official server already supplied them remain subject to that server's
+retention policy.
 
 GitHub may disable scheduled workflows after 60 days without repository
 activity.  Keep the schedule monitored; if GitHub disables it, a maintainer

@@ -11,6 +11,7 @@ patch="$repo_root/modules/qubes/patches/should-upstream/qubes-vm-core-upgrades-i
 builder="$repo_root/scripts/build-native-rootfs.sh"
 substitute_builder="$repo_root/scripts/build-substitute-cache.sh"
 substitute_workflow="$repo_root/.github/workflows/substitute-cache.yml"
+substitute_validator="$repo_root/scripts/validate-substitute-index.sh"
 build_channels="$repo_root/config/channels.scm"
 installed_channels="$repo_root/config/guix-channels.scm"
 
@@ -95,6 +96,7 @@ require_text './scripts/bootstrap-guix-secure.sh' "$substitute_workflow"
 require_text './scripts/build-substitute-cache.sh prepare' "$substitute_workflow"
 require_text 'cancel-in-progress: false' "$substitute_workflow"
 require_text "cron: '17 4 * * *'" "$substitute_workflow"
+require_text "CACHE_GC_GRACE_DAYS: '2'" "$substitute_workflow"
 require_text \
     "shard_regex='^substitute-cache-nars-v2-[0-9a-f]{40}-[0-9a-f]{40}-[0-9]{4}-[0-9a-f]{64}\$'" \
     "$substitute_workflow"
@@ -108,20 +110,46 @@ require_text "retry_delay=\$((5 << (attempt - 1)))" "$substitute_workflow"
 require_text "test \"\$retry_delay\" -le 30 || retry_delay=30" \
     "$substitute_workflow"
 require_text "sleep \"\$retry_delay\"" "$substitute_workflow"
-if grep -Fq -- '--substitute-urls=' "$substitute_workflow"; then
+if grep -Fq -- '--substitute-urls=' \
+        "$substitute_workflow" "$substitute_validator"; then
     printf '%s\n' 'substituter URL is incorrectly passed as a CLI option' >&2
     exit 1
 fi
 if [ "$(grep -Fc '_NIX_OPTIONS="substitute-urls=' \
-        "$substitute_workflow")" -ne 2 ]; then
-    printf '%s\n' 'substitute checks do not scope both cache URLs via _NIX_OPTIONS' \
+        "$substitute_workflow")" -ne 1 ] ||
+        [ "$(grep -Fc '_NIX_OPTIONS="substitute-urls=' \
+            "$substitute_validator")" -ne 1 ]; then
+    printf '%s\n' 'substitute checks do not scope cache URLs via _NIX_OPTIONS' \
         >&2
     exit 1
 fi
 if [ "$(grep -Fc "XDG_CACHE_HOME=\"\$RUNNER_TEMP/" \
-        "$substitute_workflow")" -ne 2 ]; then
+        "$substitute_workflow")" -ne 3 ]; then
     printf '%s\n' \
         'substitute checks do not use private writable narinfo caches' >&2
+    exit 1
+fi
+if [ "$(grep -Fc "\"\$GUIX\" substitute --query 4>&1" \
+        "$substitute_workflow")" -ne 1 ] ||
+        [ "$(grep -Fc "\"\$guix\" substitute --query 4>&1" \
+            "$substitute_validator")" -ne 1 ]; then
+    printf '%s\n' \
+        'substitute checks do not capture daemon protocol replies from fd 4' >&2
+    exit 1
+fi
+if [ "$(grep -Fc 'GUIX_CONFIGURATION_DIRECTORY=' \
+        "$substitute_workflow")" -ne 4 ]; then
+    printf '%s\n' \
+        'cache authorization and checks do not share an isolated Guix ACL' >&2
+    exit 1
+fi
+if grep -Fq 'sudo env GUIX_DAEMON_SOCKET=' "$substitute_workflow"; then
+    printf '%s\n' 'cache validation key is authorized in the global Guix ACL' >&2
+    exit 1
+fi
+if [ "$(grep -Fc './scripts/validate-substitute-index.sh' \
+        "$substitute_workflow")" -ne 2 ] || [ ! -x "$substitute_validator" ]; then
+    printf '%s\n' 'prepared and recovered indexes are not both validated' >&2
     exit 1
 fi
 if [ "$(grep -Fc \
@@ -175,6 +203,14 @@ workflow_revoke_line="$(
     grep -nF -- '- name: Revoke invalid GC markers before the Pages transition' \
         "$substitute_workflow" | cut -d: -f1
 )"
+workflow_prepare_verify_line="$(
+    grep -nF -- '- name: Validate the prepared narinfo index' \
+        "$substitute_workflow" | cut -d: -f1
+)"
+workflow_publish_line="$(
+    grep -nF -- '- name: Publish immutable NAR shards and generation metadata' \
+        "$substitute_workflow" | cut -d: -f1
+)"
 workflow_deploy_line="$(
     grep -nF -- '- name: Deploy retained narinfo index to GitHub Pages' \
         "$substitute_workflow" | cut -d: -f1
@@ -192,7 +228,9 @@ workflow_cleanup_line="$(
     grep -nF -- '- name: Remove Releases authorized by the GC plan' \
         "$substitute_workflow" | cut -d: -f1
 )"
-if [ -z "$workflow_revoke_line" ] || [ -z "$workflow_deploy_line" ] ||
+if [ -z "$workflow_prepare_verify_line" ] || [ -z "$workflow_publish_line" ] ||
+        [ "$workflow_prepare_verify_line" -ge "$workflow_publish_line" ] ||
+        [ -z "$workflow_revoke_line" ] || [ -z "$workflow_deploy_line" ] ||
         [ -z "$workflow_verify_line" ] || [ -z "$workflow_marker_line" ] ||
         [ -z "$workflow_cleanup_line" ] ||
         [ "$workflow_revoke_line" -ge "$workflow_deploy_line" ] ||

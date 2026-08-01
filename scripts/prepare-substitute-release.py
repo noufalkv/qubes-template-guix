@@ -66,7 +66,7 @@ shard is deletable only when no retained or marker-protected generation
 references it.  Markers invalidated by re-retention are listed separately for
 revocation before the new Pages state is deployed.  The default policy keeps
 generations from the last 180 days and at least the eight newest generations,
-then requires a one-day marker grace interval before destructive garbage
+then requires a two-day marker grace interval before destructive garbage
 collection.
 """
 
@@ -102,7 +102,7 @@ GC_MARKER_TAG_PREFIX = "substitute-cache-gc-v2-"
 MAX_NAR_ASSETS_PER_SHARD = 900
 DEFAULT_RETENTION_DAYS = 180
 DEFAULT_MINIMUM_GENERATIONS = 8
-DEFAULT_GC_GRACE_DAYS = 1
+DEFAULT_GC_GRACE_DAYS = 2
 MAX_RETENTION_DAYS = 36_500
 MAX_MINIMUM_GENERATIONS = 50_000
 MAX_GC_GRACE_DAYS = 36_500
